@@ -67,7 +67,7 @@ class ImportService {
           
           if (existingLoanId == null) {
             // First time seeing this loan, create it
-            existingLoanId = await _createLoan(
+            existingLoanId = await _upsertLoan(
               groupId: groupId,
               vendorId: vendorId,
               amount: amount,
@@ -91,18 +91,6 @@ class ImportService {
         }
       }
     }
-  }
-
-  Future<String?> _findExistingLoan(String vendorId, double amount) async {
-    final response = await _supabase
-        .from('loans')
-        .select('id')
-        .eq('vendor_id', vendorId)
-        .eq('amount', amount)
-        .eq('status', 'Active')
-        .maybeSingle();
-    
-    return response?['id'];
   }
 
   Future<void> _recordPayment({
@@ -201,6 +189,8 @@ class ImportService {
     required String dfName,
     required String gender,
   }) async {
+    String? existingId;
+
     // 1. Check by ID number (strongest unique identifier)
     if (idNumber.isNotEmpty) {
       final byId = await _supabase
@@ -208,30 +198,31 @@ class ImportService {
           .select('id')
           .eq('id_number', idNumber)
           .maybeSingle();
-      if (byId != null) return byId['id'];
+      if (byId != null) existingId = byId['id'];
     }
 
-    // 2. Check by phone number
-    if (phone.isNotEmpty) {
+    // 2. Check by phone number if ID number wasn't found
+    if (existingId == null && phone.isNotEmpty) {
       final byPhone = await _supabase
           .from('vendors')
           .select('id')
           .eq('phone', phone)
           .maybeSingle();
-      if (byPhone != null) return byPhone['id'];
+      if (byPhone != null) existingId = byPhone['id'];
     }
 
     // 3. Fall back to name + group (legacy safety net)
-    final byName = await _supabase
-        .from('vendors')
-        .select('id')
-        .eq('name', name)
-        .eq('group_id', groupId)
-        .maybeSingle();
-    if (byName != null) return byName['id'];
+    if (existingId == null) {
+      final byName = await _supabase
+          .from('vendors')
+          .select('id')
+          .eq('name', name)
+          .eq('group_id', groupId)
+          .maybeSingle();
+      if (byName != null) existingId = byName['id'];
+    }
 
-    // 4. Create new vendor
-    final inserted = await _supabase.from('vendors').insert({
+    final vendorData = {
       'group_id': groupId,
       'name': name,
       'phone': phone,
@@ -239,10 +230,33 @@ class ImportService {
       'business_type': businessType,
       'df_name': dfName,
       'gender': gender,
-      'reference_number': await _getGroupRef(groupId),
-    }).select('id').single();
+    };
 
-    return inserted['id'];
+    if (existingId != null) {
+      // UPDATE existing vendor details
+      await _supabase.from('vendors').update(vendorData).eq('id', existingId);
+      return existingId;
+    } else {
+      // CREATE new vendor
+      vendorData['reference_number'] = await _getGroupRef(groupId);
+      final inserted = await _supabase.from('vendors').insert(vendorData).select('id').single();
+      return inserted['id'];
+    }
+  }
+
+  Future<String?> _findExistingLoan(String vendorId, double amount) async {
+    // Look for an active loan with this amount for this specific vendor
+    final response = await _supabase
+        .from('loans')
+        .select('id')
+        .eq('vendor_id', vendorId)
+        .eq('amount', amount)
+        .eq('status', 'Active')
+        .order('created_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+    
+    return response?['id'];
   }
 
   Future<String> _getGroupRef(String groupId) async {
@@ -250,7 +264,7 @@ class ImportService {
     return res['reference_number'];
   }
 
-  Future<String> _createLoan({
+  Future<String> _upsertLoan({
     required String groupId,
     required String vendorId,
     required double amount,
@@ -262,7 +276,9 @@ class ImportService {
     double? openingAmount,
     DateTime? firstPaymentDate,
   }) async {
-    final inserted = await _supabase.from('loans').insert({
+    final existingLoanId = await _findExistingLoan(vendorId, amount);
+
+    final loanData = {
       'group_id': groupId,
       'vendor_id': vendorId,
       'amount': amount,
@@ -274,9 +290,17 @@ class ImportService {
       'penalty_fee': penaltyFee,
       'opening_amount': openingAmount,
       'first_instalment_date': firstPaymentDate?.toIso8601String(),
-    }).select('id').single();
-    
-    return inserted['id'];
+    };
+
+    if (existingLoanId != null) {
+      // Update existing loan parameters if they differ (e.g. fees changed in spreadsheet)
+      await _supabase.from('loans').update(loanData).eq('id', existingLoanId);
+      return existingLoanId;
+    } else {
+      // Insert new loan
+      final inserted = await _supabase.from('loans').insert(loanData).select('id').single();
+      return inserted['id'];
+    }
   }
 
   Future<void> clearAllData() async {

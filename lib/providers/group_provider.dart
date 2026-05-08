@@ -40,7 +40,7 @@ class GroupProvider with ChangeNotifier {
     }
   }
 
-  Future<GroupModel> addGroupWithMembers(String name, String referenceNumber, List<Map<String, String>> members) async {
+  Future<GroupModel> addGroupWithMembers(String name, String referenceNumber, List<Map<String, dynamic>> members) async {
     try {
       final response = await _supabase.from('groups').insert({
         'name': name,
@@ -59,6 +59,11 @@ class GroupProvider with ChangeNotifier {
           'gender': m['gender'],
           'business_type': m['business'],
           'whatsapp_number': m['whatsapp'],
+          'address': m['address'],
+          'role': m['role'],
+          'savings_amount': m['savings_amount'],
+          'savings_frequency': m['savings_frequency'],
+          'savings_start_date': m['savings_start_date'],
           'reference_number': referenceNumber,
         }).toList();
 

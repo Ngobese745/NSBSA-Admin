@@ -120,6 +120,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
       (sum, p) => sum + p.amountPaid,
     );
     final totalOutstanding = totalDisbursed - totalCollected;
+    final totalSavings = vendorProvider.vendors.fold(
+      0.0,
+      (sum, v) => sum + (v.savingsAmount ?? 0.0),
+    );
 
     // Fee Calculations
     final totalInitiationFees = loanProvider.loans.fold(
@@ -172,6 +176,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   totalCollected,
                   totalOutstanding,
                   totalExpectedFees,
+                  totalSavings,
                 ),
                 icon: const Icon(Icons.download),
                 label: const Text('Export PDF Report'),
@@ -217,6 +222,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   'Outstanding Capital',
                   'R ${totalOutstanding.toStringAsFixed(0)}',
                   Icons.pending_actions,
+                  AppTheme.primaryGold,
+                ),
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: _buildReportCard(
+                  theme,
+                  'Total Savings',
+                  'R ${totalSavings.toStringAsFixed(0)}',
+                  Icons.savings_outlined,
                   AppTheme.primaryGold,
                 ),
               ),
@@ -593,6 +608,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     double collected,
     double outstanding,
     double fees,
+    double savings,
   ) async {
     final groupProvider = context.read<GroupProvider>();
     final loanProvider = context.read<LoanProvider>();
@@ -653,6 +669,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   'R ${collected.toStringAsFixed(2)}',
                 ),
                 _pdfStat('Outstanding', 'R ${outstanding.toStringAsFixed(2)}'),
+                _pdfStat('Total Savings', 'R ${savings.toStringAsFixed(2)}'),
               ],
             ),
             pw.SizedBox(height: 20),

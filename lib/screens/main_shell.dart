@@ -77,35 +77,45 @@ class _MainShellState extends State<MainShell> {
                 link: _layerLink,
                 child: Row(
                   children: [
-                    // Menu toggle
-                    IconButton(
-                      tooltip: _isSidebarVisible ? 'Hide sidebar' : 'Show sidebar',
-                      icon: Icon(
-                        _isSidebarVisible ? Icons.menu_open : Icons.menu,
-                        color: Colors.white,
+                    // Left section: Menu and Logo (Aligned to Sidebar width)
+                    SizedBox(
+                      width: 200, // Matching sidebar width (220) - padding adjustments
+                      child: Row(
+                        children: [
+                          IconButton(
+                            tooltip: _isSidebarVisible ? 'Hide sidebar' : 'Show sidebar',
+                            icon: Icon(
+                              _isSidebarVisible ? Icons.menu_open : Icons.menu,
+                              color: Colors.white,
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _isSidebarVisible = !_isSidebarVisible;
+                              });
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          // Header Logo
+                          Image.asset(
+                            'assets/images/NSBSA Logo (1).png',
+                            height: 58,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) => const Icon(Icons.account_balance_wallet, color: Colors.white, size: 36),
+                          ),
+                        ],
                       ),
-                      onPressed: () {
-                        setState(() {
-                          _isSidebarVisible = !_isSidebarVisible;
-                        });
-                      },
                     ),
                     const SizedBox(width: 12),
-                    // Header Logo (INCREASED SIZE)
-                    Image.asset(
-                      'assets/images/NSBSA Logo (1).png',
-                      height: 50, // Increased from 40 to 50
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) => const Icon(Icons.account_balance_wallet, color: Colors.white, size: 32),
+                    // Divider (Now aligned with the start of the main content)
+                    Container(
+                      height: 32,
+                      width: 1.5,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(1),
+                      ),
                     ),
                     const SizedBox(width: 20),
-                    // Divider and Title
-                    Container(
-                      height: 24,
-                      width: 1,
-                      color: Colors.white24,
-                    ),
-                    const SizedBox(width: 16),
                     Text(
                       _titles[_selectedIndex].toUpperCase(),
                       style: const TextStyle(

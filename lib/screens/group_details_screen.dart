@@ -16,6 +16,13 @@ import '../providers/group_provider.dart';
 import 'vendor_profile_screen.dart';
 import 'loan_details_screen.dart';
 import '../services/loan_calculation_service.dart';
+import '../models/comment.dart';
+import '../providers/comment_provider.dart';
+import '../providers/auth_provider.dart';
+import '../models/document.dart';
+import '../providers/document_provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class GroupDetailsScreen extends StatefulWidget {
   final GroupModel group;
@@ -39,13 +46,18 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     _loadData();
   }
 
+
   Future<void> _loadData() async {
     final vendorProvider = context.read<VendorProvider>();
     final loanProvider = context.read<LoanProvider>();
+    final paymentProvider = context.read<PaymentProvider>();
 
     final results = await Future.wait([
       vendorProvider.fetchVendorsByGroup(widget.group.id),
       loanProvider.fetchLoansByGroup(widget.group.id),
+      paymentProvider.fetchPayments(),
+      context.read<CommentProvider>().fetchCommentsByGroup(widget.group.id),
+      context.read<DocumentProvider>().fetchDocumentsByGroup(widget.group.id),
     ]);
 
     if (mounted) {
@@ -86,9 +98,268 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                       Expanded(flex: 3, child: _buildLoansList(theme)),
                     ],
                   ),
+                  const SizedBox(height: 32),
+                  _buildSavingsSection(theme),
+                  const SizedBox(height: 32),
+                  _buildCommentsSection(theme),
+                  const SizedBox(height: 32),
+                  _buildDocumentsSection(theme),
                 ],
               ),
             ),
+    );
+  }
+  Widget _buildCommentsSection(ThemeData theme) {
+    final commentProvider = context.watch<CommentProvider>();
+    final TextEditingController _commentController = TextEditingController();
+    List<String> _selectedMentionIds = [];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Group Comments',
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: Column(
+            children: [
+              // Comment Input
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: _commentController,
+                      maxLines: 3,
+                      style: TextStyle(color: theme.textTheme.bodyMedium?.color),
+                      decoration: InputDecoration(
+                        hintText: 'Add a comment...',
+                        hintStyle: const TextStyle(color: Colors.grey),
+                        fillColor: theme.scaffoldBackgroundColor,
+                        filled: true,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        StatefulBuilder(
+                          builder: (context, setState) => Wrap(
+                            spacing: 8,
+                            children: [
+                              TextButton.icon(
+                                onPressed: () {
+                                  showDialog(
+                                    context: context,
+                                    builder: (context) => AlertDialog(
+                                      title: const Text('Mention Member'),
+                                      content: SizedBox(
+                                        width: 300,
+                                        child: ListView.builder(
+                                          shrinkWrap: true,
+                                          itemCount: _members.length,
+                                          itemBuilder: (context, index) {
+                                            final m = _members[index];
+                                            return CheckboxListTile(
+                                              title: Text(m.name),
+                                              value: _selectedMentionIds.contains(m.id),
+                                              onChanged: (val) {
+                                                setState(() {
+                                                  if (val == true) {
+                                                    _selectedMentionIds.add(m.id);
+                                                  } else {
+                                                    _selectedMentionIds.remove(m.id);
+                                                  }
+                                                });
+                                              },
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(context),
+                                          child: const Text('Done'),
+                                        ),
+                                      ],
+                                    ),
+                                  ).then((_) => (context as Element).markNeedsBuild());
+                                },
+                                icon: const Icon(Icons.alternate_email, size: 16),
+                                label: const Text('Mention'),
+                              ),
+                              ..._selectedMentionIds.map((id) {
+                                final name = _members.firstWhere((m) => m.id == id).name;
+                                return Chip(
+                                  label: Text(name, style: const TextStyle(fontSize: 10)),
+                                  onDeleted: () {
+                                    setState(() => _selectedMentionIds.remove(id));
+                                  },
+                                );
+                              }),
+                            ],
+                          ),
+                        ),
+                        ElevatedButton(
+                          onPressed: () async {
+                            if (_commentController.text.trim().isEmpty) return;
+                            
+                            final authProvider = context.read<AuthProvider>();
+                            final comment = CommentModel(
+                              id: '',
+                              groupId: widget.group.id,
+                              authorName: authProvider.currentUser?.email ?? 'Admin',
+                              authorRole: 'Staff', // Default for now
+                              content: _commentController.text.trim(),
+                              mentionedVendorIds: _selectedMentionIds,
+                              createdAt: DateTime.now(),
+                            );
+
+                            await commentProvider.addComment(comment);
+                            _commentController.clear();
+                            _selectedMentionIds = [];
+                            (context as Element).markNeedsBuild();
+                          },
+                          child: const Text('Post Comment'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              // Comments List
+              if (commentProvider.isLoading)
+                const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (commentProvider.comments.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(child: Text('No comments yet.', style: TextStyle(color: Colors.grey))),
+                )
+              else
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: commentProvider.comments.length,
+                  separatorBuilder: (context, index) => const Divider(height: 1, color: Colors.white10),
+                  itemBuilder: (context, index) {
+                    final comment = commentProvider.comments[index];
+                    return InkWell(
+                      onTap: () => _showCommentDetailsDialog(comment),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  comment.authorName,
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                ),
+                                const SizedBox(width: 8),
+                                if (comment.authorRole != null)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: theme.primaryColor.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      comment.authorRole!,
+                                      style: TextStyle(color: theme.primaryColor, fontSize: 10, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                const Spacer(),
+                                Text(
+                                  _formatDate(comment.createdAt),
+                                  style: const TextStyle(color: Colors.grey, fontSize: 11),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              comment.content,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: theme.textTheme.bodyMedium?.color),
+                            ),
+                            if (comment.mentionedVendorIds.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 4,
+                                children: comment.mentionedVendorIds.map((id) {
+                                  final name = _members.where((m) => m.id == id).firstOrNull?.name ?? 'Unknown';
+                                  return Text(
+                                    '@$name',
+                                    style: const TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.bold),
+                                  );
+                                }).toList(),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSavingsSection(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Group Savings Plan',
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _members.length,
+            separatorBuilder: (context, index) => const Divider(height: 1, color: Colors.white10),
+            itemBuilder: (context, index) {
+              final member = _members[index];
+              return ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.amber.withOpacity(0.1),
+                  child: const Icon(Icons.savings, color: Colors.amber, size: 20),
+                ),
+                title: Text(member.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text('Frequency: ${member.savingsFrequency ?? 'Monthly'} • Starts: ${member.savingsStartDate?.toLocal().toString().split(' ')[0] ?? 'N/A'}'),
+                trailing: Text(
+                  'R ${member.savingsAmount?.toStringAsFixed(0) ?? '0'}',
+                  style: const TextStyle(
+                    color: Colors.amber,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -163,6 +434,26 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
 
   Widget _buildSummarySection(ThemeData theme) {
     double totalLoaned = _loans.fold(0, (sum, item) => sum + item.amount);
+    
+    // Calculate Group Balance
+    final paymentProvider = context.watch<PaymentProvider>();
+    final allPayments = paymentProvider.payments;
+    final loanIds = _loans.map((loan) => loan.id).toSet();
+    final groupPayments = allPayments
+        .where((payment) => loanIds.contains(payment.loanId))
+        .toList();
+
+    double totalLiability = 0;
+    for (final loan in _loans) {
+      final loanPayments = groupPayments.where((p) => p.loanId == loan.id).toList();
+      totalLiability += loan.amount + 
+                       (loan.initiationFee ?? 0) + 
+                       ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) + 
+                       LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
+    }
+    final totalPaid = groupPayments.fold<double>(0, (sum, p) => sum + p.amountPaid);
+    final balance = totalLiability - totalPaid;
+    final totalSavings = _members.fold(0.0, (sum, m) => sum + (m.savingsAmount ?? 0.0));
 
     return Row(
       children: [
@@ -190,6 +481,16 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             'R ${totalLoaned.toStringAsFixed(0)}',
             Icons.payments,
             Colors.greenAccent,
+            subtitle: 'Balance: R ${balance.toStringAsFixed(0)}',
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: _buildStatCard(
+            'Group Savings',
+            'R ${totalSavings.toStringAsFixed(0)}',
+            Icons.savings,
+            Colors.amber,
           ),
         ),
       ],
@@ -200,8 +501,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     String title,
     String value,
     IconData icon,
-    Color color,
-  ) {
+    Color color, {
+    String? subtitle,
+  }) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -216,6 +518,13 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               value,
               style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
+            if (subtitle != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: const TextStyle(color: Colors.grey, fontSize: 11),
+              ),
+            ],
           ],
         ),
       ),
@@ -252,7 +561,31 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             itemBuilder: (context, index) {
               final member = _members[index];
               return ListTile(
-                title: Text(member.name),
+                title: Row(
+                  children: [
+                    Text(member.name),
+                    if (member.role != null && member.role != 'Member') ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: theme.primaryColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: theme.primaryColor.withOpacity(0.3)),
+                        ),
+                        child: Text(
+                          member.role!.toUpperCase(),
+                          style: TextStyle(
+                            color: theme.primaryColor,
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
                 subtitle: Text(member.phone ?? 'No Phone'),
                 onTap: () {
                   Navigator.push(
@@ -304,10 +637,20 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 fontWeight: FontWeight.bold,
               ),
             ),
-            TextButton.icon(
-              onPressed: _showAddLoanDialog,
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Create Loan'),
+            Row(
+              children: [
+                TextButton.icon(
+                  onPressed: _showRecordGroupPaymentDialog,
+                  icon: const Icon(Icons.payments_outlined, size: 18),
+                  label: const Text('Record Group Payment'),
+                ),
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  onPressed: _showAddLoanDialog,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Create Loan'),
+                ),
+              ],
             ),
           ],
         ),
@@ -409,157 +752,202 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         ],
       ),
     );
-  }
-
-  void _showEditMemberDialog(VendorModel member) {
+  }  void _showEditMemberDialog(VendorModel member) {
     final nameController = TextEditingController(text: member.name);
     final phoneController = TextEditingController(text: member.phone);
     final idController = TextEditingController(text: member.idNumber);
     final businessController = TextEditingController(text: member.businessType);
     final dfController = TextEditingController(text: member.dfName);
-    final whatsappController = TextEditingController(
-      text: member.whatsappNumber,
-    );
+    final whatsappController = TextEditingController(text: member.whatsappNumber);
+    final addressController = TextEditingController(text: member.address);
+    final savingsAmountController = TextEditingController(text: member.savingsAmount?.toString() ?? '0');
     String selectedGender = member.gender ?? 'F';
+    String selectedRole = member.role ?? 'Member';
+    String selectedFrequency = member.savingsFrequency ?? 'Monthly';
+    DateTime selectedSavingsDate = member.savingsStartDate ?? DateTime.now();
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
           backgroundColor: Theme.of(context).colorScheme.surface,
-          title: const Text(
-            'Edit Member',
-            style: TextStyle(color: Colors.white),
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
+          title: const Text('Edit Member', style: TextStyle(color: Colors.white)),
+          content: SizedBox(
+            width: 700,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                    decoration: const InputDecoration(labelText: 'Name', labelStyle: TextStyle(color: Colors.grey)),
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'Name',
-                    labelStyle: TextStyle(color: Colors.grey),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: TextField(
+                          controller: idController,
+                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                          decoration: const InputDecoration(labelText: 'ID Number', labelStyle: TextStyle(color: Colors.grey)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: DropdownButtonFormField<String>(
+                          value: selectedRole,
+                          dropdownColor: Theme.of(context).cardColor,
+                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color, fontSize: 12),
+                          decoration: const InputDecoration(labelText: 'Role', labelStyle: TextStyle(color: Colors.grey)),
+                          items: const [
+                            DropdownMenuItem(value: 'Member', child: Text('Member')),
+                            DropdownMenuItem(value: 'Chairperson', child: Text('Chairperson')),
+                            DropdownMenuItem(value: 'Secretary', child: Text('Secretary')),
+                            DropdownMenuItem(value: 'Treasurer', child: Text('Treasurer')),
+                          ],
+                          onChanged: (val) => setState(() => selectedRole = val!),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                TextField(
-                  controller: idController,
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: selectedGender,
+                          dropdownColor: Theme.of(context).cardColor,
+                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                          decoration: const InputDecoration(labelText: 'Gender', labelStyle: TextStyle(color: Colors.grey)),
+                          items: const [
+                            DropdownMenuItem(value: 'M', child: Text('M')),
+                            DropdownMenuItem(value: 'F', child: Text('F')),
+                          ],
+                          onChanged: (val) => setState(() => selectedGender = val!),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: phoneController,
+                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                          decoration: const InputDecoration(labelText: 'Phone', labelStyle: TextStyle(color: Colors.grey)),
+                        ),
+                      ),
+                    ],
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'ID Number',
-                    labelStyle: TextStyle(color: Colors.grey),
+                  TextField(
+                    controller: whatsappController,
+                    style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                    decoration: const InputDecoration(labelText: 'WhatsApp', labelStyle: TextStyle(color: Colors.grey)),
                   ),
-                ),
-                DropdownButtonFormField<String>(
-                  value: selectedGender,
-                  dropdownColor: Theme.of(context).cardColor,
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                  TextField(
+                    controller: businessController,
+                    style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                    decoration: const InputDecoration(labelText: 'Business Type', labelStyle: TextStyle(color: Colors.grey)),
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'Gender',
-                    labelStyle: TextStyle(color: Colors.grey),
+                  TextField(
+                    controller: dfController,
+                    style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                    decoration: const InputDecoration(labelText: 'DF Name', labelStyle: TextStyle(color: Colors.grey)),
                   ),
-                  items: const [
-                    DropdownMenuItem(value: 'M', child: Text('M')),
-                    DropdownMenuItem(value: 'F', child: Text('F')),
-                  ],
-                  onChanged: (val) => setState(() => selectedGender = val!),
-                ),
-                TextField(
-                  controller: phoneController,
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                  TextField(
+                    controller: addressController,
+                    style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                    decoration: const InputDecoration(labelText: 'Home Address', labelStyle: TextStyle(color: Colors.grey)),
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'Phone',
-                    labelStyle: TextStyle(color: Colors.grey),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Divider(color: Colors.white24),
                   ),
-                ),
-                TextField(
-                  controller: whatsappController,
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Savings Plan', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'WhatsApp',
-                    labelStyle: TextStyle(color: Colors.grey),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: savingsAmountController,
+                          keyboardType: TextInputType.number,
+                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                          decoration: const InputDecoration(labelText: 'Savings Amount (R)', labelStyle: TextStyle(color: Colors.grey)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: selectedFrequency,
+                          dropdownColor: Theme.of(context).cardColor,
+                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                          decoration: const InputDecoration(labelText: 'Frequency', labelStyle: TextStyle(color: Colors.grey)),
+                          items: const [
+                            DropdownMenuItem(value: 'Weekly', child: Text('Weekly')),
+                            DropdownMenuItem(value: 'Bi-Weekly', child: Text('Bi-Weekly')),
+                            DropdownMenuItem(value: 'Monthly', child: Text('Monthly')),
+                          ],
+                          onChanged: (val) => setState(() => selectedFrequency = val!),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                TextField(
-                  controller: businessController,
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                  const SizedBox(height: 12),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Start Date', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    subtitle: Text(
+                      "${selectedSavingsDate.toLocal()}".split(' ')[0],
+                      style: const TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                    trailing: const Icon(Icons.calendar_today, color: Colors.amber),
+                    onTap: () async {
+                      final DateTime? picked = await showDatePicker(
+                        context: context,
+                        initialDate: selectedSavingsDate,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2101),
+                      );
+                      if (picked != null && picked != selectedSavingsDate) {
+                        setState(() {
+                          selectedSavingsDate = picked;
+                        });
+                      }
+                    },
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'Business Type',
-                    labelStyle: TextStyle(color: Colors.grey),
-                  ),
-                ),
-                TextField(
-                  controller: dfController,
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'DF Name',
-                    labelStyle: TextStyle(color: Colors.grey),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-              ElevatedButton(
-                onPressed: () async {
-                  try {
-                    await context.read<VendorProvider>().updateVendor(member.id, {
-                      'name': nameController.text,
-                      'phone': phoneController.text,
-                      'id_number': idController.text,
-                      'gender': selectedGender,
-                      'business_type': businessController.text,
-                      'df_name': dfController.text,
-                      'whatsapp_number': whatsappController.text,
-                    });
-                    
-                    // Optimistic update
-                    final index = _members.indexWhere((m) => m.id == member.id);
-                    if (index != -1) {
-                      this.setState(() {
-                        _members[index] = VendorModel(
-                          id: member.id,
-                          groupId: member.groupId,
-                          name: nameController.text,
-                          phone: phoneController.text,
-                          idNumber: idController.text,
-                          gender: selectedGender,
-                          businessType: businessController.text,
-                          dfName: dfController.text,
-                          whatsappNumber: whatsappController.text,
-                          referenceNumber: member.referenceNumber,
-                          createdAt: member.createdAt,
-                        );
-                      });
-                    }
-                    if (context.mounted) {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Member updated successfully')));
-                    }
-                  } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-                  }
-                },
-                child: const Text('Save'),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () async {
+                try {
+                  await context.read<VendorProvider>().updateVendor(member.id, {
+                    'name': nameController.text,
+                    'phone': phoneController.text,
+                    'id_number': idController.text,
+                    'gender': selectedGender,
+                    'business_type': businessController.text,
+                    'df_name': dfController.text,
+                    'whatsapp_number': whatsappController.text,
+                    'address': addressController.text,
+                    'role': selectedRole,
+                    'savings_amount': double.tryParse(savingsAmountController.text) ?? 0,
+                    'savings_frequency': selectedFrequency,
+                    'savings_start_date': selectedSavingsDate.toIso8601String(),
+                  });
+                  _loadData();
+                  if (context.mounted) Navigator.pop(context);
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                }
+              },
+              child: const Text('Save'),
             ),
           ],
         ),
@@ -824,219 +1212,188 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     final businessController = TextEditingController();
     final dfController = TextEditingController();
     final whatsappController = TextEditingController();
+    final addressController = TextEditingController();
+    final savingsAmountController = TextEditingController(text: '0');
     String selectedGender = 'F';
+    String selectedRole = 'Member';
+    String selectedFrequency = 'Monthly';
+    DateTime selectedSavingsDate = DateTime.now();
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
           backgroundColor: Theme.of(context).colorScheme.surface,
-          title: const Text(
-            'Add New Member',
-            style: TextStyle(color: Colors.white),
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
+          title: const Text('Add New Member', style: TextStyle(color: Colors.white)),
+          content: SizedBox(
+            width: 700,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                    decoration: const InputDecoration(labelText: 'Name', labelStyle: TextStyle(color: Colors.grey)),
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'Name',
-                    labelStyle: TextStyle(color: Colors.grey),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: TextField(
+                          controller: idController,
+                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                          decoration: const InputDecoration(labelText: 'ID Number', labelStyle: TextStyle(color: Colors.grey)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: DropdownButtonFormField<String>(
+                          value: selectedRole,
+                          dropdownColor: Theme.of(context).cardColor,
+                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color, fontSize: 12),
+                          decoration: const InputDecoration(labelText: 'Role', labelStyle: TextStyle(color: Colors.grey)),
+                          items: const [
+                            DropdownMenuItem(value: 'Member', child: Text('Member')),
+                            DropdownMenuItem(value: 'Chairperson', child: Text('Chairperson')),
+                            DropdownMenuItem(value: 'Secretary', child: Text('Secretary')),
+                            DropdownMenuItem(value: 'Treasurer', child: Text('Treasurer')),
+                          ],
+                          onChanged: (val) => setState(() => selectedRole = val!),
+                        ),
+                      ),
+                    ],
                   ),
-                  onChanged: (val) {
-                    // Auto-fill WhatsApp if empty
-                    if (whatsappController.text.isEmpty) {
-                      // Logic handled by controllers or user manually
-                    }
-                  },
-                ),
-                TextField(
-                  controller: idController,
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: selectedGender,
+                          dropdownColor: Theme.of(context).cardColor,
+                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                          decoration: const InputDecoration(labelText: 'Gender', labelStyle: TextStyle(color: Colors.grey)),
+                          items: const [
+                            DropdownMenuItem(value: 'M', child: Text('M')),
+                            DropdownMenuItem(value: 'F', child: Text('F')),
+                          ],
+                          onChanged: (val) => setState(() => selectedGender = val!),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: phoneController,
+                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                          decoration: const InputDecoration(labelText: 'Phone', labelStyle: TextStyle(color: Colors.grey)),
+                          onChanged: (val) {
+                            if (whatsappController.text.isEmpty) whatsappController.text = val;
+                          },
+                        ),
+                      ),
+                    ],
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'ID Number',
-                    labelStyle: TextStyle(color: Colors.grey),
+                  TextField(
+                    controller: whatsappController,
+                    style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                    decoration: const InputDecoration(labelText: 'WhatsApp', labelStyle: TextStyle(color: Colors.grey)),
                   ),
-                ),
-                DropdownButtonFormField<String>(
-                  value: selectedGender,
-                  dropdownColor: Theme.of(context).cardColor,
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                  TextField(
+                    controller: businessController,
+                    style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                    decoration: const InputDecoration(labelText: 'Business Type', labelStyle: TextStyle(color: Colors.grey)),
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'Gender',
-                    labelStyle: TextStyle(color: Colors.grey),
+                  TextField(
+                    controller: dfController,
+                    style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                    decoration: const InputDecoration(labelText: 'DF Name', labelStyle: TextStyle(color: Colors.grey)),
                   ),
-                  items: const [
-                    DropdownMenuItem(value: 'M', child: Text('M')),
-                    DropdownMenuItem(value: 'F', child: Text('F')),
-                  ],
-                  onChanged: (val) => setState(() => selectedGender = val!),
-                ),
-                TextField(
-                  controller: phoneController,
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                  TextField(
+                    controller: addressController,
+                    style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                    decoration: const InputDecoration(labelText: 'Home Address', labelStyle: TextStyle(color: Colors.grey)),
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'Phone Number',
-                    labelStyle: TextStyle(color: Colors.grey),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Divider(color: Colors.white24),
                   ),
-                  keyboardType: TextInputType.phone,
-                  onChanged: (val) {
-                    if (whatsappController.text.isEmpty) {
-                      whatsappController.text = val;
-                    }
-                  },
-                ),
-                TextField(
-                  controller: whatsappController,
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Savings Plan', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'WhatsApp Number',
-                    labelStyle: TextStyle(color: Colors.grey),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: savingsAmountController,
+                          keyboardType: TextInputType.number,
+                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                          decoration: const InputDecoration(labelText: 'Savings Amount (R)', labelStyle: TextStyle(color: Colors.grey)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: selectedFrequency,
+                          dropdownColor: Theme.of(context).cardColor,
+                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                          decoration: const InputDecoration(labelText: 'Frequency', labelStyle: TextStyle(color: Colors.grey)),
+                          items: const [
+                            DropdownMenuItem(value: 'Weekly', child: Text('Weekly')),
+                            DropdownMenuItem(value: 'Bi-Weekly', child: Text('Bi-Weekly')),
+                            DropdownMenuItem(value: 'Monthly', child: Text('Monthly')),
+                          ],
+                          onChanged: (val) => setState(() => selectedFrequency = val!),
+                        ),
+                      ),
+                    ],
                   ),
-                  keyboardType: TextInputType.phone,
-                ),
-                TextField(
-                  controller: businessController,
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                  const SizedBox(height: 12),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Start Date', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    subtitle: Text(
+                      "${selectedSavingsDate.toLocal()}".split(' ')[0],
+                      style: const TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                    trailing: const Icon(Icons.calendar_today, color: Colors.amber),
+                    onTap: () async {
+                      final DateTime? picked = await showDatePicker(
+                        context: context,
+                        initialDate: selectedSavingsDate,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2101),
+                      );
+                      if (picked != null && picked != selectedSavingsDate) {
+                        setState(() {
+                          selectedSavingsDate = picked;
+                        });
+                      }
+                    },
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'Business Type',
-                    labelStyle: TextStyle(color: Colors.grey),
-                  ),
-                ),
-                TextField(
-                  controller: dfController,
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'DF Name',
-                    labelStyle: TextStyle(color: Colors.grey),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
             ElevatedButton(
               onPressed: () async {
                 if (nameController.text.isEmpty) return;
-
                 final vendorProvider = context.read<VendorProvider>();
-
-                // --- Duplicate check ---
                 final duplicate = await vendorProvider.checkDuplicateVendor(
                   idNumber: idController.text,
                   phone: phoneController.text,
                 );
 
                 if (duplicate != null && context.mounted) {
-                  final idMatch =
-                      idController.text.trim().isNotEmpty &&
-                      duplicate.idNumber?.trim() == idController.text.trim();
-                  final matchField = idMatch ? 'ID Number' : 'Phone Number';
-                  final matchValue = idMatch
-                      ? (duplicate.idNumber ?? '')
-                      : (duplicate.phone ?? '');
-
-                  showDialog(
-                    context: context,
-                    builder: (_) => AlertDialog(
-                      backgroundColor: Theme.of(context).colorScheme.surface,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      title: Row(
-                        children: const [
-                          Icon(Icons.block, color: Colors.redAccent, size: 22),
-                          SizedBox(width: 10),
-                          Text(
-                            'Duplicate Member Detected',
-                            style: TextStyle(color: Colors.white, fontSize: 16),
-                          ),
-                        ],
-                      ),
-                      content: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'A member with this information already exists in the system.',
-                            style: TextStyle(color: Colors.grey, fontSize: 13),
-                          ),
-                          const SizedBox(height: 16),
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.redAccent.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: Colors.redAccent.withOpacity(0.3),
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _dupRow(
-                                  Icons.person,
-                                  'Existing Member',
-                                  duplicate.name,
-                                ),
-                                const SizedBox(height: 6),
-                                _dupRow(
-                                  Icons.badge_outlined,
-                                  matchField,
-                                  matchValue,
-                                ),
-                                const SizedBox(height: 6),
-                                _dupRow(
-                                  Icons.phone_outlined,
-                                  'Phone',
-                                  duplicate.phone ?? 'N/A',
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          const Text(
-                            'Please verify the details or search for the existing member instead.',
-                            style: TextStyle(color: Colors.grey, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                      actions: [
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF2A2A2A),
-                          ),
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('OK, Go Back'),
-                        ),
-                      ],
-                    ),
-                  );
-                  return; // Block the insert
+                   _showDuplicateAlert(duplicate, idController.text, phoneController.text);
+                   return;
                 }
 
-                // --- No duplicate — proceed with insert ---
                 await vendorProvider.addVendor(
                   VendorModel(
                     id: '',
@@ -1048,9 +1405,12 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     businessType: businessController.text,
                     dfName: dfController.text,
                     whatsappNumber: whatsappController.text,
-                    referenceNumber: widget.group.name
-                        .substring(0, 3)
-                        .toUpperCase(),
+                    address: addressController.text,
+                    role: selectedRole,
+                    savingsAmount: double.tryParse(savingsAmountController.text) ?? 0,
+                    savingsFrequency: selectedFrequency,
+                    savingsStartDate: selectedSavingsDate,
+                    referenceNumber: widget.group.name.substring(0, 3).toUpperCase(),
                     createdAt: DateTime.now(),
                   ),
                 );
@@ -1061,6 +1421,176 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showRecordGroupPaymentDialog() {
+    final activeLoans = _loans.where((l) => l.status == 'Active').toList();
+    if (activeLoans.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No active loans found in this group.')));
+      return;
+    }
+
+    double totalExpected = activeLoans.fold(0.0, (sum, l) => sum + l.monthlyPayment);
+    bool isSubmitting = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          title: Row(
+            children: [
+              Icon(Icons.payments_outlined, color: AppTheme.primaryGold, size: 24),
+              const SizedBox(width: 12),
+              const Text('Record Group Payment', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+          content: SizedBox(
+            width: 500,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'This will record individual monthly payments for all members with active loans in this group.',
+                  style: TextStyle(color: Colors.grey, fontSize: 13),
+                ),
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Total Active Loans', style: TextStyle(color: Colors.grey)),
+                          Text('${activeLoans.length}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      const Divider(height: 24, color: Colors.white10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Total Aggregated Amount', style: TextStyle(color: Colors.grey)),
+                          Text(
+                            'R ${totalExpected.toStringAsFixed(2)}',
+                            style: TextStyle(
+                              color: AppTheme.primaryGold,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Breakdown:',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey),
+                ),
+                const SizedBox(height: 8),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 200),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: activeLoans.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1, color: Colors.white10),
+                    itemBuilder: (context, index) {
+                      final loan = activeLoans[index];
+                      final member = _members.firstWhere((m) => m.id == loan.vendorId, 
+                        orElse: () => VendorModel(id: '', groupId: '', name: 'Unknown', createdAt: DateTime.now()));
+                      return ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(member.name, style: const TextStyle(fontSize: 12)),
+                        trailing: Text('R ${loan.monthlyPayment}', style: const TextStyle(fontSize: 12)),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSubmitting ? null : () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () async {
+                      setState(() => isSubmitting = true);
+                      try {
+                        List<PaymentModel> memberPayments = activeLoans.map((loan) {
+                          return PaymentModel(
+                            id: '',
+                            loanId: loan.id,
+                            amountPaid: loan.monthlyPayment,
+                            datePaid: DateTime.now(),
+                            createdAt: DateTime.now(),
+                          );
+                        }).toList();
+
+                        await context.read<PaymentProvider>().addGroupPayment(
+                          widget.group.id,
+                          memberPayments,
+                        );
+
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Group payment recorded successfully!'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        setState(() => isSubmitting = false);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                        );
+                      }
+                    },
+              child: isSubmitting
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Confirm Group Payment'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showDuplicateAlert(VendorModel duplicate, String inputId, String inputPhone) {
+    final idMatch = inputId.trim().isNotEmpty && duplicate.idNumber?.trim() == inputId.trim();
+    final matchField = idMatch ? 'ID Number' : 'Phone Number';
+    final matchValue = idMatch ? (duplicate.idNumber ?? '') : (duplicate.phone ?? '');
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: const Text('Duplicate Member Detected', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('A member with this $matchField ($matchValue) already exists: ${duplicate.name}'),
+          ],
+        ),
+        actions: [
+          ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+        ],
       ),
     );
   }
@@ -1101,6 +1631,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
 
   Future<void> _downloadGroupStatement() async {
     try {
+      final commentProvider = context.read<CommentProvider>();
       final paymentProvider = context.read<PaymentProvider>();
       final allPayments = paymentProvider.payments;
       final loanIds = _loans.map((loan) => loan.id).toSet();
@@ -1117,6 +1648,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       }
       final totalPaid = groupPayments.fold<double>(0, (sum, p) => sum + p.amountPaid);
       final balance = totalLiability - totalPaid;
+      final totalSavings = _members.fold(0.0, (sum, m) => sum + (m.savingsAmount ?? 0.0));
 
       final logoBytes = await rootBundle.load(
         'assets/images/NSBSA Logo (1).png',
@@ -1156,6 +1688,25 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           build: (_) {
             final sortedPayments = [...groupPayments]
               ..sort((a, b) => b.datePaid.compareTo(a.datePaid));
+
+            // Calculate running balances for each loan
+            final ascPayments = [...groupPayments]..sort((a, b) => a.datePaid.compareTo(b.datePaid));
+            final Map<String, double> paymentBalances = {};
+            final Map<String, double> loanInitialLiability = {};
+
+            for (final loan in _loans) {
+              final loanPayments = groupPayments.where((p) => p.loanId == loan.id).toList();
+              loanInitialLiability[loan.id] = loan.amount + 
+                                               (loan.initiationFee ?? 0) + 
+                                               ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) + 
+                                               LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
+            }
+
+            final Map<String, double> runningLoanBalances = Map.from(loanInitialLiability);
+            for (var p in ascPayments) {
+              runningLoanBalances[p.loanId] = (runningLoanBalances[p.loanId] ?? 0) - p.amountPaid;
+              paymentBalances[p.id] = runningLoanBalances[p.loanId]!;
+            }
 
             return [
               pw.SizedBox(height: 20),
@@ -1261,6 +1812,120 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     ),
               pw.SizedBox(height: 24),
               pw.Text(
+                'Savings Plan Summary',
+                style: pw.TextStyle(
+                  fontSize: 14,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.Divider(thickness: 0.5),
+              pw.SizedBox(height: 10),
+              pw.Table(
+                border: pw.TableBorder.all(
+                  color: PdfColors.grey300,
+                  width: 0.5,
+                ),
+                children: [
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(
+                      color: PdfColors.grey100,
+                    ),
+                    children: [
+                      _pdfCell('Member Name', isBold: true),
+                      _pdfCell('Savings Amount', isBold: true),
+                      _pdfCell('Frequency', isBold: true),
+                      _pdfCell('Start Date', isBold: true),
+                    ],
+                  ),
+                  ..._members.map(
+                    (member) => pw.TableRow(
+                      children: [
+                        _pdfCell(member.name),
+                        _pdfCell('R ${member.savingsAmount?.toStringAsFixed(2) ?? '0.00'}'),
+                        _pdfCell(member.savingsFrequency ?? 'Monthly'),
+                        _pdfCell(member.savingsStartDate != null ? _formatDate(member.savingsStartDate!) : 'N/A'),
+                      ],
+                    ),
+                  ),
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(
+                      color: PdfColors.grey50,
+                    ),
+                    children: [
+                      _pdfCell('Total Group Savings', isBold: true),
+                      _pdfCell(_formatCurrency(totalSavings), isBold: true),
+                      _pdfCell(''),
+                      _pdfCell(''),
+                    ],
+                  ),
+                ],
+              ),
+
+              pw.SizedBox(height: 32),
+
+              // Group Comments Section
+              if (commentProvider.comments.isNotEmpty) ...[
+                pw.Text(
+                  'Group Comments & Timeline',
+                  style: pw.TextStyle(
+                    fontSize: 14,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.Divider(thickness: 0.5),
+                pw.SizedBox(height: 10),
+                ...commentProvider.comments.map((comment) {
+                  return pw.Padding(
+                    padding: const pw.EdgeInsets.only(bottom: 12),
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Row(
+                          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                          children: [
+                            pw.Text(
+                              '${comment.authorName} (${comment.authorRole ?? "Staff"})',
+                              style: pw.TextStyle(
+                                fontSize: 10,
+                                fontWeight: pw.FontWeight.bold,
+                              ),
+                            ),
+                            pw.Text(
+                              _formatDate(comment.createdAt),
+                              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
+                            ),
+                          ],
+                        ),
+                        pw.SizedBox(height: 4),
+                        pw.Text(
+                          comment.content,
+                          style: const pw.TextStyle(fontSize: 10),
+                        ),
+                        if (comment.mentionedVendorIds.isNotEmpty) ...[
+                          pw.SizedBox(height: 4),
+                          pw.Row(
+                            children: [
+                              pw.Text(
+                                'Mentioned: ',
+                                style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.blue),
+                              ),
+                              pw.Text(
+                                comment.mentionedVendorIds.map((id) {
+                                  return _members.where((m) => m.id == id).firstOrNull?.name ?? 'Unknown';
+                                }).join(', '),
+                                style: const pw.TextStyle(fontSize: 8, color: PdfColors.blue),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  );
+                }).toList(),
+                pw.SizedBox(height: 24),
+              ],
+
+              pw.Text(
                 'Loan History',
                 style: pw.TextStyle(
                   fontSize: 14,
@@ -1337,6 +2002,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                             _pdfCell('Amount', isBold: true),
                             _pdfCell('Method', isBold: true),
                             _pdfCell('Loan', isBold: true),
+                            _pdfCell('Balance', isBold: true),
                           ],
                         ),
                         ...sortedPayments.map(
@@ -1346,6 +2012,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                               _pdfCell(_formatCurrency(payment.amountPaid)),
                               _pdfCell(payment.paymentMethod ?? 'Manual'),
                               _pdfCell(_loanLabelById(payment.loanId)),
+                              _pdfCell(_formatCurrency(paymentBalances[payment.id] ?? 0)),
                             ],
                           ),
                         ),
@@ -1516,6 +2183,342 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             child: const Text('Delete'),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDocumentsSection(ThemeData theme) {
+    final docProvider = context.watch<DocumentProvider>();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Supporting Documents',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            ElevatedButton.icon(
+              onPressed: docProvider.isLoading ? null : () async {
+                final result = await FilePicker.platform.pickFiles(
+                  allowMultiple: true,
+                  type: FileType.custom,
+                  allowedExtensions: [
+                    'pdf',
+                    'jpg',
+                    'jpeg',
+                    'png',
+                    'doc',
+                    'docx'
+                  ],
+                );
+
+                if (result != null) {
+                  try {
+                    int count = 0;
+                    for (var file in result.files) {
+                      if (file.bytes != null) {
+                        await docProvider.uploadDocument(
+                          groupId: widget.group.id,
+                          fileName: file.name,
+                          fileBytes: file.bytes!,
+                        );
+                        count++;
+                      }
+                    }
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Successfully uploaded $count document(s)')),
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Upload failed: $e'),
+                          backgroundColor: Colors.redAccent,
+                        ),
+                      );
+                    }
+                  }
+                }
+              },
+              icon: docProvider.isLoading 
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.upload_file, size: 18),
+              label: Text(docProvider.isLoading ? 'Uploading...' : 'Upload Documents'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: docProvider.isLoading && docProvider.documents.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              : docProvider.documents.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Center(
+                        child: Text(
+                          'No documents uploaded yet.',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: docProvider.documents.length,
+                      separatorBuilder: (context, index) =>
+                          const Divider(height: 1, color: Colors.white10),
+                      itemBuilder: (context, index) {
+                        final doc = docProvider.documents[index];
+                        return ListTile(
+                          leading: Icon(
+                            _getFileIcon(doc.fileType),
+                            color: theme.primaryColor,
+                          ),
+                          title: Text(
+                            doc.fileName,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          subtitle: Text(
+                            'Uploaded: ${doc.uploadedAt.toString().substring(0, 16)}',
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.open_in_new,
+                                  size: 20,
+                                  color: Colors.blueAccent,
+                                ),
+                                onPressed: () {
+                                  final url =
+                                      docProvider.getPublicUrl(doc.filePath);
+                                  launchUrl(Uri.parse(url));
+                                },
+                                tooltip: 'View Document',
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  size: 20,
+                                  color: Colors.redAccent,
+                                ),
+                                onPressed: () =>
+                                    docProvider.deleteDocument(doc),
+                                tooltip: 'Delete Document',
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+        ),
+      ],
+    );
+  }
+
+  IconData _getFileIcon(String? ext) {
+    switch (ext?.toLowerCase()) {
+      case 'pdf':
+        return Icons.picture_as_pdf;
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+        return Icons.image;
+      case 'doc':
+      case 'docx':
+        return Icons.description;
+      default:
+        return Icons.insert_drive_file;
+    }
+  }
+
+  void _showCommentDetailsDialog(CommentModel comment) {
+    final theme = Theme.of(context);
+    final commentProvider = context.read<CommentProvider>();
+    final TextEditingController _editController =
+        TextEditingController(text: comment.content);
+    bool _isEditing = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.comment, size: 20),
+              const SizedBox(width: 12),
+              const Text('Comment Details'),
+              const Spacer(),
+              if (comment.authorRole != null)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: theme.primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    comment.authorRole!,
+                    style: TextStyle(
+                      color: theme.primaryColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          content: SizedBox(
+            width: 500,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.person_outline,
+                        size: 16, color: Colors.grey),
+                    const SizedBox(width: 8),
+                    Text(
+                      comment.authorName,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const Spacer(),
+                    Text(
+                      _formatDate(comment.createdAt),
+                      style: const TextStyle(color: Colors.grey, fontSize: 12),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                if (_isEditing)
+                  TextField(
+                    controller: _editController,
+                    maxLines: 5,
+                    autofocus: true,
+                    style: TextStyle(color: theme.textTheme.bodyMedium?.color),
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: theme.scaffoldBackgroundColor,
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                  )
+                else
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: theme.scaffoldBackgroundColor,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      comment.content,
+                      style: const TextStyle(height: 1.5),
+                    ),
+                  ),
+                if (comment.mentionedVendorIds.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  const Text('Mentions:',
+                      style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: comment.mentionedVendorIds.map((id) {
+                      final name = _members
+                              .where((m) => m.id == id)
+                              .firstOrNull
+                              ?.name ??
+                          'Unknown';
+                      return Chip(
+                        label: Text(name, style: const TextStyle(fontSize: 11)),
+                        backgroundColor: theme.primaryColor.withOpacity(0.05),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            if (!_isEditing) ...[
+              TextButton.icon(
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Delete Comment?'),
+                      content: const Text(
+                          'Are you sure you want to remove this comment? This action cannot be undone.'),
+                      actions: [
+                        TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('Cancel')),
+                        TextButton(
+                          onPressed: () async {
+                            await commentProvider.deleteComment(comment.id);
+                            Navigator.pop(context); // Close confirm
+                            Navigator.pop(context); // Close details
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Comment deleted')),
+                            );
+                          },
+                          child: const Text('Delete',
+                              style: TextStyle(color: Colors.redAccent)),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.delete_outline,
+                    color: Colors.redAccent, size: 18),
+                label: const Text('Delete',
+                    style: TextStyle(color: Colors.redAccent)),
+              ),
+              TextButton.icon(
+                onPressed: () => setDialogState(() => _isEditing = true),
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                label: const Text('Edit'),
+              ),
+            ] else ...[
+              TextButton(
+                onPressed: () => setDialogState(() => _isEditing = false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  if (_editController.text.trim().isEmpty) return;
+                  await commentProvider.updateComment(
+                      comment.id, _editController.text.trim());
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Comment updated')),
+                  );
+                },
+                child: const Text('Save Changes'),
+              ),
+            ],
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
       ),
     );
   }

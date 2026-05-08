@@ -1,6 +1,7 @@
 class PaymentModel {
   final String id;
   final String loanId;
+  final String? groupPaymentId;
   final double amountPaid;
   final double? balanceRemaining;
   final String? paymentMethod;
@@ -10,6 +11,7 @@ class PaymentModel {
   PaymentModel({
     required this.id,
     required this.loanId,
+    this.groupPaymentId,
     required this.amountPaid,
     this.balanceRemaining,
     this.paymentMethod,
@@ -21,6 +23,7 @@ class PaymentModel {
     return PaymentModel(
       id: json['id'],
       loanId: json['loan_id'],
+      groupPaymentId: json['group_payment_id'],
       amountPaid: (json['amount_paid'] as num).toDouble(),
       balanceRemaining: json['balance_remaining'] != null 
           ? (json['balance_remaining'] as num).toDouble() 
@@ -40,6 +43,9 @@ class PaymentModel {
     };
     if (id.isNotEmpty) {
       map['id'] = id;
+    }
+    if (groupPaymentId != null) {
+      map['group_payment_id'] = groupPaymentId;
     }
     final br = balanceRemaining;
     if (br != null) {

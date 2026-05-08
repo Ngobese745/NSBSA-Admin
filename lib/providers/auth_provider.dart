@@ -30,6 +30,7 @@ class AuthProvider with ChangeNotifier {
   }
 
   bool get isAuthenticated => _isAuthenticated;
+  User? get currentUser => Supabase.instance.client.auth.currentUser;
 
   Future<String?> login(String email, String password) async {
     try {

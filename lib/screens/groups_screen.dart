@@ -117,6 +117,10 @@ class GroupsScreen extends StatelessWidget {
         'gender': TextEditingController(text: 'F'),
         'business': TextEditingController(),
         'whatsapp': TextEditingController(),
+        'address': TextEditingController(),
+        'role': TextEditingController(text: 'Member'),
+        'savings_amount': TextEditingController(text: '0'),
+        'savings_frequency': TextEditingController(text: 'Monthly'),
       }
     ];
 
@@ -130,7 +134,7 @@ class GroupsScreen extends StatelessWidget {
               backgroundColor: Theme.of(context).colorScheme.surface,
               title: Text('Add New Group', style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color)),
               content: SizedBox(
-                width: 800, // Increased width for more fields
+                width: 900, // Increased width for more fields
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -159,6 +163,10 @@ class GroupsScreen extends StatelessWidget {
                                   'gender': TextEditingController(text: 'F'),
                                   'business': TextEditingController(),
                                   'whatsapp': TextEditingController(),
+                                  'address': TextEditingController(),
+                                  'role': TextEditingController(text: 'Member'),
+                                  'savings_amount': TextEditingController(text: '0'),
+                                  'savings_frequency': TextEditingController(text: 'Monthly'),
                                 });
                               });
                             },
@@ -184,6 +192,7 @@ class GroupsScreen extends StatelessWidget {
                               Row(
                                 children: [
                                   Expanded(
+                                    flex: 2,
                                     child: TextField(
                                       controller: controllers['name'],
                                       style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
@@ -192,6 +201,7 @@ class GroupsScreen extends StatelessWidget {
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
+                                    flex: 2,
                                     child: TextField(
                                       controller: controllers['id_number'],
                                       style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
@@ -200,7 +210,26 @@ class GroupsScreen extends StatelessWidget {
                                   ),
                                   const SizedBox(width: 12),
                                   SizedBox(
-                                    width: 100,
+                                    width: 120,
+                                    child: DropdownButtonFormField<String>(
+                                      value: controllers['role']!.text,
+                                      dropdownColor: Theme.of(context).cardColor,
+                                      style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color, fontSize: 12),
+                                      decoration: const InputDecoration(labelText: 'Role', labelStyle: TextStyle(color: Colors.grey)),
+                                      items: const [
+                                        DropdownMenuItem(value: 'Member', child: Text('Member')),
+                                        DropdownMenuItem(value: 'Chairperson', child: Text('Chairperson')),
+                                        DropdownMenuItem(value: 'Secretary', child: Text('Secretary')),
+                                        DropdownMenuItem(value: 'Treasurer', child: Text('Treasurer')),
+                                      ],
+                                      onChanged: (val) {
+                                        if (val != null) controllers['role']!.text = val;
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  SizedBox(
+                                    width: 80,
                                     child: DropdownButtonFormField<String>(
                                       value: controllers['gender']!.text,
                                       dropdownColor: Theme.of(context).cardColor,
@@ -226,7 +255,6 @@ class GroupsScreen extends StatelessWidget {
                                       style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
                                       decoration: const InputDecoration(labelText: 'Phone', labelStyle: TextStyle(color: Colors.grey)),
                                       onChanged: (val) {
-                                        // Auto-fill WhatsApp if empty or matches old phone
                                         if (controllers['whatsapp']!.text.isEmpty) {
                                           controllers['whatsapp']!.text = val;
                                         }
@@ -247,6 +275,45 @@ class GroupsScreen extends StatelessWidget {
                                       controller: controllers['business'],
                                       style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
                                       decoration: const InputDecoration(labelText: 'Business', labelStyle: TextStyle(color: Colors.grey)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: controllers['address'],
+                                      style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                                      decoration: const InputDecoration(labelText: 'Home Address', labelStyle: TextStyle(color: Colors.grey)),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: TextField(
+                                      controller: controllers['savings_amount'],
+                                      keyboardType: TextInputType.number,
+                                      style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                                      decoration: const InputDecoration(labelText: 'Savings (R)', labelStyle: TextStyle(color: Colors.grey)),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  SizedBox(
+                                    width: 120,
+                                    child: DropdownButtonFormField<String>(
+                                      value: controllers['savings_frequency']!.text,
+                                      dropdownColor: Theme.of(context).cardColor,
+                                      style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color, fontSize: 12),
+                                      decoration: const InputDecoration(labelText: 'Freq', labelStyle: TextStyle(color: Colors.grey)),
+                                      items: const [
+                                        DropdownMenuItem(value: 'Weekly', child: Text('Weekly')),
+                                        DropdownMenuItem(value: 'Bi-Weekly', child: Text('Bi-Weekly')),
+                                        DropdownMenuItem(value: 'Monthly', child: Text('Monthly')),
+                                      ],
+                                      onChanged: (val) {
+                                        if (val != null) controllers['savings_frequency']!.text = val;
+                                      },
                                     ),
                                   ),
                                   if (memberControllers.length > 1)
@@ -283,7 +350,7 @@ class GroupsScreen extends StatelessWidget {
                       final provider = Provider.of<GroupProvider>(context, listen: false);
                       final ref = 'GRP-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
                       
-                      List<Map<String, String>> members = [];
+                      List<Map<String, dynamic>> members = [];
                       for (var controllers in memberControllers) {
                         if (controllers['name']!.text.isNotEmpty) {
                           members.add({
@@ -293,6 +360,11 @@ class GroupsScreen extends StatelessWidget {
                             'gender': controllers['gender']!.text,
                             'business': controllers['business']!.text,
                             'whatsapp': controllers['whatsapp']!.text,
+                            'address': controllers['address']!.text,
+                            'role': controllers['role']!.text,
+                            'savings_amount': double.tryParse(controllers['savings_amount']!.text) ?? 0.0,
+                            'savings_frequency': controllers['savings_frequency']!.text,
+                            'savings_start_date': DateTime.now().toIso8601String(),
                           });
                         }
                       }

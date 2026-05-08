@@ -13,6 +13,8 @@ import 'providers/payment_provider.dart';
 import 'providers/search_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/theme_provider.dart';
+import 'providers/comment_provider.dart';
+import 'providers/document_provider.dart';
 import 'screens/login_screen.dart';
 
 Future<void> main() async {
@@ -52,6 +54,8 @@ class NsbsaAdminApp extends StatelessWidget {
           create: (_) => PaymentProvider()..fetchPayments(),
         ),
         ChangeNotifierProvider(create: (_) => SearchProvider()),
+        ChangeNotifierProvider(create: (_) => CommentProvider()),
+        ChangeNotifierProvider(create: (_) => DocumentProvider()),
       ],
       child: Consumer2<AuthProvider, ThemeProvider>(
         builder: (context, authProvider, themeProvider, _) {

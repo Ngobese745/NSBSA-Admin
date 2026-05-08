@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/payment.dart';
-
+import '../models/group_payment.dart';
 import '../services/cache_service.dart';
 
 class PaymentProvider with ChangeNotifier {
@@ -54,6 +54,39 @@ class PaymentProvider with ChangeNotifier {
       rethrow;
     }
   }
+
+  Future<void> addGroupPayment(String groupId, List<PaymentModel> memberPayments) async {
+    try {
+      final totalAmount = memberPayments.fold(0.0, (sum, p) => sum + p.amountPaid);
+      
+      // 1. Create Group Payment Record
+      final groupPaymentResponse = await _supabase.from('group_payments').insert({
+        'group_id': groupId,
+        'total_amount': totalAmount,
+        'payment_date': DateTime.now().toIso8601String(),
+        'created_at': DateTime.now().toIso8601String(),
+      }).select().single();
+      
+      final groupPaymentId = groupPaymentResponse['id'];
+
+      // 2. Prepare individual payments with the group_payment_id
+      final paymentsToInsert = memberPayments.map((p) {
+        final json = p.toJson();
+        json['group_payment_id'] = groupPaymentId;
+        return json;
+      }).toList();
+
+      // 3. Bulk insert individual payments
+      await _supabase.from('payments').insert(paymentsToInsert);
+
+      // Refresh payments list
+      await fetchPayments(forceRefresh: true);
+    } catch (e) {
+      debugPrint('Error adding group payment: $e');
+      rethrow;
+    }
+  }
+
   Future<void> deletePayment(String id) async {
     try {
       await _supabase.from('payments').delete().eq('id', id);

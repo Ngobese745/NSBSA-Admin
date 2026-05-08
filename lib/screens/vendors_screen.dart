@@ -224,10 +224,12 @@ class _VendorsScreenState extends State<VendorsScreen> {
     final phoneController = TextEditingController();
     final whatsappController = TextEditingController();
     final businessController = TextEditingController();
+    final addressController = TextEditingController();
     final newGroupNameController = TextEditingController();
     
     String? selectedGroupId;
     String selectedGender = 'F';
+    String selectedRole = 'Member';
     bool isNewGroup = false;
 
     showDialog(
@@ -297,6 +299,24 @@ class _VendorsScreenState extends State<VendorsScreen> {
                               decoration: const InputDecoration(labelText: 'ID Number'),
                             ),
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: selectedRole,
+                              decoration: const InputDecoration(labelText: 'Role'),
+                              items: const [
+                                DropdownMenuItem(value: 'Member', child: Text('Member')),
+                                DropdownMenuItem(value: 'Chairperson', child: Text('Chairperson')),
+                                DropdownMenuItem(value: 'Secretary', child: Text('Secretary')),
+                                DropdownMenuItem(value: 'Treasurer', child: Text('Treasurer')),
+                              ],
+                              onChanged: (val) => setState(() => selectedRole = val!),
+                            ),
+                          ),
                           const SizedBox(width: 12),
                           SizedBox(
                             width: 100,
@@ -339,6 +359,11 @@ class _VendorsScreenState extends State<VendorsScreen> {
                       TextField(
                         controller: businessController,
                         decoration: const InputDecoration(labelText: 'Business Type'),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: addressController,
+                        decoration: const InputDecoration(labelText: 'Home Address'),
                       ),
                     ],
                   ),
@@ -399,6 +424,8 @@ class _VendorsScreenState extends State<VendorsScreen> {
                         whatsappNumber: whatsappController.text,
                         gender: selectedGender,
                         businessType: businessController.text,
+                        address: addressController.text,
+                        role: selectedRole,
                         referenceNumber: ref,
                         createdAt: DateTime.now(),
                       );

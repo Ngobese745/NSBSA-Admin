@@ -12,6 +12,13 @@ import '../providers/vendor_provider.dart';
 import '../providers/group_provider.dart';
 import '../providers/loan_provider.dart';
 import '../providers/payment_provider.dart';
+import '../models/comment.dart';
+import '../providers/comment_provider.dart';
+import '../providers/auth_provider.dart';
+import '../models/document.dart';
+import '../providers/document_provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class VendorProfileScreen extends StatefulWidget {
   final VendorModel vendor;
@@ -42,6 +49,9 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     final vendorLoans = loanProvider.loans
         .where((l) => l.vendorId == _currentVendor.id)
         .toList();
+
+    await context.read<CommentProvider>().fetchCommentsByVendor(_currentVendor.id);
+    await context.read<DocumentProvider>().fetchDocumentsByVendor(_currentVendor.id);
 
     if (mounted) {
       setState(() {
@@ -129,12 +139,327 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                           vendorPayments,
                           false,
                         ),
+                        const SizedBox(height: 24),
+                        _buildCommentsSection(theme),
+                        const SizedBox(height: 24),
+                        _buildDocumentsSection(theme),
                       ],
                     ),
                   ),
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _buildDocumentsSection(ThemeData theme) {
+    final docProvider = context.watch<DocumentProvider>();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Supporting Documents',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+            ElevatedButton.icon(
+              onPressed: docProvider.isLoading ? null : () async {
+                final result = await FilePicker.platform.pickFiles(
+                  allowMultiple: true,
+                  type: FileType.custom,
+                  allowedExtensions: [
+                    'pdf',
+                    'jpg',
+                    'jpeg',
+                    'png',
+                    'doc',
+                    'docx'
+                  ],
+                );
+
+                if (result != null) {
+                  try {
+                    int count = 0;
+                    for (var file in result.files) {
+                      if (file.bytes != null) {
+                        await docProvider.uploadDocument(
+                          vendorId: _currentVendor.id,
+                          fileName: file.name,
+                          fileBytes: file.bytes!,
+                        );
+                        count++;
+                      }
+                    }
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Successfully uploaded $count document(s)'),
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Upload failed: $e'),
+                          backgroundColor: Colors.redAccent,
+                        ),
+                      );
+                    }
+                  }
+                }
+              },
+              icon: docProvider.isLoading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.upload_file, size: 18),
+              label: Text(docProvider.isLoading ? 'Uploading...' : 'Upload'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Container(
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: docProvider.isLoading && docProvider.documents.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              : docProvider.documents.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Center(child: Text('No documents uploaded yet.', style: TextStyle(color: Colors.grey))),
+                    )
+                  : ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: docProvider.documents.length,
+                      separatorBuilder: (context, index) => const Divider(height: 1, color: Colors.white10),
+                      itemBuilder: (context, index) {
+                        final doc = docProvider.documents[index];
+                        return ListTile(
+                          leading: Icon(
+                            _getFileIcon(doc.fileType),
+                            color: theme.primaryColor,
+                          ),
+                          title: Text(doc.fileName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                          subtitle: Text('Uploaded: ${doc.uploadedAt.toString().substring(0, 16)}', style: const TextStyle(fontSize: 11)),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.open_in_new, size: 20, color: Colors.blueAccent),
+                                onPressed: () {
+                                  final url = docProvider.getPublicUrl(doc.filePath);
+                                  launchUrl(Uri.parse(url));
+                                },
+                                tooltip: 'View Document',
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, size: 20, color: Colors.redAccent),
+                                onPressed: () => docProvider.deleteDocument(doc),
+                                tooltip: 'Delete Document',
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+        ),
+      ],
+    );
+  }
+
+  IconData _getFileIcon(String? ext) {
+    switch (ext?.toLowerCase()) {
+      case 'pdf':
+        return Icons.picture_as_pdf;
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+        return Icons.image;
+      case 'doc':
+      case 'docx':
+        return Icons.description;
+      default:
+        return Icons.insert_drive_file;
+    }
+  }
+
+  Widget _buildCommentsSection(ThemeData theme) {
+    final commentProvider = context.watch<CommentProvider>();
+    final TextEditingController _commentController = TextEditingController();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'My Comments & Mentions',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            children: [
+              // Comment Input
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: _commentController,
+                      maxLines: 2,
+                      style:
+                          TextStyle(color: theme.textTheme.bodyMedium?.color),
+                      decoration: InputDecoration(
+                        hintText: 'Add a personal note...',
+                        hintStyle: const TextStyle(color: Colors.grey),
+                        fillColor: theme.scaffoldBackgroundColor,
+                        filled: true,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          if (_commentController.text.trim().isEmpty) return;
+
+                          final authProvider = context.read<AuthProvider>();
+                          final comment = CommentModel(
+                            id: '',
+                            vendorId: _currentVendor.id,
+                            authorName:
+                                authProvider.currentUser?.email ?? 'Admin',
+                            authorRole: 'Staff',
+                            content: _commentController.text.trim(),
+                            createdAt: DateTime.now(),
+                          );
+
+                          await commentProvider.addComment(comment);
+                          _commentController.clear();
+                          (context as Element).markNeedsBuild();
+                        },
+                        child: const Text('Add Note'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              // Comments List
+              if (commentProvider.isLoading)
+                const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (commentProvider.comments.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(
+                    child: Text(
+                      'No comments yet.',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                )
+              else
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: commentProvider.comments.length,
+                  separatorBuilder: (context, index) =>
+                      const Divider(height: 1, color: Colors.white10),
+                  itemBuilder: (context, index) {
+                    final comment = commentProvider.comments[index];
+                    final isMention =
+                        comment.mentionedVendorIds.contains(_currentVendor.id);
+
+                    return InkWell(
+                      onTap: () => _showCommentDetailsDialog(comment),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  comment.authorName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                if (isMention)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blueAccent.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text(
+                                      'Mentioned',
+                                      style: TextStyle(
+                                        color: Colors.blueAccent,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                const Spacer(),
+                                Text(
+                                  comment.createdAt.toString().substring(0, 16),
+                                  style: const TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              comment.content,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: theme.textTheme.bodyMedium?.color,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -226,6 +551,16 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
           ),
           const SizedBox(height: 20),
           _buildInfoRow(
+            'Role',
+            _currentVendor.role ?? 'Member',
+            Icons.stars_outlined,
+          ),
+          _buildInfoRow(
+            'Home Address',
+            _currentVendor.address ?? 'N/A',
+            Icons.location_on_outlined,
+          ),
+          _buildInfoRow(
             'Phone',
             _currentVendor.phone ?? 'N/A',
             Icons.phone_outlined,
@@ -254,6 +589,11 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             'WhatsApp',
             _currentVendor.whatsappNumber ?? 'N/A',
             Icons.chat_outlined,
+          ),
+          _buildInfoRow(
+            'Savings Plan',
+            'R ${_currentVendor.savingsAmount?.toStringAsFixed(0) ?? '0'} (${_currentVendor.savingsFrequency ?? 'Monthly'})',
+            Icons.savings_outlined,
           ),
         ],
       ),
@@ -330,6 +670,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     BuildContext context,
     GroupModel group,
   ) async {
+    final commentProvider = context.read<CommentProvider>();
     final paymentProvider = context.read<PaymentProvider>();
     final pdf = pw.Document();
 
@@ -399,11 +740,20 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
                       _pdfInfoRow('Name', _currentVendor.name),
+                      _pdfInfoRow('Role', _currentVendor.role ?? 'Member'),
                       _pdfInfoRow('Group', group.name),
                       _pdfInfoRow('Phone', _currentVendor.phone ?? 'N/A'),
                       _pdfInfoRow(
                         'WhatsApp',
                         _currentVendor.whatsappNumber ?? 'N/A',
+                      ),
+                      _pdfInfoRow(
+                        'Address',
+                        _currentVendor.address ?? 'N/A',
+                      ),
+                      _pdfInfoRow(
+                        'Savings',
+                        'R ${_currentVendor.savingsAmount?.toStringAsFixed(2) ?? '0.00'} (${_currentVendor.savingsFrequency ?? 'Monthly'})',
                       ),
                     ],
                   ),
@@ -428,6 +778,55 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
               ],
             ),
             pw.SizedBox(height: 24),
+
+            // Comments Section
+            if (commentProvider.comments.isNotEmpty) ...[
+              pw.Text(
+                'Notes & Comments',
+                style:
+                    pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+              ),
+              pw.Divider(thickness: 0.5),
+              pw.SizedBox(height: 10),
+              ...commentProvider.comments.map((comment) {
+                final isMention =
+                    comment.mentionedVendorIds.contains(_currentVendor.id);
+                return pw.Padding(
+                  padding: const pw.EdgeInsets.only(bottom: 12),
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Row(
+                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                        children: [
+                          pw.Text(
+                            '${comment.authorName} ${isMention ? "(Mentioned)" : ""}',
+                            style: pw.TextStyle(
+                              fontSize: 10,
+                              fontWeight: pw.FontWeight.bold,
+                              color:
+                                  isMention ? PdfColors.blue : PdfColors.black,
+                            ),
+                          ),
+                          pw.Text(
+                            comment.createdAt.toString().substring(0, 16),
+                            style: const pw.TextStyle(
+                                fontSize: 8, color: PdfColors.grey700),
+                          ),
+                        ],
+                      ),
+                      pw.SizedBox(height: 4),
+                      pw.Text(
+                        comment.content,
+                        style: const pw.TextStyle(fontSize: 10),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+              pw.SizedBox(height: 24),
+            ],
+
             pw.Text(
               'Financial Summary',
               style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
@@ -721,6 +1120,17 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                     } else {
                       final payment = item as PaymentModel;
                       return ListTile(
+                        onTap: () {
+                          final loanProvider = context.read<LoanProvider>();
+                          final groupProvider = context.read<GroupProvider>();
+                          
+                          final loan = loanProvider.loans.where((l) => l.id == payment.loanId).firstOrNull;
+                          final group = groupProvider.groups.where((g) => g.id == _currentVendor.groupId).firstOrNull;
+                          
+                          if (loan != null && group != null) {
+                            _showPaymentDetailsDialog(context, payment, loan, _currentVendor, group);
+                          }
+                        },
                         dense: true,
                         leading: const Icon(
                           Icons.check_circle_outline,
@@ -751,7 +1161,12 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     final whatsappController = TextEditingController(
       text: _currentVendor.whatsappNumber,
     );
+    final addressController = TextEditingController(text: _currentVendor.address);
+    final savingsAmountController = TextEditingController(text: _currentVendor.savingsAmount?.toString() ?? '0');
     String selectedGender = _currentVendor.gender ?? 'F';
+    String selectedRole = _currentVendor.role ?? 'Member';
+    String selectedFrequency = _currentVendor.savingsFrequency ?? 'Monthly';
+    DateTime selectedSavingsDate = _currentVendor.savingsStartDate ?? DateTime.now();
 
     showDialog(
       context: context,
@@ -763,7 +1178,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             style: TextStyle(color: Colors.white),
           ),
           content: SizedBox(
-            width: 500,
+            width: 600,
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -816,6 +1231,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                   Row(
                     children: [
                       Expanded(
+                        flex: 2,
                         child: TextField(
                           controller: idController,
                           style: TextStyle(
@@ -830,8 +1246,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                         ),
                       ),
                       const SizedBox(width: 12),
-                      SizedBox(
-                        width: 120,
+                      Expanded(
                         child: DropdownButtonFormField<String>(
                           value: selectedGender,
                           dropdownColor: Theme.of(context).cardColor,
@@ -855,6 +1270,48 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                     ],
                   ),
                   const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: selectedRole,
+                          dropdownColor: Theme.of(context).cardColor,
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.color,
+                            fontSize: 13,
+                          ),
+                          decoration: InputDecoration(
+                            labelText: 'Role',
+                            labelStyle: TextStyle(color: Colors.grey),
+                          ),
+                          items: const [
+                            DropdownMenuItem(value: 'Member', child: Text('Member')),
+                            DropdownMenuItem(value: 'Chairperson', child: Text('Chairperson')),
+                            DropdownMenuItem(value: 'Secretary', child: Text('Secretary')),
+                            DropdownMenuItem(value: 'Treasurer', child: Text('Treasurer')),
+                          ],
+                          onChanged: (val) =>
+                              setState(() => selectedRole = val ?? 'Member'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: dfNameController,
+                          style: TextStyle(
+                            color: Theme.of(context).textTheme.bodyMedium?.color,
+                          ),
+                          decoration: InputDecoration(
+                            labelText: 'DF Name',
+                            labelStyle: TextStyle(color: Colors.grey),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
                   TextField(
                     controller: businessController,
                     style: TextStyle(
@@ -867,14 +1324,73 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                   ),
                   const SizedBox(height: 16),
                   TextField(
-                    controller: dfNameController,
+                    controller: addressController,
                     style: TextStyle(
                       color: Theme.of(context).textTheme.bodyMedium?.color,
                     ),
                     decoration: InputDecoration(
-                      labelText: 'DF Name',
+                      labelText: 'Home Address',
                       labelStyle: TextStyle(color: Colors.grey),
                     ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Divider(color: Colors.white24),
+                  ),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Savings Plan', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: savingsAmountController,
+                          keyboardType: TextInputType.number,
+                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                          decoration: const InputDecoration(labelText: 'Savings Amount (R)', labelStyle: TextStyle(color: Colors.grey)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: selectedFrequency,
+                          dropdownColor: Theme.of(context).cardColor,
+                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                          decoration: const InputDecoration(labelText: 'Frequency', labelStyle: TextStyle(color: Colors.grey)),
+                          items: const [
+                            DropdownMenuItem(value: 'Weekly', child: Text('Weekly')),
+                            DropdownMenuItem(value: 'Bi-Weekly', child: Text('Bi-Weekly')),
+                            DropdownMenuItem(value: 'Monthly', child: Text('Monthly')),
+                          ],
+                          onChanged: (val) => setState(() => selectedFrequency = val!),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Start Date', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    subtitle: Text(
+                      "${selectedSavingsDate.toLocal()}".split(' ')[0],
+                      style: const TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                    trailing: const Icon(Icons.calendar_today, color: Colors.amber),
+                    onTap: () async {
+                      final DateTime? picked = await showDatePicker(
+                        context: context,
+                        initialDate: selectedSavingsDate,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2101),
+                      );
+                      if (picked != null && picked != selectedSavingsDate) {
+                        setState(() {
+                          selectedSavingsDate = picked;
+                        });
+                      }
+                    },
                   ),
                 ],
               ),
@@ -895,6 +1411,11 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                   'gender': selectedGender,
                   'df_name': dfNameController.text,
                   'whatsapp_number': whatsappController.text,
+                  'address': addressController.text,
+                  'role': selectedRole,
+                  'savings_amount': double.tryParse(savingsAmountController.text) ?? 0,
+                  'savings_frequency': selectedFrequency,
+                  'savings_start_date': selectedSavingsDate.toIso8601String(),
                 };
 
                 try {
@@ -916,6 +1437,11 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                         businessType: businessController.text,
                         whatsappNumber: whatsappController.text,
                         dfName: dfNameController.text,
+                        address: addressController.text,
+                        role: selectedRole,
+                        savingsAmount: double.tryParse(savingsAmountController.text) ?? 0,
+                        savingsFrequency: selectedFrequency,
+                        savingsStartDate: selectedSavingsDate,
                         createdAt: _currentVendor.createdAt,
                       );
                     });
@@ -1040,6 +1566,502 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                 }
               },
               child: const Text('Confirm Payment'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showPaymentDetailsDialog(
+    BuildContext context,
+    PaymentModel payment,
+    LoanModel loan,
+    VendorModel vendor,
+    GroupModel group,
+  ) {
+    // Calculate balance at the time of payment
+    final allLoanPayments = context
+        .read<PaymentProvider>()
+        .payments
+        .where((p) => p.loanId == loan.id)
+        .toList()
+      ..sort((a, b) => a.datePaid.compareTo(b.datePaid));
+
+    final totalExpected = loan.amount +
+        (loan.initiationFee ?? 0) +
+        ((loan.monthlyAdminFee ?? 0) * loan.durationMonths);
+
+    double runningBalance = totalExpected;
+    double balanceAfterPayment = totalExpected;
+
+    for (var p in allLoanPayments) {
+      runningBalance -= p.amountPaid;
+      if (p.id == payment.id) {
+        balanceAfterPayment = runningBalance;
+        break;
+      }
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: const Text(
+          'Payment Details',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: SizedBox(
+          width: 400,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildDetailRow('Member Name', vendor.name),
+                _buildDetailRow(
+                  'Reference No.',
+                  vendor.referenceNumber ?? 'N/A',
+                ),
+                Divider(color: Theme.of(context).dividerColor.withOpacity(0.1)),
+                _buildDetailRow(
+                  'Loan Reference',
+                  'L-${loan.id.substring(0, 8)}',
+                ),
+                _buildDetailRow('Group Name', group.name),
+                Divider(color: Theme.of(context).dividerColor.withOpacity(0.1)),
+                _buildDetailRow(
+                  'Payment Amount',
+                  'R ${payment.amountPaid.toStringAsFixed(2)}',
+                  isHighlight: true,
+                ),
+                _buildDetailRow(
+                  'Payment Date',
+                  payment.datePaid.toString().substring(0, 10),
+                ),
+                _buildDetailRow(
+                  'Payment Method',
+                  payment.paymentMethod ?? 'Manual',
+                ),
+                Divider(color: Theme.of(context).dividerColor.withOpacity(0.1)),
+                _buildDetailRow(
+                  'Updated Balance',
+                  'R ${balanceAfterPayment.toStringAsFixed(2)}',
+                  isHighlight: true,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Applicable Fees Included in Loan:',
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+                const SizedBox(height: 4),
+                _buildDetailRow(
+                  'Initiation Fee',
+                  'R ${(loan.initiationFee ?? 0).toStringAsFixed(0)}',
+                ),
+                _buildDetailRow(
+                  'Monthly Admin Fee',
+                  'R ${(loan.monthlyAdminFee ?? 0).toStringAsFixed(0)} / mo',
+                ),
+                _buildDetailRow(
+                  'Penalty Fee',
+                  'R ${(loan.penaltyFee ?? 0).toStringAsFixed(0)}',
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.download, size: 16),
+            label: const Text('Download PDF'),
+            onPressed: () {
+              Navigator.pop(context);
+              _generatePaymentReceiptPDF(
+                payment,
+                loan,
+                vendor,
+                group,
+                balanceAfterPayment,
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(
+    String label,
+    String value, {
+    bool isHighlight = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 140,
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.grey, fontSize: 13),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                color: isHighlight
+                    ? Colors.amberAccent
+                    : Theme.of(context).textTheme.bodyMedium?.color,
+                fontWeight: isHighlight ? FontWeight.bold : FontWeight.normal,
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _generatePaymentReceiptPDF(
+    PaymentModel payment,
+    LoanModel loan,
+    VendorModel vendor,
+    GroupModel group,
+    double balanceAfterPayment,
+  ) async {
+    final pdf = pw.Document();
+
+    final logoImage = await rootBundle.load('assets/images/NSBSA Logo (1).png');
+    final logo = pw.MemoryImage(logoImage.buffer.asUint8List());
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(32),
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Image(logo, height: 60),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.end,
+                    children: [
+                      pw.Text(
+                        'Payment Receipt',
+                        style: pw.TextStyle(
+                          fontSize: 22,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
+                      pw.Text(
+                        'Receipt No: P-${payment.id.substring(0, 8).toUpperCase()}',
+                      ),
+                      pw.Text(
+                        'Date: ${payment.datePaid.toString().substring(0, 10)}',
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 40),
+
+              pw.Text(
+                'Member Details',
+                style: pw.TextStyle(
+                  fontSize: 14,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.Divider(thickness: 0.5),
+              pw.SizedBox(height: 10),
+              _pdfInfoRowPayment('Name:', vendor.name),
+              _pdfInfoRowPayment(
+                'Reference No:',
+                vendor.referenceNumber ?? 'N/A',
+              ),
+              _pdfInfoRowPayment('Group:', group.name),
+
+              pw.SizedBox(height: 24),
+              pw.Text(
+                'Loan Details',
+                style: pw.TextStyle(
+                  fontSize: 14,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.Divider(thickness: 0.5),
+              pw.SizedBox(height: 10),
+              _pdfInfoRowPayment(
+                'Loan Reference:',
+                'L-${loan.id.substring(0, 8)}',
+              ),
+              _pdfInfoRowPayment(
+                'Loan Amount:',
+                'R ${loan.amount.toStringAsFixed(2)}',
+              ),
+              _pdfInfoRowPayment(
+                'Initiation Fee:',
+                'R ${(loan.initiationFee ?? 0).toStringAsFixed(2)}',
+              ),
+              _pdfInfoRowPayment(
+                'Admin Fees:',
+                'R ${((loan.monthlyAdminFee ?? 0) * loan.durationMonths).toStringAsFixed(2)} (Total)',
+              ),
+
+              pw.SizedBox(height: 24),
+              pw.Text(
+                'Payment Details',
+                style: pw.TextStyle(
+                  fontSize: 14,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.Divider(thickness: 0.5),
+              pw.SizedBox(height: 10),
+              pw.Container(
+                padding: const pw.EdgeInsets.all(12),
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.grey100,
+                  borderRadius: pw.BorderRadius.circular(8),
+                ),
+                child: pw.Column(
+                  children: [
+                    _pdfInfoRowPayment(
+                      'Amount Paid:',
+                      'R ${payment.amountPaid.toStringAsFixed(2)}',
+                      isBold: true,
+                    ),
+                    _pdfInfoRowPayment(
+                      'Payment Method:',
+                      payment.paymentMethod ?? 'Manual',
+                    ),
+                    _pdfInfoRowPayment(
+                      'Payment Date:',
+                      payment.datePaid.toString().substring(0, 10),
+                    ),
+                    pw.Divider(thickness: 0.5, color: PdfColors.grey400),
+                    _pdfInfoRowPayment(
+                      'Remaining Balance:',
+                      'R ${balanceAfterPayment.toStringAsFixed(2)}',
+                      isBold: true,
+                    ),
+                  ],
+                ),
+              ),
+
+              pw.Spacer(),
+              pw.Divider(thickness: 0.5),
+              pw.SizedBox(height: 8),
+              pw.Text(
+                'All applicable fees are included in the amounts shown above.',
+                style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+              ),
+              pw.Text(
+                'Thank you for your business.',
+                style: pw.TextStyle(
+                  fontSize: 10,
+                  fontStyle: pw.FontStyle.italic,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => pdf.save(),
+      name: 'Payment_Receipt_${payment.id.substring(0, 8)}',
+    );
+  }
+
+  pw.Widget _pdfInfoRowPayment(
+    String label,
+    String value, {
+    bool isBold = false,
+  }) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 6),
+      child: pw.Row(
+        children: [
+          pw.SizedBox(
+            width: 120,
+            child: pw.Text(
+              label,
+              style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey800),
+            ),
+          ),
+          pw.Text(
+            value,
+            style: pw.TextStyle(
+              fontSize: 11,
+              fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCommentDetailsDialog(CommentModel comment) {
+    final theme = Theme.of(context);
+    final commentProvider = context.read<CommentProvider>();
+    final TextEditingController _editController =
+        TextEditingController(text: comment.content);
+    bool _isEditing = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.comment, size: 20),
+              const SizedBox(width: 12),
+              const Text('Comment Details'),
+              const Spacer(),
+              if (comment.authorRole != null)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: theme.primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    comment.authorRole!,
+                    style: TextStyle(
+                      color: theme.primaryColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          content: SizedBox(
+            width: 500,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.person_outline,
+                        size: 16, color: Colors.grey),
+                    const SizedBox(width: 8),
+                    Text(
+                      comment.authorName,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const Spacer(),
+                    Text(
+                      comment.createdAt.toString().substring(0, 16),
+                      style: const TextStyle(color: Colors.grey, fontSize: 12),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                if (_isEditing)
+                  TextField(
+                    controller: _editController,
+                    maxLines: 5,
+                    autofocus: true,
+                    style: TextStyle(color: theme.textTheme.bodyMedium?.color),
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: theme.scaffoldBackgroundColor,
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                  )
+                else
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: theme.scaffoldBackgroundColor,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      comment.content,
+                      style: const TextStyle(height: 1.5),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            if (!_isEditing) ...[
+              TextButton.icon(
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Delete Comment?'),
+                      content: const Text(
+                          'Are you sure you want to remove this comment? This action cannot be undone.'),
+                      actions: [
+                        TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('Cancel')),
+                        TextButton(
+                          onPressed: () async {
+                            await commentProvider.deleteComment(comment.id);
+                            Navigator.pop(context); // Close confirm
+                            Navigator.pop(context); // Close details
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Comment deleted')),
+                            );
+                          },
+                          child: const Text('Delete',
+                              style: TextStyle(color: Colors.redAccent)),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.delete_outline,
+                    color: Colors.redAccent, size: 18),
+                label: const Text('Delete',
+                    style: TextStyle(color: Colors.redAccent)),
+              ),
+              TextButton.icon(
+                onPressed: () => setDialogState(() => _isEditing = true),
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                label: const Text('Edit'),
+              ),
+            ] else ...[
+              TextButton(
+                onPressed: () => setDialogState(() => _isEditing = false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  if (_editController.text.trim().isEmpty) return;
+                  await commentProvider.updateComment(
+                      comment.id, _editController.text.trim());
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Comment updated')),
+                  );
+                },
+                child: const Text('Save Changes'),
+              ),
+            ],
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
             ),
           ],
         ),
