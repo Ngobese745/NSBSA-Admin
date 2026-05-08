@@ -53,210 +53,214 @@ class _MainShellState extends State<MainShell> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDesktop = MediaQuery.of(context).size.width >= 800;
+    final isLight = theme.brightness == Brightness.light;
 
     return Scaffold(
       appBar: isDesktop ? null : AppBar(title: Text(_titles[_selectedIndex])),
       drawer: isDesktop ? null : _buildDrawer(theme),
-      body: Row(
+      body: Column(
         children: [
-          if (isDesktop && _isSidebarVisible) _buildSidebar(theme),
-          Expanded(
-            child: Column(
-              children: [
-                if (isDesktop)
-                  Container(
-                    height: 48,
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    alignment: Alignment.centerLeft,
-                    decoration: BoxDecoration(
-                      color: theme.brightness == Brightness.light ? theme.primaryColor : theme.colorScheme.surface,
-                      border: Border(
-                        bottom: BorderSide(
-                          color: theme.dividerColor,
-                        ),
+          if (isDesktop)
+            Container(
+              height: 70, // Increased height for a more premium feel
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 20), // More horizontal padding
+              decoration: BoxDecoration(
+                color: isLight ? const Color(0xFF1E1E1E) : theme.colorScheme.surface,
+                border: Border(
+                  bottom: BorderSide(
+                    color: isLight ? Colors.white10 : theme.dividerColor,
+                  ),
+                ),
+              ),
+              child: CompositedTransformTarget(
+                link: _layerLink,
+                child: Row(
+                  children: [
+                    // Menu toggle
+                    IconButton(
+                      tooltip: _isSidebarVisible ? 'Hide sidebar' : 'Show sidebar',
+                      icon: Icon(
+                        _isSidebarVisible ? Icons.menu_open : Icons.menu,
+                        color: Colors.white,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _isSidebarVisible = !_isSidebarVisible;
+                        });
+                      },
+                    ),
+                    const SizedBox(width: 12),
+                    // Header Logo (INCREASED SIZE)
+                    Image.asset(
+                      'assets/images/NSBSA Logo (1).png',
+                      height: 50, // Increased from 40 to 50
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) => const Icon(Icons.account_balance_wallet, color: Colors.white, size: 32),
+                    ),
+                    const SizedBox(width: 20),
+                    // Divider and Title
+                    Container(
+                      height: 24,
+                      width: 1,
+                      color: Colors.white24,
+                    ),
+                    const SizedBox(width: 16),
+                    Text(
+                      _titles[_selectedIndex].toUpperCase(),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        letterSpacing: 1.2,
                       ),
                     ),
-                    child: CompositedTransformTarget(
-                      link: _layerLink,
+                    const Spacer(),
+                    // Search Bar
+                    SizedBox(
+                      width: 320,
+                      child: TextField(
+                        controller: _searchController,
+                        style: const TextStyle(fontSize: 13, color: Colors.white),
+                        decoration: InputDecoration(
+                          hintText: 'Search groups, vendors or loans...',
+                          hintStyle: const TextStyle(fontSize: 12, color: Colors.white54),
+                          prefixIcon: const Icon(Icons.search, size: 18, color: Colors.white54),
+                          isDense: true,
+                          suffixIcon: _searchController.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear, size: 16, color: Colors.white54),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    context.read<SearchProvider>().clearSearch();
+                                    _hideOverlay();
+                                  },
+                                )
+                              : null,
+                          filled: true,
+                          fillColor: Colors.white.withOpacity(0.08),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(6),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                        onChanged: (value) {
+                          String contextType = 'global';
+                          switch (_selectedIndex) {
+                            case 1: contextType = 'groups'; break;
+                            case 2: contextType = 'vendors'; break;
+                            case 3: contextType = 'loans'; break;
+                            case 4: contextType = 'payments'; break;
+                          }
+                          context.read<SearchProvider>().search(value, contextType: contextType);
+                          if (value.isNotEmpty) {
+                            _showOverlay(context);
+                          } else {
+                            _hideOverlay();
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 24),
+                    // Notifications (Visual Placeholder for professional look)
+                    Stack(
+                      children: [
+                        const Icon(Icons.notifications_none, color: Colors.white70, size: 24),
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                            constraints: const BoxConstraints(minWidth: 12, minHeight: 12),
+                            child: const Text('1', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 24),
+                    // Profile Button
+                    PopupMenuButton<String>(
+                      offset: const Offset(0, 50),
+                      color: theme.cardColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: theme.primaryColor.withOpacity(0.2)),
+                      ),
                       child: Row(
                         children: [
-                          if (isDesktop)
-                            IconButton(
-                              tooltip: _isSidebarVisible
-                                  ? 'Hide sidebar'
-                                  : 'Show sidebar',
-                              icon: Icon(
-                                _isSidebarVisible
-                                    ? Icons.menu_open
-                                    : Icons.menu,
-                                color: theme.brightness == Brightness.light ? Colors.black : theme.iconTheme.color,
+                          Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                'Administrator',
+                                style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
                               ),
-                              onPressed: () {
-                                setState(() {
-                                  _isSidebarVisible = !_isSidebarVisible;
-                                });
-                              },
-                            ),
-                          Text(
-                            _titles[_selectedIndex],
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: theme.brightness == Brightness.light ? Colors.black : theme.textTheme.titleLarge?.color,
-                            ),
-                          ),
-                          const Spacer(),
-                          SizedBox(
-                            width: 300,
-                            child: TextField(
-                              controller: _searchController,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: theme.brightness == Brightness.light ? Colors.black : null,
-                              ),
-                              decoration: InputDecoration(
-                                hintText: 'Search...',
-                                hintStyle: TextStyle(
-                                  fontSize: 12,
-                                  color: theme.brightness == Brightness.light ? Colors.black54 : null,
-                                ),
-                                prefixIcon: const Icon(Icons.search, size: 16),
-                                isDense: true,
-                                suffixIcon: _searchController.text.isNotEmpty
-                                    ? IconButton(
-                                        icon: const Icon(Icons.clear, size: 14),
-                                        onPressed: () {
-                                          _searchController.clear();
-                                          context
-                                              .read<SearchProvider>()
-                                              .clearSearch();
-                                          _hideOverlay();
-                                        },
-                                      )
-                                    : null,
-                                filled: true,
-                                fillColor: theme.brightness == Brightness.light 
-                                    ? Colors.black.withOpacity(0.05) 
-                                    : theme.cardColor.withOpacity(0.5),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide.none,
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 8,
-                                ),
-                              ),
-                              onChanged: (value) {
-                                String contextType = 'global';
-                                switch (_selectedIndex) {
-                                  case 1: contextType = 'groups'; break;
-                                  case 2: contextType = 'vendors'; break;
-                                  case 3: contextType = 'loans'; break;
-                                  case 4: contextType = 'payments'; break;
-                                }
-                                context.read<SearchProvider>().search(value, contextType: contextType);
-                                if (value.isNotEmpty) {
-                                  _showOverlay(context);
-                                } else {
-                                  _hideOverlay();
-                                }
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          PopupMenuButton<String>(
-                            offset: const Offset(0, 40),
-                            color: theme.cardColor,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              side: BorderSide(
-                                color: theme.primaryColor.withOpacity(0.2),
-                              ),
-                            ),
-                            icon: CircleAvatar(
-                              radius: 14,
-                              backgroundColor: theme.brightness == Brightness.light 
-                                  ? Colors.black.withOpacity(0.1) 
-                                  : theme.primaryColor.withOpacity(0.1),
-                              child: Icon(
-                                Icons.person,
-                                color: theme.brightness == Brightness.light ? Colors.black : theme.primaryColor,
-                                size: 16,
-                              ),
-                            ),
-                            onSelected: (value) {
-                              if (value == 'logout') {
-                                context.read<AuthProvider>().logout();
-                              } else if (value == 'preferences') {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const UserProfileScreen(),
-                                  ),
-                                );
-                              } else if (value == 'theme') {
-                                context.read<ThemeProvider>().toggleTheme();
-                              }
-                            },
-                            itemBuilder: (context) => [
-                              PopupMenuItem(
-                                value: 'preferences',
-                                child: ListTile(
-                                  leading: Icon(
-                                    Icons.manage_accounts,
-                                    color: theme.iconTheme.color,
-                                  ),
-                                  title: Text(
-                                    'Account Preferences',
-                                    style: TextStyle(
-                                      color: theme.textTheme.bodyMedium?.color,
-                                    ),
-                                  ),
-                                  contentPadding: EdgeInsets.zero,
-                                  dense: true,
-                                ),
-                              ),
-                              PopupMenuItem(
-                                value: 'theme',
-                                child: ListTile(
-                                  leading: Icon(
-                                    Icons.palette,
-                                    color: theme.iconTheme.color,
-                                  ),
-                                  title: Text(
-                                    'Toggle Theme',
-                                    style: TextStyle(
-                                      color: theme.textTheme.bodyMedium?.color,
-                                    ),
-                                  ),
-                                  contentPadding: EdgeInsets.zero,
-                                  dense: true,
-                                ),
-                              ),
-                              const PopupMenuDivider(),
-                              PopupMenuItem(
-                                value: 'logout',
-                                child: ListTile(
-                                  leading: const Icon(
-                                    Icons.logout,
-                                    color: Colors.redAccent,
-                                  ),
-                                  title: const Text(
-                                    'Logout',
-                                    style: TextStyle(color: Colors.redAccent),
-                                  ),
-                                  contentPadding: EdgeInsets.zero,
-                                  dense: true,
-                                ),
+                              Text(
+                                'Colane',
+                                style: TextStyle(color: Colors.white70, fontSize: 10),
                               ),
                             ],
                           ),
+                          const SizedBox(width: 12),
+                          CircleAvatar(
+                            radius: 16,
+                            backgroundColor: theme.primaryColor.withOpacity(0.2),
+                            child: const Icon(Icons.person, color: Colors.white, size: 18),
+                          ),
+                          const Icon(Icons.keyboard_arrow_down, color: Colors.white54, size: 18),
                         ],
                       ),
+                      onSelected: (value) {
+                        if (value == 'logout') {
+                          context.read<AuthProvider>().logout();
+                        } else if (value == 'preferences') {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const UserProfileScreen()));
+                        } else if (value == 'theme') {
+                          context.read<ThemeProvider>().toggleTheme();
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        PopupMenuItem(
+                          value: 'preferences',
+                          child: ListTile(
+                            leading: Icon(Icons.manage_accounts, color: theme.iconTheme.color),
+                            title: Text('Account Preferences', style: TextStyle(color: theme.textTheme.bodyMedium?.color)),
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'theme',
+                          child: ListTile(
+                            leading: Icon(Icons.palette, color: theme.iconTheme.color),
+                            title: Text('Toggle Theme', style: TextStyle(color: theme.textTheme.bodyMedium?.color)),
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                          ),
+                        ),
+                        const PopupMenuDivider(),
+                        PopupMenuItem(
+                          value: 'logout',
+                          child: ListTile(
+                            leading: const Icon(Icons.logout, color: Colors.redAccent),
+                            title: const Text('Logout', style: TextStyle(color: Colors.redAccent)),
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
+                  ],
+                ),
+              ),
+            ),
+          Expanded(
+            child: Row(
+              children: [
+                if (isDesktop && _isSidebarVisible) _buildSidebar(theme),
                 Expanded(child: _screens[_selectedIndex]),
               ],
             ),
@@ -272,8 +276,13 @@ class _MainShellState extends State<MainShell> {
 
   Widget _buildSidebar(ThemeData theme) {
     return Container(
-      width: 200,
-      color: theme.brightness == Brightness.light ? theme.primaryColor : theme.colorScheme.surface,
+      width: 220,
+      decoration: BoxDecoration(
+        color: theme.brightness == Brightness.light ? theme.primaryColor : theme.colorScheme.surface,
+        border: Border(
+          right: BorderSide(color: theme.dividerColor.withOpacity(0.1)),
+        ),
+      ),
       child: _buildNavigationContent(theme),
     );
   }
@@ -282,28 +291,10 @@ class _MainShellState extends State<MainShell> {
     final isLight = theme.brightness == Brightness.light;
     return Column(
       children: [
-        Container(
-          width: double.infinity,
-          color: isLight ? const Color(0xFF1E1E1E) : Colors.transparent, // Softer black background behind logo
-          padding: const EdgeInsets.symmetric(vertical: 32),
-          child: Image.asset(
-            'assets/images/NSBSA Logo (1).png',
-            height: 120, // Increased by 50%
-            fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) {
-              return Icon(
-                Icons.account_balance_wallet,
-                size: 48, // Also increased fallback icon size proportionately
-                color: isLight ? theme.primaryColor : theme.primaryColor,
-              );
-            },
-          ),
-        ),
-        if (!isLight) const SizedBox(height: 32),
-        if (!isLight) const Divider(height: 1),
+        const SizedBox(height: 16),
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.symmetric(vertical: 8),
             children: [
               _buildNavItem(Icons.dashboard, 'Dashboard', 0),
               _buildNavItem(Icons.group, 'Groups', 1),
