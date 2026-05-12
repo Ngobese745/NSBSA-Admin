@@ -7,8 +7,8 @@ import '../core/app_assets.dart';
 import '../providers/auth_provider.dart';
 import '../services/account_management_service.dart';
 
-/// Shown after a staff member clicks an invite link or approved reset link.
-/// Forces them to set a compliant password before accessing the system.
+/// Dedicated page to handle password recovery and invitations.
+/// Route: /auth/setup-password
 class PasswordSetupScreen extends StatefulWidget {
   const PasswordSetupScreen({super.key});
 
@@ -24,7 +24,7 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
   bool _obscureConfirm = true;
   bool _isSaving = false;
   bool _isValidatingToken = true;
-  bool _hasValidInviteSession = false;
+  bool _hasValidSession = false;
   String? _error;
 
   late AnimationController _animController;
@@ -35,11 +35,13 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
     super.initState();
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 800),
     );
     _fadeAnim = CurvedAnimation(parent: _animController, curve: Curves.easeOut);
     _animController.forward();
-    _validateInviteSession();
+    
+    // Process the recovery link
+    _initializeRecoveryFlow();
   }
 
   @override
@@ -50,23 +52,45 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
     super.dispose();
   }
 
-  Future<void> _handleSetPassword() async {
-    if (!_hasValidInviteSession) {
-      setState(
-        () => _error =
-            'Your invitation link has expired. Please contact the Super Admin for a new invite.',
-      );
-      return;
+  /// Extracts the session from the URL (handles hash and query params)
+  Future<void> _initializeRecoveryFlow() async {
+    try {
+      final auth = Supabase.instance.client.auth;
+      final uri = Uri.base;
+
+      // Supabase's getSessionFromUrl handles parsing the token from the URL
+      // whether it's in the hash (#access_token=...) or query (?code=...)
+      if (auth.currentSession == null) {
+        await auth.getSessionFromUrl(uri);
+      }
+
+      setState(() {
+        _hasValidSession = auth.currentSession != null;
+        _isValidatingToken = false;
+        if (!_hasValidSession) {
+          _error = 'Invalid or expired recovery link. Please request a new one.';
+        }
+      });
+    } catch (e) {
+      setState(() {
+        _hasValidSession = false;
+        _isValidatingToken = false;
+        _error = 'Failed to validate link: ${e.toString()}';
+      });
     }
+  }
 
-    final password = _passwordController.text.trim();
-    final confirm = _confirmController.text.trim();
+  Future<void> _handleSetPassword() async {
+    final password = _passwordController.text;
+    final confirm = _confirmController.text;
 
+    // Validation
     final validationError = AccountManagementService.validatePassword(password);
     if (validationError != null) {
       setState(() => _error = validationError);
       return;
     }
+
     if (password != confirm) {
       setState(() => _error = 'Passwords do not match.');
       return;
@@ -78,121 +102,65 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
     });
 
     try {
-      // Update password via Supabase Auth (auto hashes + salts)
+      // Update the user's password in Supabase
       await Supabase.instance.client.auth.updateUser(
         UserAttributes(password: password),
       );
 
-      // Log the password set event
-      final email = Supabase.instance.client.auth.currentUser?.email ?? '';
+      // Log the event for security audit
+      final email = Supabase.instance.client.auth.currentUser?.email ?? 'Unknown';
       await AccountManagementService.logEvent(
-        eventType: 'Password Created',
+        eventType: 'Password Setup Complete',
         targetEmail: email,
-        operatorEmail: null,
-        metadata: {
-          'self_service': true,
-          'action': 'Password Created',
-          'timestamp': DateTime.now().toIso8601String(),
-        },
+        operatorEmail: null, // Self-service
+        metadata: {'platform': 'web', 'recovery': true},
       );
 
       if (mounted) {
+        // Refresh local profile state
         await context.read<AuthProvider>().refreshProfile();
         context.read<AuthProvider>().clearPasswordRecovery();
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-              'Password created successfully — you can now log in.',
-            ),
+            content: Text('Password updated successfully! Redirecting to login...'),
             backgroundColor: Colors.green,
           ),
         );
+
+        // Sign out to force a clean login with the new password
         await Supabase.instance.client.auth.signOut();
+
         if (mounted) {
-          Navigator.of(
-            context,
-          ).pushNamedAndRemoveUntil('/auth/login', (_) => false);
+          Navigator.of(context).pushNamedAndRemoveUntil('/auth/login', (_) => false);
         }
       }
     } catch (e) {
-      final message = e is AuthException ? e.message : e.toString();
-      setState(() => _error = message);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message), backgroundColor: Colors.red),
-        );
-      }
+      setState(() => _error = e is AuthException ? e.message : e.toString());
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
   }
 
-  Future<void> _validateInviteSession() async {
-    final uri = Uri.base;
-    final hasAuthCallback = _hasAuthCallbackParams(uri);
-
-    if (!hasAuthCallback) {
-      setState(() {
-        _hasValidInviteSession = false;
-        _isValidatingToken = false;
-        _error =
-            'Your invitation link has expired. Please contact the Super Admin for a new invite.';
-      });
-      return;
-    }
-
-    try {
-      final auth = Supabase.instance.client.auth;
-      if (auth.currentSession == null) {
-        await auth.getSessionFromUrl(uri);
-      }
-
-      setState(() {
-        _hasValidInviteSession = auth.currentSession != null;
-        _isValidatingToken = false;
-        if (!_hasValidInviteSession) {
-          _error =
-              'Your invitation link has expired. Please contact the Super Admin for a new invite.';
-        }
-      });
-    } catch (_) {
-      setState(() {
-        _hasValidInviteSession = false;
-        _isValidatingToken = false;
-        _error =
-            'Your invitation link has expired. Please contact the Super Admin for a new invite.';
-      });
-    }
-  }
-
-  bool _hasAuthCallbackParams(Uri uri) {
-    final fragmentParams = Uri.splitQueryString(
-      uri.fragment.replaceFirst('?', ''),
-    );
-    return uri.queryParameters.containsKey('code') ||
-        uri.queryParameters.containsKey('access_token') ||
-        uri.queryParameters.containsKey('error_description') ||
-        fragmentParams.containsKey('access_token') ||
-        fragmentParams.containsKey('error_description');
-  }
-
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     const gold = Color(0xFFD4AF37);
-
+    
     return Scaffold(
-      backgroundColor: const Color(0xFF050505),
+      backgroundColor: const Color(0xFF0A0A0A),
       body: Stack(
         children: [
-          // Background blur
+          // Background Gradient
           Positioned.fill(
             child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF0A0A0A), Color(0xFF111108)],
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment.center,
+                  radius: 1.2,
+                  colors: [
+                    gold.withOpacity(0.05),
+                    Colors.black,
+                  ],
                 ),
               ),
             ),
@@ -204,16 +172,16 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24),
                 child: Container(
-                  constraints: const BoxConstraints(maxWidth: 480),
+                  constraints: const BoxConstraints(maxWidth: 450),
                   decoration: BoxDecoration(
                     color: const Color(0xFF141414),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(24),
                     border: Border.all(color: gold.withOpacity(0.2)),
                     boxShadow: [
                       BoxShadow(
-                        color: gold.withOpacity(0.05),
-                        blurRadius: 40,
-                        spreadRadius: 5,
+                        color: Colors.black.withOpacity(0.5),
+                        blurRadius: 50,
+                        spreadRadius: 10,
                       ),
                     ],
                   ),
@@ -221,194 +189,112 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Logo
+                      // Branding
                       Center(
-                        child: Image.asset(
-                          AppAssets.logo,
-                          height: 72,
-                          errorBuilder: (_, __, ___) =>
-                              const Icon(Icons.security, size: 72, color: gold),
+                        child: Hero(
+                          tag: 'app_logo',
+                          child: Image.asset(
+                            AppAssets.logo,
+                            height: 80,
+                            errorBuilder: (_, __, ___) => const Icon(Icons.lock_outline, size: 80, color: gold),
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 28),
-
-                      // Title
-                      const Text(
-                        'Create Your Password',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'This password will be used for your staff login.',
-                        style: TextStyle(color: Colors.grey[500], fontSize: 13),
                       ),
                       const SizedBox(height: 32),
 
-                      if (_isValidatingToken) ...[
-                        const Center(
-                          child: CircularProgressIndicator(color: gold),
+                      const Text(
+                        'Secure Your Account',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
                         ),
-                        const SizedBox(height: 24),
-                      ],
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Set a new password to access the NSBSA Admin platform.',
+                        style: TextStyle(color: Colors.grey[400], fontSize: 14),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 40),
 
-                      // Password rules
-                      if (!_isValidatingToken && _hasValidInviteSession) ...[
+                      if (_isValidatingToken) ...[
+                        const Center(child: CircularProgressIndicator(color: gold)),
+                        const SizedBox(height: 20),
+                        const Text('Validating link...', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+                      ] else if (!_hasValidSession) ...[
+                        // Error State
                         Container(
-                          padding: const EdgeInsets.all(14),
+                          padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: gold.withOpacity(0.06),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: gold.withOpacity(0.2)),
+                            color: Colors.red.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.red.withOpacity(0.3)),
                           ),
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                'Password Requirements',
-                                style: TextStyle(
-                                  color: Color(0xFFD4AF37),
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              ...[
-                                '• Minimum 8 characters',
-                                '• At least one uppercase letter (A–Z)',
-                                '• At least one lowercase letter (a–z)',
-                                '• At least one number (0–9)',
-                                '• At least one special character (!@#\$&*~_-)',
-                              ].map(
-                                (r) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 2),
-                                  child: Text(
-                                    r,
-                                    style: const TextStyle(
-                                      color: Colors.grey,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ),
+                              const Icon(Icons.error_outline, color: Colors.redAccent, size: 40),
+                              const SizedBox(height: 12),
+                              Text(
+                                _error ?? 'Invalid or expired link.',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Colors.redAccent),
                               ),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 28),
-
-                        // New Password field
+                        const SizedBox(height: 32),
+                        ElevatedButton(
+                          onPressed: () => Navigator.pushReplacementNamed(context, '/auth/login'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: gold,
+                            foregroundColor: Colors.black,
+                            minimumSize: const Size(double.infinity, 50),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: const Text('Back to Login', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      ] else ...[
+                        // Form State
                         _buildPasswordField(
                           'New Password',
                           _passwordController,
                           _obscureNew,
                           () => setState(() => _obscureNew = !_obscureNew),
                         ),
-                        const SizedBox(height: 16),
-
-                        // Confirm Password field
+                        const SizedBox(height: 20),
                         _buildPasswordField(
-                          'Confirm Password',
+                          'Confirm New Password',
                           _confirmController,
                           _obscureConfirm,
-                          () => setState(
-                            () => _obscureConfirm = !_obscureConfirm,
-                          ),
+                          () => setState(() => _obscureConfirm = !_obscureConfirm),
                         ),
-                        const SizedBox(height: 12),
-                      ],
+                        const SizedBox(height: 16),
+                        
+                        if (_error != null) 
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
+                          ),
 
-                      // Error
-                      if (_error != null) ...[
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.red.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: Colors.red.withOpacity(0.3),
-                            ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _isSaving ? null : _handleSetPassword,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: gold,
+                            foregroundColor: Colors.black,
+                            minimumSize: const Size(double.infinity, 56),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            elevation: 8,
+                            shadowColor: gold.withOpacity(0.3),
                           ),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.error_outline,
-                                color: Colors.redAccent,
-                                size: 16,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  _error!,
-                                  style: const TextStyle(
-                                    color: Colors.redAccent,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+                          child: _isSaving
+                              ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
+                              : const Text('Update Password', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
                         ),
-                        const SizedBox(height: 12),
                       ],
-
-                      const SizedBox(height: 8),
-
-                      // Submit button
-                      SizedBox(
-                        height: 52,
-                        child: _hasValidInviteSession
-                            ? ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: gold,
-                                  foregroundColor: Colors.black,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  elevation: 0,
-                                ),
-                                onPressed: _isSaving
-                                    ? null
-                                    : _handleSetPassword,
-                                child: _isSaving
-                                    ? const SizedBox(
-                                        height: 20,
-                                        width: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          valueColor:
-                                              AlwaysStoppedAnimation<Color>(
-                                                Colors.black,
-                                              ),
-                                        ),
-                                      )
-                                    : const Text(
-                                        'Set Password',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          letterSpacing: 1.2,
-                                        ),
-                                      ),
-                              )
-                            : OutlinedButton(
-                                onPressed: () => Navigator.of(context)
-                                    .pushNamedAndRemoveUntil(
-                                      '/auth/login',
-                                      (_) => false,
-                                    ),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: gold,
-                                  side: const BorderSide(color: gold),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                ),
-                                child: const Text('Back to Login'),
-                              ),
-                      ),
                     ],
                   ),
                 ),
@@ -422,45 +308,30 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
 
   Widget _buildPasswordField(
     String label,
-    TextEditingController ctrl,
+    TextEditingController controller,
     bool obscure,
-    VoidCallback toggle,
+    VoidCallback onToggle,
   ) {
+    const gold = Color(0xFFD4AF37);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-        const SizedBox(height: 6),
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 8),
         TextField(
-          controller: ctrl,
+          controller: controller,
           obscureText: obscure,
           style: const TextStyle(color: Colors.white),
-          onChanged: (_) => setState(() => _error = null),
           decoration: InputDecoration(
-            hintText: 'Enter $label',
-            hintStyle: const TextStyle(color: Colors.grey, fontSize: 13),
             filled: true,
             fillColor: Colors.white.withOpacity(0.05),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 16,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFFD4AF37)),
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: gold, width: 1.5)),
             suffixIcon: IconButton(
-              icon: Icon(
-                obscure ? Icons.visibility_off : Icons.visibility,
-                color: Colors.grey,
-                size: 20,
-              ),
-              onPressed: toggle,
+              icon: Icon(obscure ? Icons.visibility_off : Icons.visibility, color: Colors.grey, size: 20),
+              onPressed: onToggle,
             ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
           ),
         ),
       ],
