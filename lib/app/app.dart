@@ -43,15 +43,20 @@ class NsbsaAdminApp extends StatelessWidget {
     final uri = Uri.base;
     final path = uri.path;
     final fragment = uri.fragment;
+    final fullUrl = uri.toString();
 
     // 1. Explicit path check
     if (path == '/auth/login') return const LoginScreen();
     if (path.contains('/auth/setup-password')) return const PasswordSetupScreen();
 
     // 2. Detection of Supabase tokens in the hash (#access_token=...&type=recovery)
-    // This is critical because Supabase often redirects to the Site URL with the token in the hash.
-    if (fragment.contains('access_token=') && 
-        (fragment.contains('type=recovery') || fragment.contains('type=invite') || fragment.contains('type=signup'))) {
+    // We check BOTH the fragment and the full URL string for safety.
+    final hasToken = fragment.contains('access_token=') || fullUrl.contains('access_token=');
+    final isRecovery = fragment.contains('type=recovery') || fullUrl.contains('type=recovery') ||
+                       fragment.contains('type=invite') || fullUrl.contains('type=invite') ||
+                       fragment.contains('type=signup') || fullUrl.contains('type=signup');
+
+    if (hasToken && isRecovery) {
       return const PasswordSetupScreen();
     }
 
