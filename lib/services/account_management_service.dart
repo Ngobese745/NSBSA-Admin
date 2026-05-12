@@ -111,17 +111,12 @@ class AccountManagementService {
     }, onConflict: 'id');
 
     // 4. Send the credentials via CommunicationService
-    try {
-      final comms = CommunicationService();
-      await comms.sendStaffCredentials(
-        toEmail: email,
-        fullName: fullName,
-        tempPassword: tempPassword,
-      );
-    } catch (e) {
-      debugPrint('Failed to send credentials email: $e');
-      // We don't throw here because the account was already created
-    }
+    final comms = CommunicationService();
+    await comms.sendStaffCredentials(
+      toEmail: email,
+      fullName: fullName,
+      tempPassword: tempPassword,
+    );
 
     // 5. Log the event
     await logEvent(

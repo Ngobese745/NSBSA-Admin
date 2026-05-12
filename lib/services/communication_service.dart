@@ -4,8 +4,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 
 class CommunicationService {
-  final String _mailerSendApiKey = dotenv.env['MAILERSEND_API_KEY'] ?? '';
-  final String _weSenderApiKey = dotenv.env['WESENDER_API_KEY'] ?? '';
+  String get _mailerSendApiKey => dotenv.env['MAILERSEND_API_KEY'] ?? '';
+  String get _weSenderApiKey => dotenv.env['WESENDER_API_KEY'] ?? '';
 
   Future<void> sendPaymentReminder({required String toEmail, required String toPhone, required String amount}) async {
     debugPrint('Preparing to send payment reminder for $amount');
@@ -18,13 +18,6 @@ class CommunicationService {
         html: '<p>Dear member,</p><p>This is a reminder for your upcoming payment of <strong>$amount</strong>.</p><p>Please ensure funds are available.</p>',
       );
     }
-
-    // TODO: Implement WeSender API for WhatsApp
-    if (_weSenderApiKey.isEmpty) {
-      debugPrint('WeSender API Key is missing. Skipping WhatsApp message.');
-    } else {
-      debugPrint('WhatsApp message sent successfully to $toPhone via WeSender.');
-    }
   }
 
   /// Sends temporary credentials to a new staff member.
@@ -35,8 +28,11 @@ class CommunicationService {
   }) async {
     debugPrint('Sending branded staff credentials to $toEmail');
     
-    if (_mailerSendApiKey.isNotEmpty) {
-      final htmlTemplate = '''
+    if (_mailerSendApiKey.isEmpty) {
+      throw Exception('MAILERSEND_API_KEY is missing in .env file. Please check your configuration.');
+    }
+
+    final htmlTemplate = '''
 <!DOCTYPE html>
 <html>
 <head>
@@ -90,15 +86,12 @@ class CommunicationService {
 </html>
 ''';
 
-      await _sendEmail(
-        to: toEmail,
-        subject: 'Welcome to NSBSA Admin - Your Account is Ready',
-        text: 'Welcome $fullName! Your account has been created. Email: $toEmail, Temporary Password: $tempPassword. Access at https://nsbsa-admin.vercel.app',
-        html: htmlTemplate,
-      );
-    } else {
-      debugPrint('MAILERSEND_API_KEY missing. Cannot send credentials email.');
-    }
+    await _sendEmail(
+      to: toEmail,
+      subject: 'Welcome to NSBSA Admin - Your Account is Ready',
+      text: 'Welcome $fullName! Your account has been created. Email: $toEmail, Temporary Password: $tempPassword.',
+      html: htmlTemplate,
+    );
   }
 
   Future<void> _sendEmail({
@@ -107,12 +100,17 @@ class CommunicationService {
     required String text,
     required String html,
   }) async {
+    final apiKey = _mailerSendApiKey;
+    if (apiKey.isEmpty) {
+      throw Exception('MailerSend API Key is missing.');
+    }
+
     try {
       final response = await http.post(
         Uri.parse('https://api.mailersend.com/v1/email'),
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_mailerSendApiKey',
+          'Authorization': 'Bearer $apiKey',
         },
         body: jsonEncode({
           'from': {
@@ -131,10 +129,12 @@ class CommunicationService {
       if (response.statusCode >= 200 && response.statusCode < 300) {
         debugPrint('Email sent successfully to $to');
       } else {
-        debugPrint('Failed to send email: ${response.body}');
+        final error = jsonDecode(response.body);
+        throw Exception('MailerSend Error: ${error['message'] ?? response.body}');
       }
     } catch (e) {
       debugPrint('Error sending email: $e');
+      rethrow;
     }
   }
 
