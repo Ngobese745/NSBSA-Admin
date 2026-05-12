@@ -1,38 +1,28 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class CommunicationService {
-  // Fallback to provided key if .env fails to load in local environment
-  String get _mailerSendApiKey => 
-    dotenv.env['MAILERSEND_API_KEY']?.isNotEmpty == true 
-      ? dotenv.env['MAILERSEND_API_KEY']! 
-      : 'mlsn.11f1310f9498cde8af14492685ebe997ae8246880b05c5e9cb62323217b4204e';
-
-  String get _weSenderApiKey => dotenv.env['WESENDER_API_KEY'] ?? '';
+  final _client = Supabase.instance.client;
 
   Future<void> sendPaymentReminder({required String toEmail, required String toPhone, required String amount}) async {
-    debugPrint('Preparing to send payment reminder for $amount');
+    debugPrint('Queuing payment reminder for $amount');
     
-    if (_mailerSendApiKey.isNotEmpty) {
-      await _sendEmail(
-        to: toEmail,
-        subject: 'Payment Reminder - NSBSA',
-        text: 'Dear member, this is a reminder for your upcoming payment of $amount. Please ensure funds are available.',
-        html: '<p>Dear member,</p><p>This is a reminder for your upcoming payment of <strong>$amount</strong>.</p><p>Please ensure funds are available.</p>',
-      );
-    }
+    await _client.from('email_outbox').insert({
+      'to_email': toEmail,
+      'subject': 'Payment Reminder - NSBSA',
+      'html_content': '<p>Dear member,</p><p>This is a reminder for your upcoming payment of <strong>$amount</strong>.</p><p>Please ensure funds are available.</p>',
+    });
   }
 
-  /// Sends temporary credentials to a new staff member.
+  /// Queues temporary credentials to a new staff member via the Database Outbox.
+  /// This bypasses CORS issues in Flutter Web by letting Supabase handle the HTTP call.
   Future<void> sendStaffCredentials({
     required String toEmail,
     required String fullName,
     required String tempPassword,
   }) async {
-    debugPrint('Sending branded staff credentials to $toEmail');
-
+    debugPrint('Queuing branded staff credentials for $toEmail');
+    
     final htmlTemplate = '''
 <!DOCTYPE html>
 <html>
@@ -87,56 +77,11 @@ class CommunicationService {
 </html>
 ''';
 
-    await _sendEmail(
-      to: toEmail,
-      subject: 'Welcome to NSBSA Admin - Your Account is Ready',
-      text: 'Welcome $fullName! Your account has been created. Email: $toEmail, Temporary Password: $tempPassword.',
-      html: htmlTemplate,
-    );
-  }
-
-  Future<void> _sendEmail({
-    required String to,
-    required String subject,
-    required String text,
-    required String html,
-  }) async {
-    final apiKey = _mailerSendApiKey;
-    if (apiKey.isEmpty) {
-      throw Exception('MailerSend API Key is missing.');
-    }
-
-    try {
-      final response = await http.post(
-        Uri.parse('https://api.mailersend.com/v1/email'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $apiKey',
-        },
-        body: jsonEncode({
-          'from': {
-            'email': 'noreply@nsbsa.org.za',
-            'name': 'NSBSA Admin',
-          },
-          'to': [
-            {'email': to}
-          ],
-          'subject': subject,
-          'text': text,
-          'html': html,
-        }),
-      );
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        debugPrint('Email sent successfully to $to');
-      } else {
-        final error = jsonDecode(response.body);
-        throw Exception('MailerSend Error: ${error['message'] ?? response.body}');
-      }
-    } catch (e) {
-      debugPrint('Error sending email: $e');
-      rethrow;
-    }
+    await _client.from('email_outbox').insert({
+      'to_email': toEmail,
+      'subject': 'Welcome to NSBSA Admin - Your Account is Ready',
+      'html_content': htmlTemplate,
+    });
   }
 
   Future<void> sendAnnouncement({required String groupRef, required String message}) async {
