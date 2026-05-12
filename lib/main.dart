@@ -17,11 +17,24 @@ Future<void> main() async {
     debugPrint("No .env file found. Proceeding without env variables.");
   }
 
-  final supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
-  final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
+  // Deep Scan Fix: Strip quotes and whitespace that often come from Vercel env vars
+  String supabaseUrl = (dotenv.env['SUPABASE_URL'] ?? '').trim();
+  String supabaseAnonKey = (dotenv.env['SUPABASE_ANON_KEY'] ?? '').trim();
+
+  // Remove leading/trailing quotes if they exist
+  if (supabaseUrl.startsWith('"') && supabaseUrl.endsWith('"')) {
+    supabaseUrl = supabaseUrl.substring(1, supabaseUrl.length - 1);
+  }
+  if (supabaseAnonKey.startsWith('"') && supabaseAnonKey.endsWith('"')) {
+    supabaseAnonKey = supabaseAnonKey.substring(1, supabaseAnonKey.length - 1);
+  }
 
   if (supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty) {
-    await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
+    await Supabase.initialize(
+      url: supabaseUrl,
+      anonKey: supabaseAnonKey,
+      debug: true, // Enable debug for better logging
+    );
   }
 
   runApp(const NsbsaAdminApp());
