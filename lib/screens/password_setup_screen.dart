@@ -103,9 +103,13 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
 
     try {
       // Update the user's password in Supabase
-      await Supabase.instance.client.auth.updateUser(
+      final response = await Supabase.instance.client.auth.updateUser(
         UserAttributes(password: password),
       );
+
+      if (response.user == null) {
+        throw Exception('Supabase failed to update user attributes.');
+      }
 
       // Log the event for security audit
       final email = Supabase.instance.client.auth.currentUser?.email ?? 'Unknown';
@@ -127,6 +131,10 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
             backgroundColor: Colors.green,
           ),
         );
+
+        // A small delay ensures the password update is fully propagated 
+        // in the Supabase backend before we destroy the current session.
+        await Future.delayed(const Duration(seconds: 1));
 
         // Sign out to force a clean login with the new password
         await Supabase.instance.client.auth.signOut();

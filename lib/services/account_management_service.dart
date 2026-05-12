@@ -9,17 +9,29 @@ import 'system_audit_service.dart';
 class AccountManagementService {
   static SupabaseClient? _adminClient;
 
+  /// Sanitizes environment variables by stripping quotes and whitespace.
+  static String _sanitize(String? value) {
+    if (value == null) return '';
+    String result = value.trim();
+    if (result.startsWith('"') && result.endsWith('"')) {
+      result = result.substring(1, result.length - 1);
+    } else if (result.startsWith("'") && result.endsWith("'")) {
+      result = result.substring(1, result.length - 1);
+    }
+    return result;
+  }
+
   /// Returns a service-role Supabase client.
   /// The service role key must be set in .env as SUPABASE_SERVICE_ROLE_KEY.
   static SupabaseClient get _admin {
     if (_adminClient != null) return _adminClient!;
 
-    final url = dotenv.env['SUPABASE_URL'] ?? '';
-    final serviceKey = dotenv.env['SUPABASE_SERVICE_ROLE_KEY'] ?? '';
+    final url = _sanitize(dotenv.env['SUPABASE_URL']);
+    final serviceKey = _sanitize(dotenv.env['SUPABASE_SERVICE_ROLE_KEY']);
 
     if (url.isEmpty || serviceKey.isEmpty) {
       throw Exception(
-        'SUPABASE_SERVICE_ROLE_KEY is not set in .env. '
+        'SUPABASE_SERVICE_ROLE_KEY or SUPABASE_URL is not set or malformed in .env. '
         'Add it from Supabase Dashboard → Project Settings → API.',
       );
     }
@@ -65,11 +77,15 @@ class AccountManagementService {
     required String fullName,
     required String role,
     required String operatorEmail,
+    String? redirectTo,
   }) async {
     // 1. Invite the user via Supabase Auth (creates auth.users row + email).
+    // Use the provided redirectTo or fallback to the production URL.
+    final targetRedirect = redirectTo ?? 'https://nsbsa-admin.vercel.app/auth/setup-password';
+    
     final inviteResponse = await _admin.auth.admin.inviteUserByEmail(
       email,
-      redirectTo: 'https://nsbsa-admin.vercel.app/auth/setup-password',
+      redirectTo: targetRedirect,
       data: {'full_name': fullName},
     );
     final newUser = inviteResponse.user;

@@ -1561,6 +1561,7 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                           operatorEmail:
                               context.read<AuthProvider>().currentUser?.email ??
                               'Unknown',
+                          redirectTo: '${Uri.base.origin}/auth/setup-password',
                         );
                         if (mounted) {
                           Navigator.pop(dialogCtx);
