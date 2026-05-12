@@ -47,19 +47,20 @@ class LoanCalculationService {
     final totalPaid = payments.fold(0.0, (sum, p) => sum + p.amountPaid);
     
     final initiationFee = loan.initiationFee ?? 0.0;
-    
-    // Admin fees are usually cumulative for the duration
-    // Here we use the simplified logic from the UI: (adminFee * duration)
-    // but the user might prefer it to be monthly. 
-    // The current UI uses: (loan.monthlyAdminFee ?? 0) * loan.durationMonths
     final totalAdminFee = (loan.monthlyAdminFee ?? 0.0) * loan.durationMonths;
-    
     final appliedPenalty = calculateAppliedPenalty(loan, payments);
-    
     final openingAmount = loan.openingAmount ?? 0.0;
     
     final totalLiability = loan.amount + openingAmount + initiationFee + totalAdminFee + appliedPenalty;
     
-    return totalLiability - totalPaid;
+    final balance = totalLiability - totalPaid;
+    
+    // Prevent over-calculation resulting in negative balances
+    return balance < 0.01 ? 0.0 : balance;
+  }
+
+  /// Checks if a loan is fully settled.
+  static bool isSettled(LoanModel loan, List<PaymentModel> payments) {
+    return calculateBalance(loan, payments) <= 0.01;
   }
 }

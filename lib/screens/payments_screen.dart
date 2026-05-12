@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../core/pdf_branding.dart';
 import 'package:provider/provider.dart';
 import '../providers/payment_provider.dart';
 
@@ -9,7 +11,6 @@ import '../models/vendor.dart';
 import '../models/loan.dart';
 import '../models/group.dart';
 import '../providers/group_provider.dart';
-import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -582,8 +583,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   ) async {
     final pdf = pw.Document();
 
-    final logoImage = await rootBundle.load('assets/images/NSBSA Logo (1).png');
-    final logo = pw.MemoryImage(logoImage.buffer.asUint8List());
+    final logo = await PdfBranding.loadLogo();
 
     pdf.addPage(
       pw.Page(

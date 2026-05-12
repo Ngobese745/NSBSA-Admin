@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/payment.dart';
 import '../models/group_payment.dart';
+import '../models/loan.dart';
 import '../services/cache_service.dart';
+import '../services/loan_calculation_service.dart';
+import '../services/system_audit_service.dart';
+
 
 class PaymentProvider with ChangeNotifier {
   final _supabase = Supabase.instance.client;
@@ -38,15 +42,29 @@ class PaymentProvider with ChangeNotifier {
     }
   }
 
-  Future<PaymentModel> addPayment(PaymentModel payment) async {
+  Future<PaymentModel> addPayment(PaymentModel payment, {LoanModel? loan}) async {
     try {
       final response = await _supabase.from('payments').insert(payment.toJson()).select().single();
       final newPayment = PaymentModel.fromJson(response);
       
       _payments.insert(0, newPayment);
-      notifyListeners();
       
+      // Check for loan settlement if loan model is provided
+      if (loan != null) {
+        final loanPayments = _payments.where((p) => p.loanId == loan.id).toList();
+        if (LoanCalculationService.isSettled(loan, loanPayments)) {
+          await _supabase.from('loans').update({'status': 'Settled'}).eq('id', loan.id);
+        }
+      }
+      
+      notifyListeners();
       CacheService.saveCache('payments_cache', _payments.map((e) => e.toJson()).toList());
+      
+      SystemAuditService.logAction(
+        actionType: 'RECORD_PAYMENT',
+        affectedEntity: 'Loan ID: ${payment.loanId}',
+        description: 'Recorded payment of R${payment.amountPaid}.',
+      );
       
       return newPayment;
     } catch (e) {
@@ -55,7 +73,7 @@ class PaymentProvider with ChangeNotifier {
     }
   }
 
-  Future<void> addGroupPayment(String groupId, List<PaymentModel> memberPayments) async {
+  Future<void> addGroupPayment(String groupId, List<PaymentModel> memberPayments, {List<LoanModel>? loans}) async {
     try {
       final totalAmount = memberPayments.fold(0.0, (sum, p) => sum + p.amountPaid);
       
@@ -79,8 +97,26 @@ class PaymentProvider with ChangeNotifier {
       // 3. Bulk insert individual payments
       await _supabase.from('payments').insert(paymentsToInsert);
 
-      // Refresh payments list
+      // Refresh payments list locally
       await fetchPayments(forceRefresh: true);
+
+      // 4. Check for loan settlements
+      if (loans != null) {
+        for (final loan in loans) {
+          final loanPayments = _payments.where((p) => p.loanId == loan.id).toList();
+          if (LoanCalculationService.isSettled(loan, loanPayments)) {
+            await _supabase.from('loans').update({'status': 'Settled'}).eq('id', loan.id);
+          }
+        }
+      }
+      
+      SystemAuditService.logAction(
+        actionType: 'RECORD_GROUP_PAYMENT',
+        affectedEntity: 'Group ID: $groupId',
+        description: 'Recorded group payment totaling R$totalAmount for ${memberPayments.length} members.',
+      );
+
+      notifyListeners();
     } catch (e) {
       debugPrint('Error adding group payment: $e');
       rethrow;
@@ -94,6 +130,12 @@ class PaymentProvider with ChangeNotifier {
       _payments.removeWhere((p) => p.id == id);
       notifyListeners();
       CacheService.saveCache('payments_cache', _payments.map((e) => e.toJson()).toList());
+      
+      SystemAuditService.logAction(
+        actionType: 'DELETE_PAYMENT',
+        affectedEntity: 'Payment ID: $id',
+        description: 'Deleted payment record from the system.',
+      );
     } catch (e) {
       debugPrint('Error deleting payment: $e');
       rethrow;

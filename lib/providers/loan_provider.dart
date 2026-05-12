@@ -3,6 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/loan.dart';
 
 import '../services/cache_service.dart';
+import '../services/system_audit_service.dart';
+
 
 class LoanProvider with ChangeNotifier {
   final _supabase = Supabase.instance.client;
@@ -49,6 +51,12 @@ class LoanProvider with ChangeNotifier {
       // Background cache sync
       CacheService.saveCache('loans_cache', _loans.map((e) => e.toJson()).toList());
       
+      SystemAuditService.logAction(
+        actionType: 'CREATE_LOAN',
+        affectedEntity: 'Loan for Vendor: ${loan.vendorId}',
+        description: 'Created a new loan for R${loan.amount}. Status: ${loan.status}',
+      );
+      
       return newLoan;
     } catch (e) {
       debugPrint('Error adding loan: $e');
@@ -79,6 +87,11 @@ class LoanProvider with ChangeNotifier {
         _loans[index] = updatedLoan;
         notifyListeners();
         CacheService.saveCache('loans_cache', _loans.map((e) => e.toJson()).toList());
+        SystemAuditService.logAction(
+          actionType: 'UPDATE_LOAN',
+          affectedEntity: 'Loan ID: $id',
+          description: 'Updated loan details or status.',
+        );
       }
     } catch (e) {
       debugPrint('Error updating loan: $e');
@@ -93,6 +106,11 @@ class LoanProvider with ChangeNotifier {
       _loans.removeWhere((l) => l.id == id);
       notifyListeners();
       CacheService.saveCache('loans_cache', _loans.map((e) => e.toJson()).toList());
+      SystemAuditService.logAction(
+        actionType: 'DELETE_LOAN',
+        affectedEntity: 'Loan ID: $id',
+        description: 'Deleted loan record from the system.',
+      );
     } catch (e) {
       debugPrint('Error deleting loan: $e');
       rethrow;

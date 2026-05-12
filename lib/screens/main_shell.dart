@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+
+import '../core/app_assets.dart';
+import '../core/app_breakpoints.dart';
 import 'dashboard_screen.dart';
 import 'groups_screen.dart';
 import 'vendors_screen.dart';
@@ -8,12 +11,23 @@ import 'import_screen.dart';
 import 'reports_screen.dart';
 import 'group_details_screen.dart';
 import 'loan_details_screen.dart';
+import 'user_management_screen.dart';
 import '../providers/search_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/theme_provider.dart';
+import '../providers/group_provider.dart';
+import '../providers/vendor_provider.dart';
+import '../providers/loan_provider.dart';
+import '../providers/payment_provider.dart';
 import 'package:provider/provider.dart';
 import 'vendor_profile_screen.dart';
 import 'user_profile_screen.dart';
+import 'analytics_screen.dart';
+import 'developer_management_screen.dart';
+import '../providers/developer_controls_provider.dart';
+import '../services/access_control_service.dart';
+import '../widgets/feature_disabled_placeholder.dart';
+import '../widgets/system_status_banner_strip.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -24,20 +38,11 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
+  String? _dismissedStripBannerId;
   bool _isSidebarVisible = true;
   final LayerLink _layerLink = LayerLink();
   OverlayEntry? _overlayEntry;
   final TextEditingController _searchController = TextEditingController();
-
-  final List<Widget> _screens = [
-    const DashboardScreen(),
-    const GroupsScreen(),
-    const VendorsScreen(),
-    const LoansScreen(),
-    const PaymentsScreen(),
-    const ReportsScreen(),
-    const ImportScreen(),
-  ];
 
   final List<String> _titles = [
     'Dashboard',
@@ -45,14 +50,61 @@ class _MainShellState extends State<MainShell> {
     'Vendors',
     'Loan Tracking',
     'Payments',
+    'Advanced Analytics',
     'Financial Reports',
     'Import Data',
+    'User Management',
+    'Developer Management',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<DeveloperControlsProvider>().refresh();
+    });
+  }
+
+  Widget _shellBodyForIndex(int index) {
+    final dev = context.watch<DeveloperControlsProvider>();
+    Widget guard(String key, Widget child) {
+      if (!dev.isFeatureEnabled(key)) {
+        return FeatureDisabledPlaceholder(featureKey: key);
+      }
+      return child;
+    }
+    switch (index) {
+      case 0:
+        return guard('dashboard', const DashboardScreen());
+      case 1:
+        return guard('groups', const GroupsScreen());
+      case 2:
+        return guard('vendors', const VendorsScreen());
+      case 3:
+        return guard('loans', const LoansScreen());
+      case 4:
+        return guard('payments', const PaymentsScreen());
+      case 5:
+        return guard('analytics', const AnalyticsScreen());
+      case 6:
+        return guard('reports', const ReportsScreen());
+      case 7:
+        return guard('import', const ImportScreen());
+      case 8:
+        return guard('user_management', const UserManagementScreen());
+      case 9:
+        return const DeveloperManagementScreen();
+      default:
+        return guard('dashboard', const DashboardScreen());
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDesktop = MediaQuery.of(context).size.width >= 800;
+    final isDesktop =
+        MediaQuery.of(context).size.width >= AppBreakpoints.shellDesktopMin;
     final isLight = theme.brightness == Brightness.light;
 
     return Scaffold(
@@ -97,7 +149,7 @@ class _MainShellState extends State<MainShell> {
                           const SizedBox(width: 8),
                           // Header Logo
                           Image.asset(
-                            'assets/images/NSBSA Logo (1).png',
+                            AppAssets.logo,
                             height: 58,
                             fit: BoxFit.contain,
                             errorBuilder: (context, error, stackTrace) => const Icon(Icons.account_balance_wallet, color: Colors.white, size: 36),
@@ -126,6 +178,19 @@ class _MainShellState extends State<MainShell> {
                       ),
                     ),
                     const Spacer(),
+                    IconButton(
+                      tooltip: 'Refresh data & system banner',
+                      icon: const Icon(Icons.refresh, color: Colors.white70, size: 22),
+                      onPressed: () {
+                        setState(() => _dismissedStripBannerId = null);
+                        context.read<DeveloperControlsProvider>().refresh();
+                        context.read<GroupProvider>().fetchGroups(forceRefresh: true);
+                        context.read<VendorProvider>().fetchVendors(forceRefresh: true);
+                        context.read<LoanProvider>().fetchLoans(forceRefresh: true);
+                        context.read<PaymentProvider>().fetchPayments(forceRefresh: true);
+                      },
+                    ),
+                    const SizedBox(width: 8),
                     // Search Bar
                     SizedBox(
                       width: 320,
@@ -192,37 +257,43 @@ class _MainShellState extends State<MainShell> {
                     const SizedBox(width: 24),
                     // Profile Button
                     PopupMenuButton<String>(
-                      offset: const Offset(0, 50),
-                      color: theme.cardColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: theme.primaryColor.withOpacity(0.2)),
-                      ),
-                      child: Row(
-                        children: [
-                          Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                'Administrator',
-                                style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                              ),
-                              Text(
-                                'Colane',
-                                style: TextStyle(color: Colors.white70, fontSize: 10),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(width: 12),
-                          CircleAvatar(
-                            radius: 16,
-                            backgroundColor: theme.primaryColor.withOpacity(0.2),
-                            child: const Icon(Icons.person, color: Colors.white, size: 18),
-                          ),
-                          const Icon(Icons.keyboard_arrow_down, color: Colors.white54, size: 18),
-                        ],
-                      ),
+                       offset: const Offset(0, 50),
+                       color: theme.cardColor,
+                       shape: RoundedRectangleBorder(
+                         borderRadius: BorderRadius.circular(12),
+                         side: BorderSide(color: theme.primaryColor.withOpacity(0.2)),
+                       ),
+                       child: Builder(builder: (context) {
+                         final authProvider = context.watch<AuthProvider>();
+                         final profile = authProvider.userProfile;
+                         final displayName = profile?.fullName ?? authProvider.currentUser?.email?.split('@').first ?? 'User';
+                         final role = authProvider.userRole;
+                         return Row(
+                           children: [
+                             Column(
+                               mainAxisAlignment: MainAxisAlignment.center,
+                               crossAxisAlignment: CrossAxisAlignment.end,
+                               children: [
+                                 Text(
+                                   displayName,
+                                   style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                                 ),
+                                 Text(
+                                   role,
+                                   style: const TextStyle(color: Colors.white70, fontSize: 10),
+                                 ),
+                               ],
+                             ),
+                             const SizedBox(width: 12),
+                             CircleAvatar(
+                               radius: 16,
+                               backgroundColor: theme.primaryColor.withOpacity(0.2),
+                               child: const Icon(Icons.person, color: Colors.white, size: 18),
+                             ),
+                             const Icon(Icons.keyboard_arrow_down, color: Colors.white54, size: 18),
+                           ],
+                         );
+                       }),
                       onSelected: (value) {
                         if (value == 'logout') {
                           context.read<AuthProvider>().logout();
@@ -267,11 +338,22 @@ class _MainShellState extends State<MainShell> {
                 ),
               ),
             ),
+          Consumer<DeveloperControlsProvider>(
+            builder: (context, dev, _) {
+              final b = dev.primaryActiveBanner;
+              if (b == null) return const SizedBox.shrink();
+              if (_dismissedStripBannerId == b.id) return const SizedBox.shrink();
+              return SystemStatusBannerStrip(
+                banner: b,
+                onDismiss: () => setState(() => _dismissedStripBannerId = b.id),
+              );
+            },
+          ),
           Expanded(
             child: Row(
               children: [
                 if (isDesktop && _isSidebarVisible) _buildSidebar(theme),
-                Expanded(child: _screens[_selectedIndex]),
+                Expanded(child: _shellBodyForIndex(_selectedIndex)),
               ],
             ),
           ),
@@ -299,6 +381,8 @@ class _MainShellState extends State<MainShell> {
 
   Widget _buildNavigationContent(ThemeData theme) {
     final isLight = theme.brightness == Brightness.light;
+    final profile = context.watch<AuthProvider>().userProfile;
+
     return Column(
       children: [
         const SizedBox(height: 16),
@@ -306,13 +390,27 @@ class _MainShellState extends State<MainShell> {
           child: ListView(
             padding: const EdgeInsets.symmetric(vertical: 8),
             children: [
-              _buildNavItem(Icons.dashboard, 'Dashboard', 0),
-              _buildNavItem(Icons.group, 'Groups', 1),
-              _buildNavItem(Icons.person, 'Vendors', 2),
-              _buildNavItem(Icons.account_balance, 'Loans', 3),
-              _buildNavItem(Icons.payment, 'Payments', 4),
-              _buildNavItem(Icons.assessment, 'Reports', 5),
-              _buildNavItem(Icons.upload_file, 'Import Data', 6),
+              _buildNavItem(Icons.dashboard, 'Dashboard', 0, featureKey: 'dashboard'),
+              _buildNavItem(Icons.group, 'Groups', 1, featureKey: 'groups'),
+              _buildNavItem(Icons.person, 'Vendors', 2, featureKey: 'vendors'),
+              if (AccessControlService.canProcessPayments(profile)) ...[  
+                _buildNavItem(Icons.account_balance, 'Loans', 3, featureKey: 'loans'),
+                _buildNavItem(Icons.payment, 'Payments', 4, featureKey: 'payments'),
+              ],
+              if (AccessControlService.canViewReports(profile))
+                _buildNavItem(Icons.insights, 'Analytics', 5, featureKey: 'analytics'),
+              if (AccessControlService.canViewReports(profile))
+                _buildNavItem(Icons.assessment, 'Reports', 6, featureKey: 'reports'),
+              if (!AccessControlService.isFieldAgent(profile))
+                _buildNavItem(Icons.upload_file, 'Import Data', 7, featureKey: 'import'),
+              if (AccessControlService.canManageUsers(profile)) ...[  
+                const Divider(height: 24, thickness: 0.3, indent: 16, endIndent: 16),
+                _buildNavItem(Icons.manage_accounts, 'User Management', 8, featureKey: 'user_management'),
+              ],
+              if (AccessControlService.canAccessDeveloperTools(profile)) ...[
+                const Divider(height: 24, thickness: 0.3, indent: 16, endIndent: 16),
+                _buildNavItem(Icons.developer_mode, 'Developer Management', 9),
+              ],
             ],
           ),
         ),
@@ -329,41 +427,55 @@ class _MainShellState extends State<MainShell> {
     );
   }
 
-  Widget _buildNavItem(IconData icon, String title, int index) {
+  Widget _buildNavItem(IconData icon, String title, int index, {String? featureKey}) {
     final isSelected = _selectedIndex == index;
     final theme = Theme.of(context);
     final isLight = theme.brightness == Brightness.light;
+    final dev = context.watch<DeveloperControlsProvider>();
+    final featureOn = featureKey == null || dev.isFeatureEnabled(featureKey);
 
     // In Light mode, sidebar is gold, so we need strong black contrast.
     final activeColor = isLight ? Colors.black : theme.primaryColor;
     final inactiveColor = isLight ? Colors.black87 : Colors.grey;
+    final baseColor = isSelected ? activeColor : inactiveColor;
+    final color = featureOn ? baseColor : baseColor.withOpacity(0.35);
 
-    return ListTile(
-      dense: true,
-      visualDensity: VisualDensity.compact,
-      leading: Icon(
-        icon,
-        size: 18,
-        color: isSelected ? activeColor : inactiveColor,
-      ),
-      title: Text(
-        title,
-        style: TextStyle(
-          fontSize: 13,
-          color: isSelected ? activeColor : inactiveColor,
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+    return Opacity(
+      opacity: featureOn ? 1 : 0.45,
+      child: ListTile(
+        dense: true,
+        visualDensity: VisualDensity.compact,
+        leading: Icon(
+          icon,
+          size: 18,
+          color: color,
         ),
+        title: Text(
+          title,
+          style: TextStyle(
+            fontSize: 13,
+            color: color,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+          ),
+        ),
+        selected: isSelected,
+        selectedTileColor: isLight ? Colors.white.withOpacity(0.3) : theme.primaryColor.withOpacity(0.08),
+        onTap: () {
+          if (!featureOn) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('This feature is temporarily unavailable.')),
+            );
+            return;
+          }
+          setState(() {
+            _selectedIndex = index;
+          });
+          if (MediaQuery.of(context).size.width <
+              AppBreakpoints.shellDesktopMin) {
+            Navigator.pop(context); // Close drawer
+          }
+        },
       ),
-      selected: isSelected,
-      selectedTileColor: isLight ? Colors.white.withOpacity(0.3) : theme.primaryColor.withOpacity(0.08),
-      onTap: () {
-        setState(() {
-          _selectedIndex = index;
-        });
-        if (MediaQuery.of(context).size.width < 800) {
-          Navigator.pop(context); // Close drawer
-        }
-      },
     );
   }
 

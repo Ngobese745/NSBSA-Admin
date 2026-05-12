@@ -8,10 +8,10 @@ import '../providers/group_provider.dart';
 import '../providers/payment_provider.dart';
 import '../providers/vendor_provider.dart';
 import '../providers/loan_provider.dart';
+import '../core/pdf_branding.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:flutter/services.dart';
 import '../services/loan_calculation_service.dart';
 
 class LoanDetailsScreen extends StatelessWidget {
@@ -28,7 +28,7 @@ class LoanDetailsScreen extends StatelessWidget {
     
     final group = groupProvider.groups.firstWhere(
       (g) => g.id == loan.groupId,
-      orElse: () => GroupModel(id: '', name: 'Unknown Group', referenceNumber: '', createdAt: DateTime.now()),
+      orElse: GroupModel.unknown,
     );
 
     final vendor = loan.vendorId != null 
@@ -143,13 +143,21 @@ class LoanDetailsScreen extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: loan.status == 'Active' ? Colors.green.withOpacity(0.1) : Colors.amber.withOpacity(0.1),
+                    color: loan.status == 'Active' 
+                        ? Colors.green.withOpacity(0.1) 
+                        : loan.status == 'Settled'
+                            ? Colors.blue.withOpacity(0.1)
+                            : Colors.amber.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
                     loan.status.toUpperCase(),
                     style: TextStyle(
-                      color: loan.status == 'Active' ? Colors.green : Colors.amber,
+                      color: loan.status == 'Active' 
+                          ? Colors.green 
+                          : loan.status == 'Settled'
+                              ? Colors.blueAccent
+                              : Colors.amber,
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
                     ),
@@ -223,20 +231,35 @@ class LoanDetailsScreen extends StatelessWidget {
             ElevatedButton(
               onPressed: () async {
                 final amount = double.tryParse(amountController.text) ?? 0;
+                final loanPayments = context.read<PaymentProvider>().payments.where((p) => p.loanId == loan.id).toList();
+                final currentBalance = LoanCalculationService.calculateBalance(loan, loanPayments);
+                
+                if (amount > currentBalance + 0.01) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Payment R $amount exceeds outstanding balance R ${currentBalance.toStringAsFixed(2)}')),
+                  );
+                  return;
+                }
+
                 if (amount > 0) {
-                  await context.read<PaymentProvider>().addPayment(PaymentModel(
-                    id: '',
-                    loanId: loan.id,
-                    amountPaid: amount,
-                    paymentMethod: selectedType,
-                    datePaid: DateTime.now(),
-                    createdAt: DateTime.now(),
-                  ));
+                  await context.read<PaymentProvider>().addPayment(
+                    PaymentModel(
+                      id: '',
+                      loanId: loan.id,
+                      amountPaid: amount,
+                      paymentMethod: selectedType,
+                      datePaid: DateTime.now(),
+                      createdAt: DateTime.now(),
+                    ),
+                    loan: loan,
+                  );
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Payment recorded successfully!')),
                     );
                     Navigator.pop(context);
+                    // Refresh loan provider to show updated status
+                    context.read<LoanProvider>().fetchLoans(forceRefresh: true);
                   }
                 }
               },
@@ -519,9 +542,7 @@ class LoanDetailsScreen extends StatelessWidget {
 
   Future<void> _generateLoanPDF(BuildContext context, GroupModel group, VendorModel? vendor, double totalPaid, double balance, List<PaymentModel> payments) async {
     final pdf = pw.Document();
-    
-    ByteData bytes = await rootBundle.load('assets/images/logo.png');
-    final Uint8List logoData = bytes.buffer.asUint8List();
+    final logo = await PdfBranding.loadLogo();
 
     pdf.addPage(
       pw.MultiPage(
@@ -533,7 +554,7 @@ class LoanDetailsScreen extends StatelessWidget {
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
-                pw.Image(pw.MemoryImage(logoData), width: 120),
+                pw.Image(logo, width: 120),
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.end,
                   children: [

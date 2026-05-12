@@ -11,6 +11,16 @@ class GroupModel {
     required this.createdAt,
   });
 
+  /// Placeholder when a group cannot be resolved (lists, lookups).
+  factory GroupModel.unknown() {
+    return GroupModel(
+      id: '',
+      referenceNumber: '',
+      name: 'Unknown Group',
+      createdAt: DateTime.now(),
+    );
+  }
+
   factory GroupModel.fromJson(Map<String, dynamic> json) {
     return GroupModel(
       id: json['id'],

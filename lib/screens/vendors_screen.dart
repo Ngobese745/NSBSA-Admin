@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+
+import '../core/pdf_branding.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -31,9 +32,7 @@ class _VendorsScreenState extends State<VendorsScreen> {
     final groupProvider = context.read<GroupProvider>();
     final pdf = pw.Document();
     
-    // Load logo
-    final logoImage = await rootBundle.load('assets/images/NSBSA Logo (1).png');
-    final logo = pw.MemoryImage(logoImage.buffer.asUint8List());
+    final logo = await PdfBranding.loadLogo();
 
     pdf.addPage(
       pw.MultiPage(

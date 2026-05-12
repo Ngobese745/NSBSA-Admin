@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+
+import '../core/pdf_branding.dart';
 import 'package:provider/provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -119,7 +120,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
       0.0,
       (sum, p) => sum + p.amountPaid,
     );
-    final totalOutstanding = totalDisbursed - totalCollected;
+    // Calculate Total Outstanding by summing individual loan balances
+    double totalOutstanding = 0;
+    for (final loan in loanProvider.loans) {
+      final loanPayments = paymentProvider.payments.where((p) => p.loanId == loan.id).toList();
+      totalOutstanding += LoanCalculationService.calculateBalance(loan, loanPayments);
+    }
     final totalSavings = vendorProvider.vendors.fold(
       0.0,
       (sum, v) => sum + (v.savingsAmount ?? 0.0),
@@ -463,10 +469,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
     Color color,
   ) {
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: theme.cardColor,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withOpacity(0.1)),
       ),
       child: Column(
@@ -475,31 +481,31 @@ class _ReportsScreenState extends State<ReportsScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Icon(icon, color: color, size: 28),
+              Icon(icon, color: color, size: 20),
               Container(
-                padding: const EdgeInsets.all(4),
+                padding: const EdgeInsets.all(2),
                 decoration: BoxDecoration(
                   color: color.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.trending_up, color: color, size: 14),
+                child: Icon(Icons.trending_up, color: color, size: 10),
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
           Text(
             title,
             style: TextStyle(
               color: Colors.grey[400],
-              fontSize: 13,
+              fontSize: 11,
               fontWeight: FontWeight.w500,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           Text(
             value,
             style: TextStyle(
-              fontSize: 24,
+              fontSize: 20,
               fontWeight: FontWeight.bold,
               color: color,
             ),
@@ -617,9 +623,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
     final pdf = pw.Document();
 
-    // Load logo
-    final logoImage = await rootBundle.load('assets/images/NSBSA Logo (1).png');
-    final logo = pw.MemoryImage(logoImage.buffer.asUint8List());
+    final logo = await PdfBranding.loadLogo();
 
     pdf.addPage(
       pw.MultiPage(

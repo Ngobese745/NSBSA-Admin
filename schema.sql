@@ -156,3 +156,131 @@ CREATE POLICY "Enable delete for all users" ON public.documents FOR DELETE USING
 
 CREATE INDEX IF NOT EXISTS idx_documents_group_id ON public.documents(group_id);
 CREATE INDEX IF NOT EXISTS idx_documents_vendor_id ON public.documents(vendor_id);
+
+-- 6. Create savings_history table
+CREATE TABLE IF NOT EXISTS public.savings_history (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    vendor_id UUID REFERENCES public.vendors(id) ON DELETE CASCADE,
+    amount NUMERIC NOT NULL,
+    previous_balance NUMERIC NOT NULL,
+    new_balance NUMERIC NOT NULL,
+    action_type TEXT NOT NULL, -- Deposit, Withdrawal, Adjustment
+    updated_by TEXT NOT NULL, -- User email or ID
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Enable RLS for savings_history
+ALTER TABLE public.savings_history ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Enable read access for all users" ON public.savings_history FOR SELECT USING (true);
+CREATE POLICY "Enable insert for all users" ON public.savings_history FOR INSERT WITH CHECK (true);
+-- Note: Audit logs are immutable (no update or delete)
+
+CREATE INDEX IF NOT EXISTS idx_savings_history_vendor_id ON public.savings_history(vendor_id);
+
+-- 7. Create profiles table for user roles
+CREATE TABLE IF NOT EXISTS public.profiles (
+    id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
+    email TEXT,
+    full_name TEXT,
+    department TEXT,
+    role TEXT NOT NULL DEFAULT 'Development Facilitator', -- Default to lowest access
+    status TEXT NOT NULL DEFAULT 'Active',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    
+    CONSTRAINT valid_role CHECK (role IN (
+        'Super Admin',
+        'Admin',
+        'Finance',
+        'Marketing',
+        'Development Facilitator',
+        'Verifying Operator'
+    )),
+    CONSTRAINT valid_profile_status CHECK (status IN ('Active', 'Blocked'))
+);
+
+-- Enable RLS for profiles
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+-- Profiles Policies
+CREATE POLICY "Public profiles are viewable by everyone" ON public.profiles FOR SELECT USING (true);
+CREATE POLICY "Users can update their own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Super Admins can manage all profiles" ON public.profiles ALL USING (
+    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'Super Admin')
+);
+CREATE POLICY "Admins can update non-critical profile fields" ON public.profiles FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('Super Admin', 'Admin'))
+);
+
+-- Note: In a production app, you would refine the RLS policies for all other tables
+-- to use the role-based checks. For example:
+-- CREATE POLICY "Finance can update payments" ON public.payments FOR UPDATE
+-- USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('Super Admin', 'Finance')));
+
+-- ============================================================
+-- SEED: Developer / Owner account — Full Super Admin access
+-- ============================================================
+INSERT INTO public.profiles (id, email, full_name, role)
+SELECT
+    id,
+    email,
+    COALESCE(raw_user_meta_data->>'full_name', 'Colane Ngobese'),
+    'Super Admin'
+FROM auth.users
+WHERE email = 'colane@mwelasefin.co.za'
+ON CONFLICT (id) DO UPDATE
+    SET role      = 'Super Admin',
+        email     = EXCLUDED.email,
+        full_name = COALESCE(EXCLUDED.full_name, public.profiles.full_name);
+
+-- ============================================================
+-- 8. Password Reset Requests
+--    Staff submit requests; Super Admin must approve before
+--    a reset link is sent.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.password_reset_requests (
+    id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_email  TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'approved', 'rejected')),
+    reviewed_by TEXT,            -- operator email who acted on the request
+    reviewed_at TIMESTAMP WITH TIME ZONE,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+
+ALTER TABLE public.password_reset_requests ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "reset_requests_select" ON public.password_reset_requests;
+DROP POLICY IF EXISTS "reset_requests_insert" ON public.password_reset_requests;
+DROP POLICY IF EXISTS "reset_requests_update" ON public.password_reset_requests;
+CREATE POLICY "reset_requests_select" ON public.password_reset_requests FOR SELECT USING (true);
+CREATE POLICY "reset_requests_insert" ON public.password_reset_requests FOR INSERT WITH CHECK (true);
+CREATE POLICY "reset_requests_update" ON public.password_reset_requests FOR UPDATE USING (true);
+
+CREATE INDEX IF NOT EXISTS idx_reset_requests_status ON public.password_reset_requests(status);
+CREATE INDEX IF NOT EXISTS idx_reset_requests_email  ON public.password_reset_requests(user_email);
+
+-- ============================================================
+-- 9. Account Audit Log (IMMUTABLE)
+--    Records every account creation, password set/reset event.
+--    No UPDATE or DELETE policy — entries cannot be altered.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.account_audit_log (
+    id             UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    event_type     TEXT NOT NULL,   -- account_created | password_set | reset_requested | reset_approved | reset_rejected
+    target_email   TEXT NOT NULL,
+    operator_email TEXT,            -- who performed the action (null = self-service)
+    metadata       JSONB,
+    created_at     TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+
+ALTER TABLE public.account_audit_log ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "audit_log_select" ON public.account_audit_log;
+DROP POLICY IF EXISTS "audit_log_insert" ON public.account_audit_log;
+CREATE POLICY "audit_log_select" ON public.account_audit_log FOR SELECT USING (true);
+CREATE POLICY "audit_log_insert" ON public.account_audit_log FOR INSERT WITH CHECK (true);
+-- NOTE: No UPDATE or DELETE policy — audit logs are immutable by design.
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_event       ON public.account_audit_log(event_type);
+CREATE INDEX IF NOT EXISTS idx_audit_log_target      ON public.account_audit_log(target_email);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created_at  ON public.account_audit_log(created_at DESC);
+
+

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
+import '../core/app_breakpoints.dart';
+import '../core/group_loan_risk.dart';
 import '../providers/group_provider.dart';
 import '../providers/loan_provider.dart';
 import '../providers/payment_provider.dart';
 import '../theme/app_theme.dart';
-import '../screens/loan_details_screen.dart';
+import 'loan_details_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -35,11 +37,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final totalGroups = groupProvider.groups.length;
     final totalDisbursed = loanProvider.loans.fold(0.0, (sum, loan) => sum + loan.amount);
     final totalCollected = paymentProvider.payments.fold(0.0, (sum, p) => sum + p.amountPaid);
-    final overdueCount = loanProvider.loans.where((loan) => loan.status == 'Overdue').length;
-    final groupRisks = _calculateGroupRisks(groupProvider, loanProvider);
+    final groupRisks = computeGroupLoanRiskSummaries(
+      groups: groupProvider.groups,
+      loans: loanProvider.loans,
+    );
     
+    final isDesktop =
+        MediaQuery.of(context).size.width >= AppBreakpoints.wideContentMin;
+    final isTablet =
+        MediaQuery.of(context).size.width >= AppBreakpoints.contentTabletMin;
+
     return Padding(
-      padding: const EdgeInsets.all(24.0),
+      padding: EdgeInsets.all(isTablet ? 24.0 : 16.0),
       child: CustomScrollView(
         slivers: [
           SliverToBoxAdapter(
@@ -51,26 +60,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, letterSpacing: 0.5),
                 ),
                 const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(child: _buildPremiumStatCard(context, 'Total Groups', totalGroups.toString(), Icons.group_outlined, [const Color(0xFFD4AF37), const Color(0xFFB8860B)])),
-                    const SizedBox(width: 16),
-                    Expanded(child: _buildPremiumStatCard(context, 'Total Disbursed', 'R ${totalDisbursed.toStringAsFixed(0)}', Icons.account_balance_outlined, [const Color(0xFFC5A028), const Color(0xFF8B6B01)])),
-                    const SizedBox(width: 16),
-                    Expanded(child: _buildPremiumStatCard(context, 'Total Collected', 'R ${totalCollected.toStringAsFixed(0)}', Icons.payments_outlined, [const Color(0xFFE5B942), const Color(0xFF996515)])),
-                  ],
-                ),
+                if (isTablet)
+                  Row(
+                    children: [
+                      Expanded(child: _buildPremiumStatCard(context, 'Groups', totalGroups.toString(), Icons.group_outlined, [const Color(0xFFD4AF37), const Color(0xFFB8860B)])),
+                      const SizedBox(width: 16),
+                      Expanded(child: _buildPremiumStatCard(context, 'Disbursed', 'R ${totalDisbursed.toStringAsFixed(0)}', Icons.account_balance_outlined, [const Color(0xFFC5A028), const Color(0xFF8B6B01)])),
+                      const SizedBox(width: 16),
+                      Expanded(child: _buildPremiumStatCard(context, 'Collected', 'R ${totalCollected.toStringAsFixed(0)}', Icons.payments_outlined, [const Color(0xFFE5B942), const Color(0xFF996515)])),
+                    ],
+                  )
+                else
+                  Column(
+                    children: [
+                      _buildPremiumStatCard(context, 'Total Groups', totalGroups.toString(), Icons.group_outlined, [const Color(0xFFD4AF37), const Color(0xFFB8860B)]),
+                      const SizedBox(height: 12),
+                      _buildPremiumStatCard(context, 'Total Disbursed', 'R ${totalDisbursed.toStringAsFixed(0)}', Icons.account_balance_outlined, [const Color(0xFFC5A028), const Color(0xFF8B6B01)]),
+                      const SizedBox(height: 12),
+                      _buildPremiumStatCard(context, 'Total Collected', 'R ${totalCollected.toStringAsFixed(0)}', Icons.payments_outlined, [const Color(0xFFE5B942), const Color(0xFF996515)]),
+                    ],
+                  ),
                 const SizedBox(height: 24),
               ],
             ),
           ),
           
           SliverGrid(
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: isDesktop ? 2 : 1,
               crossAxisSpacing: 24,
               mainAxisSpacing: 24,
-              childAspectRatio: 1.8,
+              childAspectRatio: isDesktop ? 1.8 : 1.4,
             ),
             delegate: SliverChildListDelegate([
               _buildChartCard(theme, 'Collection Performance', _buildLineChart(totalDisbursed, totalCollected)),
@@ -79,6 +99,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               _buildCreditProfileCard(theme, groupRisks),
             ]),
           ),
+          const SliverToBoxAdapter(child: SizedBox(height: 40)),
         ],
       ),
     );
@@ -215,39 +236,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  List<_GroupRiskData> _calculateGroupRisks(GroupProvider gp, LoanProvider lp) {
-    List<_GroupRiskData> risks = [];
-    for (var group in gp.groups) {
-      final groupLoans = lp.loans.where((l) => l.groupId == group.id).toList();
-      if (groupLoans.isEmpty) {
-        risks.add(_GroupRiskData(group.name, 0.0, 100));
-        continue;
-      }
-
-      int overdueCount = 0;
-      double totalPoints = 0;
-
-      for (var loan in groupLoans) {
-        if (loan.status.toLowerCase() == 'overdue') {
-          overdueCount++;
-          totalPoints += 20;
-        } else if (loan.status.toLowerCase() == 'paid') {
-          totalPoints += 100;
-        } else {
-          totalPoints += 80;
-        }
-      }
-
-      double ratio = overdueCount / groupLoans.length;
-      int score = (totalPoints / groupLoans.length).round();
-      risks.add(_GroupRiskData(group.name, ratio, score));
-    }
-    
-    risks.sort((a, b) => b.trustScore.compareTo(a.trustScore));
-    return risks;
-  }
-
-  Widget _buildRiskHeatmapCard(ThemeData theme, List<_GroupRiskData> risks) {
+  Widget _buildRiskHeatmapCard(ThemeData theme, List<GroupLoanRiskSummary> risks) {
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
@@ -308,7 +297,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildCreditProfileCard(ThemeData theme, List<_GroupRiskData> risks) {
+  Widget _buildCreditProfileCard(ThemeData theme, List<GroupLoanRiskSummary> risks) {
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
@@ -347,26 +336,5 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ),
     );
-  }
-}
-
-class _GroupRiskData {
-  final String groupName;
-  final double overdueRatio;
-  final int trustScore;
-
-  _GroupRiskData(this.groupName, this.overdueRatio, this.trustScore);
-
-  String get letterGrade {
-    if (trustScore >= 90) return 'A';
-    if (trustScore >= 75) return 'B';
-    if (trustScore >= 60) return 'C';
-    return 'D';
-  }
-
-  Color get riskColor {
-    if (overdueRatio == 0) return Colors.greenAccent;
-    if (overdueRatio < 0.3) return Colors.orangeAccent;
-    return Colors.redAccent;
   }
 }

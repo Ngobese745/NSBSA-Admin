@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+
+import '../core/app_breakpoints.dart';
+import '../core/pdf_branding.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -72,6 +74,10 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDesktop = MediaQuery.of(context).size.width >=
+        AppBreakpoints.groupDetailsDesktopMin;
+    final isTablet = MediaQuery.of(context).size.width >=
+        AppBreakpoints.groupDetailsTabletMin;
 
     return Scaffold(
       appBar: AppBar(
@@ -82,22 +88,31 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
+              padding: EdgeInsets.all(isTablet ? 24.0 : 16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildHeader(theme),
+                  _buildHeader(theme, isDesktop),
                   const SizedBox(height: 32),
-                  _buildSummarySection(theme),
+                  _buildSummarySection(theme, isTablet),
                   const SizedBox(height: 32),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(flex: 2, child: _buildMembersList(theme)),
-                      const SizedBox(width: 24),
-                      Expanded(flex: 3, child: _buildLoansList(theme)),
-                    ],
-                  ),
+                  if (isDesktop)
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(flex: 2, child: _buildMembersList(theme)),
+                        const SizedBox(width: 24),
+                        Expanded(flex: 3, child: _buildLoansList(theme)),
+                      ],
+                    )
+                  else
+                    Column(
+                      children: [
+                        _buildMembersList(theme),
+                        const SizedBox(height: 32),
+                        _buildLoansList(theme),
+                      ],
+                    ),
                   const SizedBox(height: 32),
                   _buildSavingsSection(theme),
                   const SizedBox(height: 32),
@@ -363,31 +378,29 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     );
   }
 
-  Widget _buildHeader(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.dividerColor),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 30,
-            backgroundColor: theme.primaryColor.withOpacity(0.2),
-            child: Icon(Icons.group, size: 32, color: theme.primaryColor),
-          ),
-          const SizedBox(width: 24),
-          Column(
+  Widget _buildHeader(ThemeData theme, bool isDesktop) {
+    final leftSide = Row(
+      children: [
+        CircleAvatar(
+          radius: 30,
+          backgroundColor: theme.primaryColor.withOpacity(0.2),
+          child: Icon(Icons.group, size: 32, color: theme.primaryColor),
+        ),
+        const SizedBox(width: 24),
+        Expanded(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Text(
-                    _currentName,
-                    style: theme.textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
+                  Flexible(
+                    child: Text(
+                      _currentName,
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        fontSize: isDesktop ? 28 : 20,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   IconButton(
@@ -403,97 +416,94 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               const SizedBox(height: 4),
               Text(
                 'Reference: ${widget.group.referenceNumber}',
-                style: TextStyle(color: Colors.grey[400], fontSize: 16),
+                style: TextStyle(color: Colors.grey[400], fontSize: isDesktop ? 16 : 12),
+                overflow: TextOverflow.ellipsis,
               ),
             ],
-          ),
-          const Spacer(),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text('Created On', style: TextStyle(color: Colors.grey[600])),
-              Text(
-                widget.group.createdAt.toString().substring(0, 10),
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 12),
-              ElevatedButton.icon(
-                onPressed: _downloadGroupStatement,
-                icon: const Icon(Icons.picture_as_pdf, size: 18),
-                label: const Text('Download Statement'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSummarySection(ThemeData theme) {
-    double totalLoaned = _loans.fold(0, (sum, item) => sum + item.amount);
-    
-    // Calculate Group Balance
-    final paymentProvider = context.watch<PaymentProvider>();
-    final allPayments = paymentProvider.payments;
-    final loanIds = _loans.map((loan) => loan.id).toSet();
-    final groupPayments = allPayments
-        .where((payment) => loanIds.contains(payment.loanId))
-        .toList();
-
-    double totalLiability = 0;
-    for (final loan in _loans) {
-      final loanPayments = groupPayments.where((p) => p.loanId == loan.id).toList();
-      totalLiability += loan.amount + 
-                       (loan.initiationFee ?? 0) + 
-                       ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) + 
-                       LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
-    }
-    final totalPaid = groupPayments.fold<double>(0, (sum, p) => sum + p.amountPaid);
-    final balance = totalLiability - totalPaid;
-    final totalSavings = _members.fold(0.0, (sum, m) => sum + (m.savingsAmount ?? 0.0));
-
-    return Row(
-      children: [
-        Expanded(
-          child: _buildStatCard(
-            'Total Members',
-            _members.length.toString(),
-            Icons.people,
-            theme.primaryColor,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _buildStatCard(
-            'Total Loans',
-            _loans.length.toString(),
-            Icons.account_balance,
-            Colors.blueAccent,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _buildStatCard(
-            'Total Value',
-            'R ${totalLoaned.toStringAsFixed(0)}',
-            Icons.payments,
-            Colors.greenAccent,
-            subtitle: 'Balance: R ${balance.toStringAsFixed(0)}',
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _buildStatCard(
-            'Group Savings',
-            'R ${totalSavings.toStringAsFixed(0)}',
-            Icons.savings,
-            Colors.amber,
           ),
         ),
       ],
+    );
+
+    final rightSide = Column(
+      crossAxisAlignment: isDesktop ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        Text('Created On', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+        Text(
+          widget.group.createdAt.toString().substring(0, 10),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+        const SizedBox(height: 12),
+        ElevatedButton.icon(
+          onPressed: _downloadGroupStatement,
+          icon: const Icon(Icons.picture_as_pdf, size: 18),
+          label: const Text('Statement'),
+        ),
+      ],
+    );
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.dividerColor),
+      ),
+      child: isDesktop
+          ? Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(flex: 3, child: leftSide),
+                const Spacer(),
+                rightSide,
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                leftSide,
+                const SizedBox(height: 24),
+                rightSide,
+              ],
+            ),
+    );
+  }
+
+  Widget _buildSummarySection(ThemeData theme, bool isTablet) {
+    double totalLoaned = _loans.fold(0, (sum, item) => sum + item.amount);
+    final paymentProvider = context.watch<PaymentProvider>();
+    final allPayments = paymentProvider.payments;
+    final loanIds = _loans.map((loan) => loan.id).toSet();
+    final groupPayments = allPayments.where((payment) => loanIds.contains(payment.loanId)).toList();
+
+    double totalPaid = groupPayments.fold<double>(0, (sum, p) => sum + p.amountPaid);
+    
+    // Calculate total balance by summing individual loan balances (correctly handling fees and capping at 0)
+    double balance = 0;
+    for (final loan in _loans) {
+      final loanPayments = groupPayments.where((p) => p.loanId == loan.id).toList();
+      balance += LoanCalculationService.calculateBalance(loan, loanPayments);
+    }
+    final totalSavings = _members.fold(0.0, (sum, m) => sum + (m.savingsAmount ?? 0.0));
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final crossAxisCount = constraints.maxWidth > 1000 ? 4 : (constraints.maxWidth > 600 ? 2 : 1);
+        return GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: crossAxisCount,
+          crossAxisSpacing: 16,
+          mainAxisSpacing: 16,
+          childAspectRatio: constraints.maxWidth > 1000 ? 2.2 : 4.0,
+          children: [
+            _buildStatCard('Members', _members.length.toString(), Icons.people, theme.primaryColor),
+            _buildStatCard('Loans', _loans.length.toString(), Icons.account_balance, Colors.blueAccent),
+            _buildStatCard('Total Value', 'R ${totalLoaned.toStringAsFixed(0)}', Icons.payments, Colors.greenAccent, subtitle: 'Bal: R ${balance.toStringAsFixed(0)}'),
+            _buildStatCard('Savings', 'R ${totalSavings.toStringAsFixed(0)}', Icons.savings, Colors.amber),
+          ],
+        );
+      },
     );
   }
 
@@ -506,14 +516,14 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   }) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(height: 16),
-            Text(title, style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 4),
+            Icon(icon, color: color, size: 24),
+            const SizedBox(height: 8),
+            Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            const SizedBox(height: 2),
             Text(
               value,
               style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
@@ -1531,11 +1541,17 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   : () async {
                       setState(() => isSubmitting = true);
                       try {
+                        final paymentProvider = context.read<PaymentProvider>();
                         List<PaymentModel> memberPayments = activeLoans.map((loan) {
+                          final loanPayments = paymentProvider.payments.where((p) => p.loanId == loan.id).toList();
+                          final currentBalance = LoanCalculationService.calculateBalance(loan, loanPayments);
+                          // Cap payment at remaining balance
+                          final amountToPay = loan.monthlyPayment > currentBalance ? currentBalance : loan.monthlyPayment;
+
                           return PaymentModel(
                             id: '',
                             loanId: loan.id,
-                            amountPaid: loan.monthlyPayment,
+                            amountPaid: amountToPay,
                             datePaid: DateTime.now(),
                             createdAt: DateTime.now(),
                           );
@@ -1544,6 +1560,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                         await context.read<PaymentProvider>().addGroupPayment(
                           widget.group.id,
                           memberPayments,
+                          loans: activeLoans,
                         );
 
                         if (context.mounted) {
@@ -1650,10 +1667,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       final balance = totalLiability - totalPaid;
       final totalSavings = _members.fold(0.0, (sum, m) => sum + (m.savingsAmount ?? 0.0));
 
-      final logoBytes = await rootBundle.load(
-        'assets/images/NSBSA Logo (1).png',
-      );
-      final logo = pw.MemoryImage(logoBytes.buffer.asUint8List());
+      final logo = await PdfBranding.loadLogo();
       final pdf = pw.Document();
       final generatedDate = _formatDate(DateTime.now());
 

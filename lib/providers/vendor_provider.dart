@@ -3,6 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/vendor.dart';
 
 import '../services/cache_service.dart';
+import '../services/system_audit_service.dart';
+
 
 class VendorProvider with ChangeNotifier {
   final _supabase = Supabase.instance.client;
@@ -47,6 +49,12 @@ class VendorProvider with ChangeNotifier {
       notifyListeners();
       CacheService.saveCache('vendors_cache', _vendors.map((e) => e.toJson()).toList());
       
+      SystemAuditService.logAction(
+        actionType: 'CREATE_VENDOR',
+        affectedEntity: 'Vendor: ${vendor.name} (${vendor.idNumber ?? vendor.phone})',
+        description: 'Created a new vendor/member.',
+      );
+      
       return newVendor;
     } catch (e) {
       debugPrint('Error adding vendor: $e');
@@ -71,6 +79,11 @@ class VendorProvider with ChangeNotifier {
   Future<void> updateVendor(String id, Map<String, dynamic> data) async {
     try {
       await _supabase.from('vendors').update(data).eq('id', id);
+      SystemAuditService.logAction(
+        actionType: 'UPDATE_VENDOR',
+        affectedEntity: 'Vendor ID: $id',
+        description: 'Updated vendor profile details.',
+      );
       await fetchVendors(forceRefresh: true);
     } catch (e) {
       debugPrint('Error updating vendor: $e');
@@ -81,6 +94,11 @@ class VendorProvider with ChangeNotifier {
   Future<void> deleteVendor(String id) async {
     try {
       await _supabase.from('vendors').delete().eq('id', id);
+      SystemAuditService.logAction(
+        actionType: 'DELETE_VENDOR',
+        affectedEntity: 'Vendor ID: $id',
+        description: 'Deleted vendor from the system.',
+      );
       await fetchVendors(forceRefresh: true);
     } catch (e) {
       debugPrint('Error deleting vendor: $e');

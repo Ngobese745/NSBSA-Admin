@@ -4,8 +4,10 @@ import '../providers/loan_provider.dart';
 import '../providers/group_provider.dart';
 import '../providers/payment_provider.dart';
 import '../models/group.dart';
+import '../core/app_breakpoints.dart';
 import '../theme/app_theme.dart';
 import 'group_details_screen.dart';
+import '../services/loan_calculation_service.dart';
 
 class LoansScreen extends StatefulWidget {
   const LoansScreen({super.key});
@@ -40,26 +42,30 @@ class _LoansScreenState extends State<LoansScreen> {
 
     final sortedGroupIds = groupedLoans.keys.toList();
 
+    final isMobile = MediaQuery.of(context).size.width <
+        AppBreakpoints.contentTabletMin;
+
     return Padding(
-      padding: const EdgeInsets.all(16.0),
+      padding: EdgeInsets.all(isMobile ? 12.0 : 24.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 16,
+            runSpacing: 16,
             children: [
               Text(
                 'Group Loan Tracking',
-                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              ElevatedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.account_balance, size: 16),
-                label: const Text('New Loan Group'),
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  fontSize: isMobile ? 20 : 24,
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
           Expanded(
             child: Card(
               child: (loanProvider.isLoading || groupProvider.isLoading)
@@ -75,7 +81,7 @@ class _LoansScreenState extends State<LoansScreen> {
                         final loans = groupedLoans[groupId]!;
                         final group = groupProvider.groups.firstWhere(
                           (g) => g.id == groupId,
-                          orElse: () => GroupModel(id: '', name: 'Unknown Group', referenceNumber: '', createdAt: DateTime.now()),
+                          orElse: GroupModel.unknown,
                         );
  
                         // Aggregated data
@@ -87,34 +93,39 @@ class _LoansScreenState extends State<LoansScreen> {
                         double totalPaid = paymentProvider.payments
                             .where((p) => loanIds.contains(p.loanId))
                             .fold(0, (sum, p) => sum + p.amountPaid);
-                        
-                        double balance = totalAmount - totalPaid;
+
+                        // Calculate total balance by summing individual loan balances
+                        double balance = 0;
+                        for (final loan in loans) {
+                          final loanPayments = paymentProvider.payments.where((p) => p.loanId == loan.id).toList();
+                          balance += LoanCalculationService.calculateBalance(loan, loanPayments);
+                        }
  
                         return ListTile(
                           dense: true,
                           visualDensity: VisualDensity.compact,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          leading: CircleAvatar(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          leading: isMobile ? null : CircleAvatar(
                             radius: 14,
                             backgroundColor: theme.primaryColor.withOpacity(0.1),
                             child: const Icon(Icons.groups, color: AppTheme.primaryGold, size: 14),
                           ),
                           title: Text(
                             group.name,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                           ),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const SizedBox(height: 2),
+                              const SizedBox(height: 4),
                               Text('${loans.length} Loans • Status: Active', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                              const SizedBox(height: 6),
-                              Row(
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
                                 children: [
                                   _buildSmallStat('Value: R ${totalAmount.toStringAsFixed(0)}', Colors.grey),
-                                  const SizedBox(width: 8),
                                   _buildSmallStat('Paid: R ${totalPaid.toStringAsFixed(0)}', Colors.greenAccent),
-                                  const SizedBox(width: 8),
                                   _buildSmallStat('Bal: R ${balance.toStringAsFixed(0)}', Colors.amberAccent),
                                 ],
                               ),

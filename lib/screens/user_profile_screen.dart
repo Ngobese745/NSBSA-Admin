@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 
 class UserProfileScreen extends StatefulWidget {
   const UserProfileScreen({super.key});
@@ -9,13 +11,12 @@ class UserProfileScreen extends StatefulWidget {
 }
 
 class _UserProfileScreenState extends State<UserProfileScreen> {
-  final _nameController = TextEditingController(text: 'Super Admin');
-  final _emailController = TextEditingController(
-    text: 'colane@mwelasefin.co.za',
-  );
-  final _phoneController = TextEditingController(text: '+27 82 000 0000');
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
 
-  String _displayName = 'Super Admin';
+  String _displayName = 'User';
+  bool _isSaving = false;
 
   @override
   void initState() {
@@ -23,20 +24,20 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     _loadProfileData();
   }
 
-  bool _isSaving = false;
-
   Future<void> _loadProfileData() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user != null) {
       final metadata = user.userMetadata ?? {};
-      final savedName = metadata['full_name'] as String?;
-      final savedPhone = metadata['phone'] as String?;
-
       setState(() {
         _emailController.text = user.email ?? 'Unknown Email';
+        final savedName = metadata['full_name'] as String?;
+        final savedPhone = metadata['phone'] as String?;
         if (savedName != null && savedName.isNotEmpty) {
           _nameController.text = savedName;
           _displayName = savedName;
+        } else {
+          _nameController.text = user.email?.split('@').first ?? 'User';
+          _displayName = _nameController.text;
         }
         if (savedPhone != null && savedPhone.isNotEmpty) {
           _phoneController.text = savedPhone;
@@ -47,47 +48,28 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
   Future<void> _saveProfileData() async {
     if (_isSaving) return;
-
-    setState(() {
-      _isSaving = true;
-    });
-
+    setState(() => _isSaving = true);
     try {
       await Supabase.instance.client.auth.updateUser(
-        UserAttributes(
-          data: {
-            'full_name': _nameController.text,
-            'phone': _phoneController.text,
-          },
-        ),
+        UserAttributes(data: {
+          'full_name': _nameController.text,
+          'phone': _phoneController.text,
+        }),
       );
-
-      setState(() {
-        _displayName = _nameController.text;
-      });
-
+      setState(() => _displayName = _nameController.text);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Preferences saved to Supabase successfully.'),
-          ),
+          const SnackBar(content: Text('Profile saved successfully.')),
         );
       }
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to save: $error'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Failed to save: $error'), backgroundColor: Colors.red),
         );
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isSaving = false;
-        });
-      }
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -99,9 +81,21 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     super.dispose();
   }
 
+  static const Map<String, Color> _roleColors = {
+    'Super Admin': Color(0xFFD4AF37),
+    'Admin': Color(0xFF4FC3F7),
+    'Finance': Color(0xFF81C784),
+    'Marketing': Color(0xFFBA68C8),
+    'Development Facilitator': Color(0xFFFFB74D),
+    'Verifying Operator': Color(0xFF4DB6AC),
+  };
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final authProvider = context.watch<AuthProvider>();
+    final role = authProvider.userRole;
+    final roleColor = _roleColors[role] ?? theme.primaryColor;
 
     return Scaffold(
       appBar: AppBar(
@@ -117,53 +111,32 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Profile Header
                 Center(
                   child: Column(
                     children: [
                       CircleAvatar(
                         radius: 50,
-                        backgroundColor: theme.primaryColor.withOpacity(0.1),
-                        child: Icon(
-                          Icons.person,
-                          size: 50,
-                          color: theme.primaryColor,
-                        ),
+                        backgroundColor: roleColor.withOpacity(0.1),
+                        child: Icon(Icons.person, size: 50, color: roleColor),
                       ),
                       const SizedBox(height: 16),
                       Text(
                         _displayName,
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).textTheme.bodyMedium?.color,
-                        ),
+                        style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        _emailController.text,
-                        style: TextStyle(color: Colors.grey[400]),
-                      ),
+                      Text(_emailController.text, style: TextStyle(color: Colors.grey[400])),
                       const SizedBox(height: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 4,
-                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                         decoration: BoxDecoration(
-                          color: theme.primaryColor.withOpacity(0.2),
+                          color: roleColor.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: theme.primaryColor.withOpacity(0.5),
-                          ),
+                          border: Border.all(color: roleColor.withOpacity(0.4)),
                         ),
                         child: Text(
-                          'OWNER',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: theme.primaryColor,
-                            letterSpacing: 1.2,
-                          ),
+                          role.toUpperCase(),
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: roleColor, letterSpacing: 1.2),
                         ),
                       ),
                     ],

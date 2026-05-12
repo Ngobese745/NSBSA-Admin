@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter/services.dart';
+
+import '../core/app_breakpoints.dart';
+import '../core/pdf_branding.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -17,6 +19,10 @@ import '../providers/comment_provider.dart';
 import '../providers/auth_provider.dart';
 import '../models/document.dart';
 import '../providers/document_provider.dart';
+import '../providers/analytics_provider.dart';
+import '../services/loan_calculation_service.dart';
+import '../models/savings_history.dart';
+import '../providers/savings_history_provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -52,6 +58,19 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
 
     await context.read<CommentProvider>().fetchCommentsByVendor(_currentVendor.id);
     await context.read<DocumentProvider>().fetchDocumentsByVendor(_currentVendor.id);
+    await context.read<SavingsHistoryProvider>().fetchHistoryByVendor(_currentVendor.id);
+
+    // Fetch data for analytics calculation
+    final groupProvider = context.read<GroupProvider>();
+    final analyticsProvider = context.read<AnalyticsProvider>();
+    
+    // Ensure all data is present for score calculation
+    analyticsProvider.calculateAnalytics(
+      groups: groupProvider.groups,
+      vendors: context.read<VendorProvider>().vendors,
+      loans: context.read<LoanProvider>().loans,
+      payments: context.read<PaymentProvider>().payments,
+    );
 
     if (mounted) {
       setState(() {
@@ -76,13 +95,13 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     double totalPaid = vendorPayments.fold(0, (sum, p) => sum + p.amountPaid);
     final group = groupProvider.groups.firstWhere(
       (g) => g.id == _currentVendor.groupId,
-      orElse: () => GroupModel(
-        id: '',
-        name: 'Unknown Group',
-        referenceNumber: '',
-        createdAt: DateTime.now(),
-      ),
+      orElse: GroupModel.unknown,
     );
+
+    final isDesktop = MediaQuery.of(context).size.width >=
+        AppBreakpoints.vendorProfileDesktopMin;
+    final isTablet = MediaQuery.of(context).size.width >=
+        AppBreakpoints.vendorProfileTabletMin;
 
     return Scaffold(
       appBar: AppBar(
@@ -90,6 +109,11 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_outlined, size: 20),
+            onPressed: () => _showEditVendorDialog(context),
+            tooltip: 'Edit Profile',
+          ),
           IconButton(
             icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
             onPressed: () => _generateProfilePDF(context, group),
@@ -101,44 +125,43 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
-              child: Row(
+              padding: EdgeInsets.symmetric(
+                horizontal: isTablet ? 40 : 16,
+                vertical: 24,
+              ),
+              child: Flex(
+                direction: isDesktop ? Axis.horizontal : Axis.vertical,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Left Column: Basic Info & Details
-                  Expanded(
-                    flex: 2,
+                  Flexible(
+                    flex: isDesktop ? 2 : 0,
+                    fit: isDesktop ? FlexFit.tight : FlexFit.loose,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildMainHeader(theme, group),
+                        _buildMainHeader(theme, group, isDesktop),
                         const SizedBox(height: 24),
-                        _buildInformationSection(theme),
+                        _buildInformationSection(theme, isTablet),
                         const SizedBox(height: 24),
-                        _buildFinancialSummary(theme, totalPaid),
+                        _buildFinancialSummary(theme, totalPaid, isTablet),
+                        if (!isDesktop) const SizedBox(height: 32),
                       ],
                     ),
                   ),
-                  const SizedBox(width: 40),
+                  if (isDesktop) const SizedBox(width: 40),
                   // Right Column: History Lists
-                  Expanded(
-                    flex: 3,
+                  Flexible(
+                    flex: isDesktop ? 3 : 0,
+                    fit: isDesktop ? FlexFit.tight : FlexFit.loose,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildHistorySection(
-                          theme,
-                          'My Loan History',
-                          _loans,
-                          true,
-                        ),
+                        _buildHistorySection(theme, 'My Loan History', _loans, true),
                         const SizedBox(height: 24),
-                        _buildHistorySection(
-                          theme,
-                          'My Payment History',
-                          vendorPayments,
-                          false,
-                        ),
+                        _buildHistorySection(theme, 'My Payment History', vendorPayments, false),
+                        const SizedBox(height: 24),
+                        _buildSavingsHistorySection(theme),
                         const SizedBox(height: 24),
                         _buildCommentsSection(theme),
                         const SizedBox(height: 24),
@@ -463,206 +486,230 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     );
   }
 
-  Widget _buildMainHeader(ThemeData theme, GroupModel group) {
+  Widget _buildMainHeader(ThemeData theme, GroupModel group, bool isDesktop) {
+    final analyticsProvider = context.watch<AnalyticsProvider>();
+    final score = analyticsProvider.vendorCreditScores[_currentVendor.id] ?? 0.0;
+    
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: theme.cardColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.dividerColor),
       ),
-      child: Row(
+      child: isDesktop 
+      ? Row(
         children: [
-          CircleAvatar(
-            radius: 35,
-            backgroundColor: theme.primaryColor.withOpacity(0.1),
-            child: Icon(Icons.person, size: 35, color: theme.primaryColor),
-          ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          _buildVendorAvatar(theme),
+          const SizedBox(width: 24),
+          Expanded(child: _buildVendorTitle(theme, group, isDesktop)),
+          const SizedBox(width: 24),
+          _buildCreditBadge(score),
+        ],
+      )
+      : Column(
+          children: [
+            Row(
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      _currentVendor.name,
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    IconButton(
-                      icon: Icon(
-                        Icons.edit_outlined,
-                        size: 20,
-                        color: theme.primaryColor,
-                      ),
-                      onPressed: () => _showEditVendorDialog(context),
-                      tooltip: 'Edit Profile',
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Group: ${group.name}',
-                  style: TextStyle(color: Colors.grey[400], fontSize: 14),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    _currentVendor.referenceNumber ?? 'N/A',
-                    style: const TextStyle(
-                      color: Colors.amber,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
+                _buildVendorAvatar(theme, radius: 25),
+                const SizedBox(width: 16),
+                Expanded(child: _buildVendorTitle(theme, group, isDesktop)),
               ],
             ),
-          ),
-        ],
-      ),
+            const SizedBox(height: 20),
+            _buildCreditBadge(score),
+          ],
+        ),
     );
   }
 
-  Widget _buildInformationSection(ThemeData theme) {
+  Widget _buildVendorAvatar(ThemeData theme, {double radius = 35}) {
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: theme.primaryColor.withOpacity(0.1),
+      child: Icon(Icons.person, size: radius * 0.9, color: theme.primaryColor),
+    );
+  }
+
+  Widget _buildVendorTitle(ThemeData theme, GroupModel group, bool isDesktop) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _currentVendor.name,
+          style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, fontSize: isDesktop ? 24 : 18),
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Group: ${group.name}',
+          style: const TextStyle(color: Colors.grey, fontSize: 13),
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 4),
+        SelectableText(
+          'GRP-${group.id}',
+          style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.bold, fontSize: 10),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCreditBadge(double score) {
+    String status = score > 85 ? 'Excellent' : (score > 60 ? 'Moderate' : 'High Risk');
+    Color statusColor = score > 85 ? Colors.greenAccent : (score > 60 ? Colors.amberAccent : Colors.redAccent);
+    
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: theme.cardColor,
+        color: statusColor.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: statusColor.withOpacity(0.3)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
-            'Information',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          const SizedBox(height: 20),
-          _buildInfoRow(
-            'Role',
-            _currentVendor.role ?? 'Member',
-            Icons.stars_outlined,
-          ),
-          _buildInfoRow(
-            'Home Address',
-            _currentVendor.address ?? 'N/A',
-            Icons.location_on_outlined,
-          ),
-          _buildInfoRow(
-            'Phone',
-            _currentVendor.phone ?? 'N/A',
-            Icons.phone_outlined,
-          ),
-          _buildInfoRow(
-            'ID Number',
-            _currentVendor.idNumber ?? 'N/A',
-            Icons.badge_outlined,
-          ),
-          _buildInfoRow(
-            'Business',
-            _currentVendor.businessType ?? 'N/A',
-            Icons.business_center_outlined,
-          ),
-          _buildInfoRow(
-            'Gender',
-            _currentVendor.gender ?? 'N/A',
-            Icons.person_outline,
-          ),
-          _buildInfoRow(
-            'DF Name',
-            _currentVendor.dfName ?? 'N/A',
-            Icons.assignment_ind_outlined,
-          ),
-          _buildInfoRow(
-            'WhatsApp',
-            _currentVendor.whatsappNumber ?? 'N/A',
-            Icons.chat_outlined,
-          ),
-          _buildInfoRow(
-            'Savings Plan',
-            'R ${_currentVendor.savingsAmount?.toStringAsFixed(0) ?? '0'} (${_currentVendor.savingsFrequency ?? 'Monthly'})',
-            Icons.savings_outlined,
+          const Text('Credit Profile Score', style: TextStyle(color: Colors.grey, fontSize: 10)),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                score.toStringAsFixed(0),
+                style: TextStyle(color: statusColor, fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(color: statusColor, borderRadius: BorderRadius.circular(4)),
+                child: Text(
+                  status.toUpperCase(),
+                  style: const TextStyle(color: Colors.black, fontSize: 8, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildInfoRow(String label, String value, IconData icon) {
+  Widget _buildInformationSection(ThemeData theme, bool isTablet) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Personal Information', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(color: theme.cardColor, borderRadius: BorderRadius.circular(12)),
+          child: Column(
+            children: [
+              _buildInfoRow('Role', _currentVendor.role ?? 'Member', Icons.stars_outlined),
+              _buildInfoRow('Home Address', _currentVendor.address ?? 'N/A', Icons.location_on_outlined),
+              _buildInfoRow('Phone', _currentVendor.phone ?? 'N/A', Icons.phone_outlined),
+              _buildInfoRow('ID Number', _currentVendor.idNumber ?? 'N/A', Icons.badge_outlined),
+              _buildInfoRow('Business', _currentVendor.businessType ?? 'N/A', Icons.business_center_outlined),
+              InkWell(
+                onTap: () => _showUpdateSavingsDialog(context),
+                borderRadius: BorderRadius.circular(8),
+                child: _buildInfoRow(
+                  'Savings Balance', 
+                  'R ${_currentVendor.savingsAmount?.toStringAsFixed(0) ?? '0'} (${_currentVendor.savingsFrequency ?? 'Monthly'})', 
+                  Icons.savings_outlined,
+                  trailing: const Icon(Icons.edit_outlined, size: 14, color: Colors.amber),
+                ),
+              ),
+              if (context.watch<SavingsHistoryProvider>().history.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, left: 30),
+                  child: Text(
+                    'Last updated: ${context.watch<SavingsHistoryProvider>().history.first.createdAt.toString().substring(0, 16)} by ${context.watch<SavingsHistoryProvider>().history.first.updatedBy}',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 10, fontStyle: FontStyle.italic),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value, IconData icon, {Widget? trailing}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
         children: [
           Icon(icon, size: 18, color: Colors.grey[500]),
           const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(color: Colors.grey[500], fontSize: 11),
-              ),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: TextStyle(color: Colors.grey[500], fontSize: 11)),
+                Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis),
+              ],
+            ),
           ),
+          if (trailing != null) trailing,
         ],
       ),
     );
   }
 
-  Widget _buildFinancialSummary(ThemeData theme, double totalPaid) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: theme.primaryColor.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.primaryColor.withOpacity(0.1)),
-      ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _buildStatItem('Loans', _loans.length.toString()),
-              _buildStatItem(
-                'Total Payments',
-                'R ${totalPaid.toStringAsFixed(0)}',
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _buildFinancialSummary(ThemeData theme, double totalPaid, bool isTablet) {
+    final paymentProvider = context.read<PaymentProvider>();
+    final allPayments = paymentProvider.payments;
+    
+    double totalLiability = 0;
+    for (var loan in _loans) {
+      final loanPayments = allPayments.where((p) => p.loanId == loan.id).toList();
+      totalLiability += loan.amount + 
+                        (loan.initiationFee ?? 0) + 
+                        ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) + 
+                        LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
+    }
+    
+    final outstanding = totalLiability - totalPaid;
+    final activeLoans = _loans.where((l) => l.status == 'Active').length;
 
-  Widget _buildStatItem(String label, String value) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-        Text(
-          value,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        const Text('Financial Summary', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+        const SizedBox(height: 16),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final crossAxisCount = constraints.maxWidth > 400 ? 3 : 2;
+            return GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: crossAxisCount,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 2.0,
+              children: [
+                _buildSummaryTile('Total Paid', 'R ${totalPaid.toStringAsFixed(0)}', Colors.greenAccent),
+                _buildSummaryTile('Outstanding', 'R ${outstanding.toStringAsFixed(0)}', Colors.redAccent),
+                _buildSummaryTile('Active', activeLoans.toString(), Colors.blueAccent),
+              ],
+            );
+          },
         ),
       ],
+    );
+  }
+
+  Widget _buildSummaryTile(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(color: color.withOpacity(0.05), borderRadius: BorderRadius.circular(8), border: Border.all(color: color.withOpacity(0.2))),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 10)),
+          Text(value, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16), overflow: TextOverflow.ellipsis),
+        ],
+      ),
     );
   }
 
@@ -672,11 +719,10 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
   ) async {
     final commentProvider = context.read<CommentProvider>();
     final paymentProvider = context.read<PaymentProvider>();
+    final savingsHistoryProvider = context.read<SavingsHistoryProvider>();
     final pdf = pw.Document();
 
-    // Load logo
-    final logoImage = await rootBundle.load('assets/images/NSBSA Logo (1).png');
-    final logo = pw.MemoryImage(logoImage.buffer.asUint8List());
+    final logo = await PdfBranding.loadLogo();
 
     // Filter payments for this vendor's loans
     final loanIds = _loans.map((l) => l.id).toSet();
@@ -752,7 +798,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                         _currentVendor.address ?? 'N/A',
                       ),
                       _pdfInfoRow(
-                        'Savings',
+                        'Savings Balance',
                         'R ${_currentVendor.savingsAmount?.toStringAsFixed(2) ?? '0.00'} (${_currentVendor.savingsFrequency ?? 'Monthly'})',
                       ),
                     ],
@@ -804,18 +850,17 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                             style: pw.TextStyle(
                               fontSize: 10,
                               fontWeight: pw.FontWeight.bold,
-                              color:
-                                  isMention ? PdfColors.blue : PdfColors.black,
                             ),
                           ),
                           pw.Text(
-                            comment.createdAt.toString().substring(0, 16),
+                            comment.createdAt.toString().substring(0, 10),
                             style: const pw.TextStyle(
-                                fontSize: 8, color: PdfColors.grey700),
+                              fontSize: 8,
+                              color: PdfColors.grey,
+                            ),
                           ),
                         ],
                       ),
-                      pw.SizedBox(height: 4),
                       pw.Text(
                         comment.content,
                         style: const pw.TextStyle(fontSize: 10),
@@ -823,7 +868,42 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                     ],
                   ),
                 );
-              }).toList(),
+              }),
+              pw.SizedBox(height: 24),
+            ],
+
+            // Savings History Section
+            if (savingsHistoryProvider.history.isNotEmpty) ...[
+              pw.Text(
+                'Savings History Log',
+                style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+              ),
+              pw.Divider(thickness: 0.5),
+              pw.SizedBox(height: 10),
+              pw.Table(
+                border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+                children: [
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                    children: [
+                      _pdfCell('Date/Time', isBold: true),
+                      _pdfCell('Action', isBold: true),
+                      _pdfCell('Amount', isBold: true),
+                      _pdfCell('New Balance', isBold: true),
+                      _pdfCell('Operator', isBold: true),
+                    ],
+                  ),
+                  ...savingsHistoryProvider.history.map((entry) => pw.TableRow(
+                    children: [
+                      _pdfCell(entry.createdAt.toString().substring(0, 16)),
+                      _pdfCell(entry.actionType),
+                      _pdfCell('R ${entry.amount.toStringAsFixed(2)}'),
+                      _pdfCell('R ${entry.newBalance.toStringAsFixed(2)}'),
+                      _pdfCell(entry.updatedBy),
+                    ],
+                  )).toList(),
+                ],
+              ),
               pw.SizedBox(height: 24),
             ],
 
@@ -883,12 +963,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                           0.0,
                           (sum, p) => sum + p.amountPaid,
                         );
-                        final balance =
-                            (loan.amount +
-                                (loan.initiationFee ?? 0) +
-                                ((loan.monthlyAdminFee ?? 0) *
-                                    loan.durationMonths)) -
-                            totalPaidForLoan;
+                        final balance = LoanCalculationService.calculateBalance(loan, loanPayments);
 
                         return pw.TableRow(
                           children: [
@@ -1150,6 +1225,299 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     );
   }
 
+  String _selectedActionFilter = 'All';
+  
+  Widget _buildSavingsHistorySection(ThemeData theme) {
+    final savingsHistoryProvider = context.watch<SavingsHistoryProvider>();
+    final history = savingsHistoryProvider.history.where((e) {
+      if (_selectedActionFilter == 'All') return true;
+      return e.actionType == _selectedActionFilter;
+    }).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Savings History Log',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+            Row(
+              children: [
+                DropdownButton<String>(
+                  value: _selectedActionFilter,
+                  dropdownColor: theme.cardColor,
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  underline: const SizedBox(),
+                  items: ['All', 'Deposit', 'Withdrawal', 'Adjustment'].map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
+                  onChanged: (val) => setState(() => _selectedActionFilter = val!),
+                ),
+                if (history.isNotEmpty)
+                  IconButton(
+                    onPressed: () => _exportSavingsHistoryPDF(history),
+                    icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+                    tooltip: 'Export PDF',
+                  ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: theme.dividerColor),
+          ),
+          child: history.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(
+                    child: Text(
+                      'No matching history found.',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                )
+              : SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: DataTable(
+                    columnSpacing: 24,
+                    horizontalMargin: 16,
+                    headingRowHeight: 40,
+                    dataRowHeight: 52,
+                    headingTextStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.amber),
+                    columns: const [
+                      DataColumn(label: Text('Date/Time')),
+                      DataColumn(label: Text('Action')),
+                      DataColumn(label: Text('Amount')),
+                      DataColumn(label: Text('New Balance')),
+                      DataColumn(label: Text('Operator')),
+                    ],
+                    rows: history.map((entry) {
+                      Color actionColor;
+                      switch (entry.actionType) {
+                        case 'Deposit': actionColor = Colors.greenAccent; break;
+                        case 'Withdrawal': actionColor = Colors.redAccent; break;
+                        default: actionColor = Colors.amberAccent;
+                      }
+                      
+                      return DataRow(cells: [
+                        DataCell(Text(entry.createdAt.toString().substring(0, 16), style: const TextStyle(fontSize: 11))),
+                        DataCell(
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: actionColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: actionColor.withOpacity(0.5)),
+                            ),
+                            child: Text(entry.actionType, style: TextStyle(color: actionColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                        DataCell(Text('R ${entry.amount.toStringAsFixed(0)}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold))),
+                        DataCell(Text('R ${entry.newBalance.toStringAsFixed(0)}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber))),
+                        DataCell(Text(entry.updatedBy, style: const TextStyle(fontSize: 11, color: Colors.grey))),
+                      ]);
+                    }).toList(),
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _exportSavingsHistoryPDF(List<SavingsHistoryModel> history) async {
+    final pdf = pw.Document();
+    final logo = await PdfBranding.loadLogo();
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(32),
+        header: (pw.Context context) => pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Image(logo, height: 40),
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.end,
+              children: [
+                pw.Text('Savings Audit Log', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+                pw.Text('Member: ${_currentVendor.name}'),
+                pw.Text('Date: ${DateTime.now().toString().substring(0, 10)}'),
+              ],
+            ),
+          ],
+        ),
+        build: (pw.Context context) => [
+          pw.SizedBox(height: 20),
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            children: [
+              pw.TableRow(
+                decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                children: [
+                  _pdfCell('Date/Time', isBold: true),
+                  _pdfCell('Action', isBold: true),
+                  _pdfCell('Amount', isBold: true),
+                  _pdfCell('New Balance', isBold: true),
+                  _pdfCell('Operator', isBold: true),
+                ],
+              ),
+              ...history.map((entry) => pw.TableRow(
+                children: [
+                  _pdfCell(entry.createdAt.toString().substring(0, 16)),
+                  _pdfCell(entry.actionType),
+                  _pdfCell('R ${entry.amount.toStringAsFixed(2)}'),
+                  _pdfCell('R ${entry.newBalance.toStringAsFixed(2)}'),
+                  _pdfCell(entry.updatedBy),
+                ],
+              )).toList(),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (format) async => pdf.save(),
+      name: 'Savings_History_${_currentVendor.name.replaceAll(' ', '_')}',
+    );
+  }
+
+  void _showUpdateSavingsDialog(BuildContext context) {
+    final controller = TextEditingController(text: _currentVendor.savingsAmount?.toStringAsFixed(0) ?? '0');
+    String selectedAction = 'Deposit';
+    
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          title: const Row(
+            children: [
+              Icon(Icons.savings_outlined, color: Colors.amber, size: 24),
+              SizedBox(width: 12),
+              Text('Update Savings Balance', style: TextStyle(color: Colors.white, fontSize: 18)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Enter the current savings balance for ${_currentVendor.name}.',
+                style: const TextStyle(color: Colors.grey, fontSize: 14),
+              ),
+              const SizedBox(height: 24),
+              const Text('Action Type', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              DropdownButtonFormField<String>(
+                value: selectedAction,
+                dropdownColor: Theme.of(context).cardColor,
+                style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                decoration: const InputDecoration(border: UnderlineInputBorder()),
+                items: const [
+                  DropdownMenuItem(value: 'Deposit', child: Text('Deposit')),
+                  DropdownMenuItem(value: 'Withdrawal', child: Text('Withdrawal')),
+                  DropdownMenuItem(value: 'Adjustment', child: Text('Adjustment')),
+                ],
+                onChanged: (val) => setState(() => selectedAction = val!),
+              ),
+              const SizedBox(height: 24),
+              TextField(
+                controller: controller,
+                keyboardType: TextInputType.number,
+                autofocus: true,
+                style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color, fontSize: 20, fontWeight: FontWeight.bold),
+                decoration: InputDecoration(
+                  labelText: 'Total Savings Balance',
+                  labelStyle: const TextStyle(color: Colors.grey),
+                  prefixText: 'R ',
+                  prefixStyle: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white10)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.amber)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final newAmount = double.tryParse(controller.text) ?? 0;
+                final previousAmount = _currentVendor.savingsAmount ?? 0;
+                final diff = newAmount - previousAmount;
+                
+                try {
+                  final authProvider = context.read<AuthProvider>();
+                  final savingsProvider = context.read<SavingsHistoryProvider>();
+                  
+                  // 1. Update Vendor
+                  await context.read<VendorProvider>().updateVendor(_currentVendor.id, {'savings_amount': newAmount});
+                  
+                  // 2. Record History
+                  await savingsProvider.addHistoryEntry(SavingsHistoryModel(
+                    id: '',
+                    vendorId: _currentVendor.id,
+                    amount: diff.abs(),
+                    previousBalance: previousAmount,
+                    newBalance: newAmount,
+                    actionType: selectedAction,
+                    updatedBy: authProvider.currentUser?.email ?? 'Admin',
+                    createdAt: DateTime.now(),
+                  ));
+
+                  if (context.mounted) {
+                    this.setState(() {
+                      _currentVendor = VendorModel(
+                        id: _currentVendor.id,
+                        groupId: _currentVendor.groupId,
+                        name: _currentVendor.name,
+                        phone: _currentVendor.phone,
+                        referenceNumber: _currentVendor.referenceNumber,
+                        idNumber: _currentVendor.idNumber,
+                        gender: _currentVendor.gender,
+                        businessType: _currentVendor.businessType,
+                        whatsappNumber: _currentVendor.whatsappNumber,
+                        dfName: _currentVendor.dfName,
+                        address: _currentVendor.address,
+                        role: _currentVendor.role,
+                        savingsAmount: newAmount,
+                        savingsFrequency: _currentVendor.savingsFrequency,
+                        savingsStartDate: _currentVendor.savingsStartDate,
+                        createdAt: _currentVendor.createdAt,
+                      );
+                    });
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Savings balance updated & logged!')));
+                    Navigator.pop(context);
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error updating balance: $e')));
+                  }
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber, 
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Update Balance', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showEditVendorDialog(BuildContext context) {
     final nameController = TextEditingController(text: _currentVendor.name);
     final phoneController = TextEditingController(text: _currentVendor.phone);
@@ -1339,7 +1707,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                   ),
                   const Align(
                     alignment: Alignment.centerLeft,
-                    child: Text('Savings Plan', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+                    child: Text('Savings Balance', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
                   ),
                   const SizedBox(height: 12),
                   Row(
@@ -1349,7 +1717,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                           controller: savingsAmountController,
                           keyboardType: TextInputType.number,
                           style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                          decoration: const InputDecoration(labelText: 'Savings Amount (R)', labelStyle: TextStyle(color: Colors.grey)),
+                          decoration: const InputDecoration(labelText: 'Savings Balance (R)', labelStyle: TextStyle(color: Colors.grey)),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -1544,6 +1912,16 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             ElevatedButton(
               onPressed: () async {
                 final amount = double.tryParse(amountController.text) ?? 0;
+                final loanPayments = context.read<PaymentProvider>().payments.where((p) => p.loanId == loan.id).toList();
+                final currentBalance = LoanCalculationService.calculateBalance(loan, loanPayments);
+
+                if (amount > currentBalance + 0.01) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Payment R $amount exceeds outstanding balance R ${currentBalance.toStringAsFixed(2)}')),
+                  );
+                  return;
+                }
+
                 if (amount > 0) {
                   await context.read<PaymentProvider>().addPayment(
                     PaymentModel(
@@ -1554,6 +1932,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                       datePaid: DateTime.now(),
                       createdAt: DateTime.now(),
                     ),
+                    loan: loan,
                   );
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -1562,6 +1941,8 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                       ),
                     );
                     Navigator.pop(context);
+                    // Refresh loan provider to show updated status
+                    context.read<LoanProvider>().fetchLoans(forceRefresh: true);
                   }
                 }
               },
@@ -1738,8 +2119,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
   ) async {
     final pdf = pw.Document();
 
-    final logoImage = await rootBundle.load('assets/images/NSBSA Logo (1).png');
-    final logo = pw.MemoryImage(logoImage.buffer.asUint8List());
+    final logo = await PdfBranding.loadLogo();
 
     pdf.addPage(
       pw.Page(

@@ -3,6 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/group.dart';
 
 import '../services/cache_service.dart';
+import '../services/system_audit_service.dart';
+
 
 class GroupProvider with ChangeNotifier {
   final _supabase = Supabase.instance.client;
@@ -74,6 +76,12 @@ class GroupProvider with ChangeNotifier {
       notifyListeners();
       CacheService.saveCache('groups_cache', _groups.map((e) => e.toJson()).toList());
       
+      SystemAuditService.logAction(
+        actionType: 'CREATE_GROUP',
+        affectedEntity: 'Group: $name ($referenceNumber)',
+        description: 'Created a new group with ${members.length} members.',
+      );
+      
       return newGroup;
     } catch (e) {
       debugPrint('Error adding group: $e');
@@ -83,6 +91,11 @@ class GroupProvider with ChangeNotifier {
   Future<void> updateGroup(String id, String name) async {
     try {
       await _supabase.from('groups').update({'name': name}).eq('id', id);
+      SystemAuditService.logAction(
+        actionType: 'UPDATE_GROUP',
+        affectedEntity: 'Group ID: $id',
+        description: 'Updated group name to $name.',
+      );
       await fetchGroups(forceRefresh: true);
     } catch (e) {
       debugPrint('Error updating group: $e');
@@ -96,6 +109,11 @@ class GroupProvider with ChangeNotifier {
       _groups.removeWhere((g) => g.id == id);
       notifyListeners();
       await CacheService.saveCache('groups_cache', _groups.map((e) => e.toJson()).toList());
+      SystemAuditService.logAction(
+        actionType: 'DELETE_GROUP',
+        affectedEntity: 'Group ID: $id',
+        description: 'Deleted group from the system.',
+      );
     } catch (e) {
       debugPrint('Error deleting group: $e');
       rethrow;
