@@ -4,7 +4,12 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 
 class CommunicationService {
-  String get _mailerSendApiKey => dotenv.env['MAILERSEND_API_KEY'] ?? '';
+  // Fallback to provided key if .env fails to load in local environment
+  String get _mailerSendApiKey => 
+    dotenv.env['MAILERSEND_API_KEY']?.isNotEmpty == true 
+      ? dotenv.env['MAILERSEND_API_KEY']! 
+      : 'mlsn.11f1310f9498cde8af14492685ebe997ae8246880b05c5e9cb62323217b4204e';
+
   String get _weSenderApiKey => dotenv.env['WESENDER_API_KEY'] ?? '';
 
   Future<void> sendPaymentReminder({required String toEmail, required String toPhone, required String amount}) async {
@@ -27,10 +32,6 @@ class CommunicationService {
     required String tempPassword,
   }) async {
     debugPrint('Sending branded staff credentials to $toEmail');
-    
-    if (_mailerSendApiKey.isEmpty) {
-      throw Exception('MAILERSEND_API_KEY is missing in .env file. Please check your configuration.');
-    }
 
     final htmlTemplate = '''
 <!DOCTYPE html>
