@@ -138,11 +138,11 @@ class AccountManagementService {
     );
   }
 
-  /// Generates a random 10-character temporary password.
+  /// Generates a random temporary password in the format NSBSA-Setup-XXXX.
   static String _generateTempPassword() {
-    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#%^*';
     final rand = Random();
-    return List.generate(10, (index) => chars[rand.nextInt(chars.length)]).join();
+    final code = List.generate(4, (index) => rand.nextInt(10)).join();
+    return 'NSBSA-Setup-$code';
   }
 
   /// Finalizes the password setup for a user forced to change it.
