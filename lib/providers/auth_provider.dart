@@ -36,7 +36,15 @@ class AuthProvider with ChangeNotifier {
 
       if (event == AuthChangeEvent.signedIn) {
         _isAuthenticated = true;
-        _isPasswordRecovery = false;
+        
+        // Check if this sign-in was triggered by a recovery/invite link
+        final uri = Uri.base;
+        if (uri.toString().contains('type=recovery') || uri.toString().contains('type=invite')) {
+          _isPasswordRecovery = true;
+        } else {
+          _isPasswordRecovery = false;
+        }
+
         if (data.session != null)
           await _fetchUserProfile(data.session!.user.id);
         notifyListeners();

@@ -66,17 +66,21 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
                         fullUrl.contains('type=invite');
 
       if (hasToken) {
-        // CRITICAL FIX: If we have a token/code in the URL, we MUST process it
-        // even if auth.currentSession is already non-null (e.g. an admin is logged in).
-        // To be safe, we sign out any current user to ensure a clean slate for the new session.
-        if (auth.currentSession != null) {
-          debugPrint('PasswordSetupScreen: Existing session found, signing out to process new link.');
-          await auth.signOut();
+        // Wait a brief moment for Supabase auto-exchange to happen
+        if (auth.currentSession == null) {
+          debugPrint('PasswordSetupScreen: Waiting for auto-exchange...');
+          await Future.delayed(const Duration(milliseconds: 800));
         }
-        
-        // Supabase's getSessionFromUrl handles parsing the token from the URL
-        // whether it's in the hash (#access_token=...) or query (?code=...)
-        await auth.getSessionFromUrl(uri);
+
+        // Try manual exchange ONLY if still null
+        if (auth.currentSession == null) {
+          debugPrint('PasswordSetupScreen: Attempting manual exchange.');
+          try {
+            await auth.getSessionFromUrl(uri);
+          } catch (e) {
+            debugPrint('Manual exchange failed: $e');
+          }
+        }
       }
 
       setState(() {
@@ -235,7 +239,23 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
                         ),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Setting password for:',
+                        style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        Supabase.instance.client.auth.currentUser?.email ?? 'Validating session...',
+                        style: const TextStyle(
+                          color: Color(0xFFD4AF37),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
                       Text(
                         'Set a new password to access the NSBSA Admin platform.',
                         style: TextStyle(color: Colors.grey[400], fontSize: 14),
