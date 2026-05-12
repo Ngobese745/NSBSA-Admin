@@ -37,7 +37,9 @@ class SystemAuditService {
           .order('timestamp', ascending: false)
           .limit(limit);
 
-      return (response as List).map((e) => SystemAuditLogModel.fromJson(e)).toList();
+      return (response as List)
+          .map((e) => SystemAuditLogModel.fromJson(e))
+          .toList();
     } catch (e) {
       debugPrint('SystemAuditService.fetchLogs error: $e');
       return [];

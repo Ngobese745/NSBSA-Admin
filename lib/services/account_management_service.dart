@@ -2,41 +2,23 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/app_config.dart';
 import 'communication_service.dart';
 import 'system_audit_service.dart';
-
+import 'notification_service.dart';
 
 /// Service for account creation, password reset approval, and audit logging.
 /// Uses the Supabase Service Role client for admin operations.
 class AccountManagementService {
   static SupabaseClient? _adminClient;
 
-  /// Sanitizes environment variables by stripping quotes and whitespace.
-  static String _sanitize(String? value) {
-    if (value == null) return '';
-    String result = value.trim();
-    if (result.startsWith('"') && result.endsWith('"')) {
-      result = result.substring(1, result.length - 1);
-    } else if (result.startsWith("'") && result.endsWith("'")) {
-      result = result.substring(1, result.length - 1);
-    }
-    return result;
-  }
-
   /// Returns a service-role Supabase client.
   /// The service role key must be set in .env as SUPABASE_SERVICE_ROLE_KEY.
   static SupabaseClient get _admin {
     if (_adminClient != null) return _adminClient!;
 
-    final url = _sanitize(dotenv.env['SUPABASE_URL']);
-    final serviceKey = _sanitize(dotenv.env['SUPABASE_SERVICE_ROLE_KEY']);
-
-    if (url.isEmpty || serviceKey.isEmpty) {
-      throw Exception(
-        'SUPABASE_SERVICE_ROLE_KEY or SUPABASE_URL is not set or malformed in .env. '
-        'Add it from Supabase Dashboard → Project Settings → API.',
-      );
-    }
+    final url = AppConfig.supabaseUrl;
+    final serviceKey = AppConfig.supabaseServiceRoleKey;
 
     _adminClient = SupabaseClient(url, serviceKey);
     return _adminClient!;
@@ -89,10 +71,7 @@ class AccountManagementService {
         email: email,
         password: tempPassword,
         emailConfirm: true, // Confirm immediately so they can log in
-        userMetadata: {
-          'full_name': fullName,
-          'must_change_password': true,
-        },
+        userMetadata: {'full_name': fullName, 'must_change_password': true},
       ),
     );
 
@@ -123,13 +102,23 @@ class AccountManagementService {
       eventType: 'account_created',
       targetEmail: email,
       operatorEmail: operatorEmail,
-      metadata: {'role': role, 'full_name': fullName, 'flow': 'direct_credentials'},
+      metadata: {
+        'role': role,
+        'full_name': fullName,
+        'flow': 'direct_credentials',
+      },
     );
-
     SystemAuditService.logAction(
       actionType: 'CREATE_USER',
       affectedEntity: 'User: $email',
-      description: 'Created staff account (Direct Credentials) with role: $role.',
+      description:
+          'Created staff account (Direct Credentials) with role: $role.',
+    );
+
+    await NotificationService.notifySuperAdmin(
+      'New User Created',
+      '$fullName ($email) has been added as $role.',
+      type: 'ACTIVITY',
     );
   }
 
@@ -143,7 +132,7 @@ class AccountManagementService {
   /// Finalizes the password setup for a user forced to change it.
   static Future<void> completeForcePasswordSetup(String newPassword) async {
     final auth = Supabase.instance.client.auth;
-    
+
     // Update the password
     await auth.updateUser(
       UserAttributes(
@@ -232,11 +221,17 @@ class AccountManagementService {
         'timestamp': DateTime.now().toIso8601String(),
       },
     );
-    
+
     SystemAuditService.logAction(
       actionType: 'BLOCK_USER',
       affectedEntity: 'User ID: $userId',
       description: 'Blocked user account ($targetEmail). Reason: $reason.',
+    );
+
+    await NotificationService.notifySuperAdmin(
+      'User Blocked',
+      '$targetEmail has been blocked. Reason: $reason',
+      type: 'ACTIVITY',
     );
   }
 
@@ -304,10 +299,10 @@ class AccountManagementService {
       'status': 'pending',
     });
 
-    await logEvent(
-      eventType: 'reset_requested',
-      targetEmail: email,
-      operatorEmail: null,
+    await NotificationService.notifySuperAdmin(
+      'Password Reset Request',
+      'A reset request has been submitted for $email.',
+      type: 'ACTIVITY',
     );
   }
 

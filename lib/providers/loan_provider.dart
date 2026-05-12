@@ -4,7 +4,7 @@ import '../models/loan.dart';
 
 import '../services/cache_service.dart';
 import '../services/system_audit_service.dart';
-
+import '../services/notification_service.dart';
 
 class LoanProvider with ChangeNotifier {
   final _supabase = Supabase.instance.client;
@@ -28,10 +28,16 @@ class LoanProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await _supabase.from('loans').select().order('created_at', ascending: false);
+      final response = await _supabase
+          .from('loans')
+          .select()
+          .order('created_at', ascending: false);
       _loans = (response as List).map((e) => LoanModel.fromJson(e)).toList();
-      
-      await CacheService.saveCache('loans_cache', _loans.map((e) => e.toJson()).toList());
+
+      await CacheService.saveCache(
+        'loans_cache',
+        _loans.map((e) => e.toJson()).toList(),
+      );
     } catch (e) {
       debugPrint('Error fetching loans: $e');
     } finally {
@@ -42,21 +48,35 @@ class LoanProvider with ChangeNotifier {
 
   Future<LoanModel> addLoan(LoanModel loan) async {
     try {
-      final response = await _supabase.from('loans').insert(loan.toJson()).select().single();
+      final response = await _supabase
+          .from('loans')
+          .insert(loan.toJson())
+          .select()
+          .single();
       final newLoan = LoanModel.fromJson(response);
-      
+
       _loans.insert(0, newLoan);
       notifyListeners();
-      
+
       // Background cache sync
-      CacheService.saveCache('loans_cache', _loans.map((e) => e.toJson()).toList());
-      
+      CacheService.saveCache(
+        'loans_cache',
+        _loans.map((e) => e.toJson()).toList(),
+      );
+
       SystemAuditService.logAction(
         actionType: 'CREATE_LOAN',
         affectedEntity: 'Loan for Vendor: ${loan.vendorId}',
-        description: 'Created a new loan for R${loan.amount}. Status: ${loan.status}',
+        description:
+            'Created a new loan for R${loan.amount}. Status: ${loan.status}',
       );
-      
+
+      await NotificationService.notifyAdmins(
+        'New Loan Created',
+        'A new loan of R${loan.amount} has been issued.',
+        type: 'FINANCIAL',
+      );
+
       return newLoan;
     } catch (e) {
       debugPrint('Error adding loan: $e');
@@ -77,16 +97,25 @@ class LoanProvider with ChangeNotifier {
       return [];
     }
   }
+
   Future<void> updateLoan(String id, Map<String, dynamic> updates) async {
     try {
-      final response = await _supabase.from('loans').update(updates).eq('id', id).select().single();
+      final response = await _supabase
+          .from('loans')
+          .update(updates)
+          .eq('id', id)
+          .select()
+          .single();
       final updatedLoan = LoanModel.fromJson(response);
-      
+
       final index = _loans.indexWhere((l) => l.id == id);
       if (index != -1) {
         _loans[index] = updatedLoan;
         notifyListeners();
-        CacheService.saveCache('loans_cache', _loans.map((e) => e.toJson()).toList());
+        CacheService.saveCache(
+          'loans_cache',
+          _loans.map((e) => e.toJson()).toList(),
+        );
         SystemAuditService.logAction(
           actionType: 'UPDATE_LOAN',
           affectedEntity: 'Loan ID: $id',
@@ -102,10 +131,13 @@ class LoanProvider with ChangeNotifier {
   Future<void> deleteLoan(String id) async {
     try {
       await _supabase.from('loans').delete().eq('id', id);
-      
+
       _loans.removeWhere((l) => l.id == id);
       notifyListeners();
-      CacheService.saveCache('loans_cache', _loans.map((e) => e.toJson()).toList());
+      CacheService.saveCache(
+        'loans_cache',
+        _loans.map((e) => e.toJson()).toList(),
+      );
       SystemAuditService.logAction(
         actionType: 'DELETE_LOAN',
         affectedEntity: 'Loan ID: $id',

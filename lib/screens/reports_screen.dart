@@ -37,7 +37,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
     setState(() {
       _selectedLoanId = loanId;
       _editingFieldKey = "${loanId}_$fieldName";
-      _controllers[_editingFieldKey!] = TextEditingController(text: initialValue);
+      _controllers[_editingFieldKey!] = TextEditingController(
+        text: initialValue,
+      );
     });
   }
 
@@ -49,24 +51,35 @@ class _ReportsScreenState extends State<ReportsScreen> {
     Map<String, dynamic> updates = {};
 
     // Map field name to model property
-    if (fieldName == 'amount') updates['amount'] = double.tryParse(newValue) ?? 0.0;
-    else if (fieldName == 'durationMonths') updates['duration_months'] = int.tryParse(newValue) ?? 0;
-    else if (fieldName == 'initiationFee') updates['initiation_fee'] = double.tryParse(newValue) ?? 0.0;
-    else if (fieldName == 'monthlyAdminFee') updates['monthly_admin_fee'] = double.tryParse(newValue) ?? 0.0;
-    else if (fieldName == 'penaltyFee') updates['penalty_fee'] = double.tryParse(newValue) ?? 0.0;
+    if (fieldName == 'amount')
+      updates['amount'] = double.tryParse(newValue) ?? 0.0;
+    else if (fieldName == 'durationMonths')
+      updates['duration_months'] = int.tryParse(newValue) ?? 0;
+    else if (fieldName == 'initiationFee')
+      updates['initiation_fee'] = double.tryParse(newValue) ?? 0.0;
+    else if (fieldName == 'monthlyAdminFee')
+      updates['monthly_admin_fee'] = double.tryParse(newValue) ?? 0.0;
+    else if (fieldName == 'penaltyFee')
+      updates['penalty_fee'] = double.tryParse(newValue) ?? 0.0;
 
     if (updates.isNotEmpty) {
       try {
         await context.read<LoanProvider>().updateLoan(loanId, updates);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Update successful'), backgroundColor: Colors.green),
+            const SnackBar(
+              content: Text('Update successful'),
+              backgroundColor: Colors.green,
+            ),
           );
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Update failed: $e'), backgroundColor: Colors.red),
+            SnackBar(
+              content: Text('Update failed: $e'),
+              backgroundColor: Colors.red,
+            ),
           );
         }
       }
@@ -82,9 +95,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Confirm Delete'),
-        content: const Text('Are you sure you want to delete this loan record? This action cannot be undone.'),
+        content: const Text(
+          'Are you sure you want to delete this loan record? This action cannot be undone.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
@@ -123,8 +141,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
     // Calculate Total Outstanding by summing individual loan balances
     double totalOutstanding = 0;
     for (final loan in loanProvider.loans) {
-      final loanPayments = paymentProvider.payments.where((p) => p.loanId == loan.id).toList();
-      totalOutstanding += LoanCalculationService.calculateBalance(loan, loanPayments);
+      final loanPayments = paymentProvider.payments
+          .where((p) => p.loanId == loan.id)
+          .toList();
+      totalOutstanding += LoanCalculationService.calculateBalance(
+        loan,
+        loanPayments,
+      );
     }
     final totalSavings = vendorProvider.vendors.fold(
       0.0,
@@ -140,13 +163,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
       0.0,
       (sum, l) => sum + (l.monthlyAdminFee ?? 0),
     );
-    final totalPenaltyFees = loanProvider.loans.fold(
-      0.0,
-      (sum, l) {
-        final loanPayments = paymentProvider.payments.where((p) => p.loanId == l.id).toList();
-        return sum + LoanCalculationService.calculateAppliedPenalty(l, loanPayments);
-      },
-    );
+    final totalPenaltyFees = loanProvider.loans.fold(0.0, (sum, l) {
+      final loanPayments = paymentProvider.payments
+          .where((p) => p.loanId == l.id)
+          .toList();
+      return sum +
+          LoanCalculationService.calculateAppliedPenalty(l, loanPayments);
+    });
     final totalExpectedFees =
         totalInitiationFees + totalAdminFees + totalPenaltyFees;
 
@@ -309,9 +332,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 const SizedBox(height: 24),
                 Container(
                   decoration: BoxDecoration(
-                    border: Border.all(
-                      color: theme.dividerColor,
-                    ),
+                    border: Border.all(color: theme.dividerColor),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Table(
@@ -344,24 +365,24 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           ).textTheme.bodyMedium?.color?.withOpacity(0.03),
                         ),
                         children: [
-                           _buildTableHeader('Member Name'),
-                           _buildTableHeader('ID Number'),
-                           _buildTableHeader('Phone'),
-                           _buildTableHeader('Group'),
-                           _buildTableHeader('Business'),
-                           _buildTableHeader('Principal'),
-                           _buildTableHeader('Term'),
-                           _buildTableHeader('Init Fee'),
-                           _buildTableHeader('Admin Fee'),
-                           _buildTableHeader('Penalty'),
-                           _buildTableHeader('Monthly'),
-                           _buildTableHeader('Total Paid'),
-                           _buildTableHeader('Balance'),
-                           _buildTableHeader(''), // Actions
-                         ],
-                       ),
-                       ...loanProvider.loans.map((loan) {
-                         final isSelected = loan.id == _selectedLoanId;
+                          _buildTableHeader('Member Name'),
+                          _buildTableHeader('ID Number'),
+                          _buildTableHeader('Phone'),
+                          _buildTableHeader('Group'),
+                          _buildTableHeader('Business'),
+                          _buildTableHeader('Principal'),
+                          _buildTableHeader('Term'),
+                          _buildTableHeader('Init Fee'),
+                          _buildTableHeader('Admin Fee'),
+                          _buildTableHeader('Penalty'),
+                          _buildTableHeader('Monthly'),
+                          _buildTableHeader('Total Paid'),
+                          _buildTableHeader('Balance'),
+                          _buildTableHeader(''), // Actions
+                        ],
+                      ),
+                      ...loanProvider.loans.map((loan) {
+                        final isSelected = loan.id == _selectedLoanId;
                         final vendor = vendorProvider.vendors
                             .where((v) => v.id == loan.vendorId)
                             .firstOrNull;
@@ -371,84 +392,115 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         final loanPayments = paymentProvider.payments
                             .where((p) => p.loanId == loan.id)
                             .toList();
-                        final totalPaid = loanPayments.fold(0.0, (sum, p) => sum + p.amountPaid);
-                        final appliedPenalty = LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
-                        final balance = LoanCalculationService.calculateBalance(loan, loanPayments);
+                        final totalPaid = loanPayments.fold(
+                          0.0,
+                          (sum, p) => sum + p.amountPaid,
+                        );
+                        final appliedPenalty =
+                            LoanCalculationService.calculateAppliedPenalty(
+                              loan,
+                              loanPayments,
+                            );
+                        final balance = LoanCalculationService.calculateBalance(
+                          loan,
+                          loanPayments,
+                        );
 
                         void _goToLoan() {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => LoanDetailsScreen(loan: loan),
+                              builder: (context) =>
+                                  LoanDetailsScreen(loan: loan),
                             ),
                           );
                         }
 
-                         return TableRow(
-                           decoration: BoxDecoration(
-                             color: isSelected 
-                               ? AppTheme.primaryGold.withOpacity(0.1) 
-                               : null,
-                           ),
-                           children: [
-                             _buildTableCell(
-                               vendor?.name ?? 'Unknown',
-                               isBold: true,
-                               onTap: () => setState(() => _selectedLoanId = loan.id),
-                               onDoubleTap: _goToLoan,
-                             ),
-                             _buildTableCell(vendor?.idNumber ?? '-', onTap: () => setState(() => _selectedLoanId = loan.id)),
-                             _buildTableCell(vendor?.phone ?? '-', onTap: () => setState(() => _selectedLoanId = loan.id)),
-                             _buildTableCell(group?.name ?? '-', onTap: () => setState(() => _selectedLoanId = loan.id)),
-                             _buildTableCell(vendor?.businessType ?? '-', onTap: () => setState(() => _selectedLoanId = loan.id)),
-                             _buildEditableTableCell(
-                               loan.id, 
-                               'amount', 
-                               loan.amount.toStringAsFixed(0),
-                               prefix: 'R ',
-                             ),
-                             _buildEditableTableCell(
-                               loan.id, 
-                               'durationMonths', 
-                               loan.durationMonths.toString(),
-                               suffix: 'm',
-                             ),
-                             _buildEditableTableCell(
-                               loan.id, 
-                               'initiationFee', 
-                               loan.initiationFee?.toStringAsFixed(0) ?? '0',
-                               prefix: 'R ',
-                             ),
-                             _buildEditableTableCell(
-                               loan.id, 
-                               'monthlyAdminFee', 
-                               loan.monthlyAdminFee?.toStringAsFixed(0) ?? '0',
-                               prefix: 'R ',
-                             ),
-                             _buildEditableTableCell(
-                               loan.id, 
-                               'penaltyFee', 
-                               appliedPenalty.toStringAsFixed(0),
-                               prefix: 'R ',
-                             ),
-                             _buildTableCell(
-                               'R ${loan.monthlyPayment.toStringAsFixed(0)}',
-                               color: AppTheme.primaryGold,
-                               onTap: () => setState(() => _selectedLoanId = loan.id),
-                             ),
-                             _buildTableCell(
-                               'R ${totalPaid.toStringAsFixed(0)}',
-                               color: Colors.greenAccent,
-                               onTap: () => setState(() => _selectedLoanId = loan.id),
-                             ),
-                             _buildTableCell(
-                               'R ${balance.toStringAsFixed(0)}',
-                               color: Colors.orangeAccent,
-                               onTap: () => setState(() => _selectedLoanId = loan.id),
-                             ),
-                             _buildActionsCell(loan.id),
-                           ],
-                         );
+                        return TableRow(
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? AppTheme.primaryGold.withOpacity(0.1)
+                                : null,
+                          ),
+                          children: [
+                            _buildTableCell(
+                              vendor?.name ?? 'Unknown',
+                              isBold: true,
+                              onTap: () =>
+                                  setState(() => _selectedLoanId = loan.id),
+                              onDoubleTap: _goToLoan,
+                            ),
+                            _buildTableCell(
+                              vendor?.idNumber ?? '-',
+                              onTap: () =>
+                                  setState(() => _selectedLoanId = loan.id),
+                            ),
+                            _buildTableCell(
+                              vendor?.phone ?? '-',
+                              onTap: () =>
+                                  setState(() => _selectedLoanId = loan.id),
+                            ),
+                            _buildTableCell(
+                              group?.name ?? '-',
+                              onTap: () =>
+                                  setState(() => _selectedLoanId = loan.id),
+                            ),
+                            _buildTableCell(
+                              vendor?.businessType ?? '-',
+                              onTap: () =>
+                                  setState(() => _selectedLoanId = loan.id),
+                            ),
+                            _buildEditableTableCell(
+                              loan.id,
+                              'amount',
+                              loan.amount.toStringAsFixed(0),
+                              prefix: 'R ',
+                            ),
+                            _buildEditableTableCell(
+                              loan.id,
+                              'durationMonths',
+                              loan.durationMonths.toString(),
+                              suffix: 'm',
+                            ),
+                            _buildEditableTableCell(
+                              loan.id,
+                              'initiationFee',
+                              loan.initiationFee?.toStringAsFixed(0) ?? '0',
+                              prefix: 'R ',
+                            ),
+                            _buildEditableTableCell(
+                              loan.id,
+                              'monthlyAdminFee',
+                              loan.monthlyAdminFee?.toStringAsFixed(0) ?? '0',
+                              prefix: 'R ',
+                            ),
+                            _buildEditableTableCell(
+                              loan.id,
+                              'penaltyFee',
+                              appliedPenalty.toStringAsFixed(0),
+                              prefix: 'R ',
+                            ),
+                            _buildTableCell(
+                              'R ${loan.monthlyPayment.toStringAsFixed(0)}',
+                              color: AppTheme.primaryGold,
+                              onTap: () =>
+                                  setState(() => _selectedLoanId = loan.id),
+                            ),
+                            _buildTableCell(
+                              'R ${totalPaid.toStringAsFixed(0)}',
+                              color: Colors.greenAccent,
+                              onTap: () =>
+                                  setState(() => _selectedLoanId = loan.id),
+                            ),
+                            _buildTableCell(
+                              'R ${balance.toStringAsFixed(0)}',
+                              color: Colors.orangeAccent,
+                              onTap: () =>
+                                  setState(() => _selectedLoanId = loan.id),
+                            ),
+                            _buildActionsCell(loan.id),
+                          ],
+                        );
                       }).toList(),
                     ],
                   ),
@@ -529,7 +581,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Widget _buildTableCell(String text, {bool isBold = false, Color? color, VoidCallback? onTap, VoidCallback? onDoubleTap}) {
+  Widget _buildTableCell(
+    String text, {
+    bool isBold = false,
+    Color? color,
+    VoidCallback? onTap,
+    VoidCallback? onDoubleTap,
+  }) {
     Widget content = Padding(
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
       child: Text(
@@ -542,19 +600,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
         overflow: TextOverflow.ellipsis,
       ),
     );
-    
+
     if (onTap != null || onDoubleTap != null) {
-      return InkWell(
-        onTap: onTap, 
-        onDoubleTap: onDoubleTap,
-        child: content,
-      );
+      return InkWell(onTap: onTap, onDoubleTap: onDoubleTap, child: content);
     }
-    
+
     return content;
   }
 
-  Widget _buildEditableTableCell(String loanId, String fieldName, String value, {String prefix = '', String suffix = ''}) {
+  Widget _buildEditableTableCell(
+    String loanId,
+    String fieldName,
+    String value, {
+    String prefix = '',
+    String suffix = '',
+  }) {
     final key = "${loanId}_$fieldName";
     final isEditing = _editingFieldKey == key;
 
@@ -567,8 +627,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
           style: const TextStyle(fontSize: 11, color: Colors.white),
           decoration: InputDecoration(
             isDense: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: const BorderSide(color: AppTheme.primaryGold)),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 4,
+              vertical: 8,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(4),
+              borderSide: const BorderSide(color: AppTheme.primaryGold),
+            ),
             prefixText: prefix,
             suffixText: suffix,
           ),
@@ -590,20 +656,56 @@ class _ReportsScreenState extends State<ReportsScreen> {
       padding: EdgeInsets.zero,
       onSelected: (value) {
         if (value == 'view') {
-          final loan = context.read<LoanProvider>().loans.firstWhere((l) => l.id == loanId);
-          Navigator.push(context, MaterialPageRoute(builder: (context) => LoanDetailsScreen(loan: loan)));
+          final loan = context.read<LoanProvider>().loans.firstWhere(
+            (l) => l.id == loanId,
+          );
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => LoanDetailsScreen(loan: loan),
+            ),
+          );
         } else if (value == 'edit') {
           // Trigger inline edit for the first editable field (amount)
-          final loan = context.read<LoanProvider>().loans.firstWhere((l) => l.id == loanId);
+          final loan = context.read<LoanProvider>().loans.firstWhere(
+            (l) => l.id == loanId,
+          );
           _onCellTap(loanId, 'amount', loan.amount.toStringAsFixed(0));
         } else if (value == 'delete') {
           _confirmDelete(loanId);
         }
       },
       itemBuilder: (context) => [
-        const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, size: 16, color: AppTheme.primaryGold), SizedBox(width: 8), Text('Edit Inline')])),
-        const PopupMenuItem(value: 'view', child: Row(children: [Icon(Icons.visibility, size: 16), SizedBox(width: 8), Text('View Details')])),
-        const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, size: 16, color: Colors.red), SizedBox(width: 8), Text('Delete', style: TextStyle(color: Colors.red))])),
+        const PopupMenuItem(
+          value: 'edit',
+          child: Row(
+            children: [
+              Icon(Icons.edit, size: 16, color: AppTheme.primaryGold),
+              SizedBox(width: 8),
+              Text('Edit Inline'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'view',
+          child: Row(
+            children: [
+              Icon(Icons.visibility, size: 16),
+              SizedBox(width: 8),
+              Text('View Details'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'delete',
+          child: Row(
+            children: [
+              Icon(Icons.delete, size: 16, color: Colors.red),
+              SizedBox(width: 8),
+              Text('Delete', style: TextStyle(color: Colors.red)),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -720,8 +822,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   final loanPayments = paymentProvider.payments
                       .where((p) => p.loanId == loan.id)
                       .toList();
-                  final totalPaid = loanPayments.fold(0.0, (sum, p) => sum + p.amountPaid);
-                  final balance = LoanCalculationService.calculateBalance(loan, loanPayments);
+                  final totalPaid = loanPayments.fold(
+                    0.0,
+                    (sum, p) => sum + p.amountPaid,
+                  );
+                  final balance = LoanCalculationService.calculateBalance(
+                    loan,
+                    loanPayments,
+                  );
 
                   return pw.TableRow(
                     children: [

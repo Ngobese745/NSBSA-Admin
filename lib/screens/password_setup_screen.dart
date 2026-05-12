@@ -41,7 +41,7 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
     );
     _fadeAnim = CurvedAnimation(parent: _animController, curve: Curves.easeOut);
     _animController.forward();
-    
+
     // Process the recovery link
     _initializeRecoveryFlow();
   }
@@ -58,19 +58,22 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
   Future<void> _initializeRecoveryFlow() async {
     try {
       final auth = Supabase.instance.client.auth;
-      
+
       // CASE 1: Standard URL-based recovery link (for password resets)
       final uri = Uri.base;
       final fullUrl = uri.toString();
-      final hasUrlToken = fullUrl.contains('access_token=') || 
-                          fullUrl.contains('code=') || 
-                          fullUrl.contains('type=recovery') || 
-                          fullUrl.contains('type=invite');
+      final hasUrlToken =
+          fullUrl.contains('access_token=') ||
+          fullUrl.contains('code=') ||
+          fullUrl.contains('type=recovery') ||
+          fullUrl.contains('type=invite');
 
       if (hasUrlToken) {
         // Force switch logic if Admin is logged in
         if (auth.currentUser?.email == 'colane@mwelasefin.co.za') {
-          debugPrint('PasswordSetupScreen: Admin session detected during link flow. Force reloading.');
+          debugPrint(
+            'PasswordSetupScreen: Admin session detected during link flow. Force reloading.',
+          );
           await auth.signOut();
           html.window.location.reload();
           return;
@@ -93,14 +96,16 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
 
       // CASE 2: Logged-in user who was forced here (Direct Credentials flow)
       // This is the new, robust way that bypasses URL token issues.
-      final mustChangePassword = auth.currentUser?.userMetadata?['must_change_password'] == true;
+      final mustChangePassword =
+          auth.currentUser?.userMetadata?['must_change_password'] == true;
 
       setState(() {
         _hasValidSession = auth.currentSession != null;
         _isValidatingToken = false;
-        
+
         if (!_hasValidSession) {
-          _error = 'Session expired. Please log in with your temporary credentials again.';
+          _error =
+              'Session expired. Please log in with your temporary credentials again.';
         } else if (!hasUrlToken && !mustChangePassword) {
           // If we are here without a link AND without a "must change" flag, something is wrong
           _error = 'Unauthorized access to password setup.';
@@ -140,9 +145,9 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
     try {
       // Use the service to complete the setup (updates password and clears flag)
       await AccountManagementService.completeForcePasswordSetup(password);
-      
+
       if (!mounted) return;
-      
+
       // Update the local provider state if possible
       try {
         final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -156,7 +161,8 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
       });
 
       // Log the event for security audit
-      final email = Supabase.instance.client.auth.currentUser?.email ?? 'Unknown';
+      final email =
+          Supabase.instance.client.auth.currentUser?.email ?? 'Unknown';
       await AccountManagementService.logEvent(
         eventType: 'Password Setup Complete',
         targetEmail: email,
@@ -171,12 +177,14 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Password updated successfully! Redirecting to login...'),
+            content: Text(
+              'Password updated successfully! Redirecting to login...',
+            ),
             backgroundColor: Colors.green,
           ),
         );
 
-        // A small delay ensures the password update is fully propagated 
+        // A small delay ensures the password update is fully propagated
         // in the Supabase backend before we destroy the current session.
         await Future.delayed(const Duration(seconds: 1));
 
@@ -184,7 +192,9 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
         await Supabase.instance.client.auth.signOut();
 
         if (mounted) {
-          Navigator.of(context).pushNamedAndRemoveUntil('/auth/login', (_) => false);
+          Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil('/auth/login', (_) => false);
         }
       }
     } catch (e) {
@@ -197,7 +207,7 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
   @override
   Widget build(BuildContext context) {
     const gold = Color(0xFFD4AF37);
-    
+
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       body: Stack(
@@ -209,10 +219,7 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
                 gradient: RadialGradient(
                   center: Alignment.center,
                   radius: 1.2,
-                  colors: [
-                    gold.withOpacity(0.05),
-                    Colors.black,
-                  ],
+                  colors: [gold.withOpacity(0.05), Colors.black],
                 ),
               ),
             ),
@@ -248,7 +255,11 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
                           child: Image.asset(
                             AppAssets.logo,
                             height: 80,
-                            errorBuilder: (_, __, ___) => const Icon(Icons.lock_outline, size: 80, color: gold),
+                            errorBuilder: (_, __, ___) => const Icon(
+                              Icons.lock_outline,
+                              size: 80,
+                              color: gold,
+                            ),
                           ),
                         ),
                       ),
@@ -272,7 +283,8 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        Supabase.instance.client.auth.currentUser?.email ?? 'Validating session...',
+                        Supabase.instance.client.auth.currentUser?.email ??
+                            'Validating session...',
                         style: const TextStyle(
                           color: Color(0xFFD4AF37),
                           fontWeight: FontWeight.bold,
@@ -289,9 +301,15 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
                       const SizedBox(height: 40),
 
                       if (_isValidatingToken) ...[
-                        const Center(child: CircularProgressIndicator(color: gold)),
+                        const Center(
+                          child: CircularProgressIndicator(color: gold),
+                        ),
                         const SizedBox(height: 20),
-                        const Text('Validating link...', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+                        const Text(
+                          'Validating link...',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey),
+                        ),
                       ] else if (!_hasValidSession) ...[
                         // Error State
                         Container(
@@ -299,11 +317,17 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
                           decoration: BoxDecoration(
                             color: Colors.red.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.red.withOpacity(0.3)),
+                            border: Border.all(
+                              color: Colors.red.withOpacity(0.3),
+                            ),
                           ),
                           child: Column(
                             children: [
-                              const Icon(Icons.error_outline, color: Colors.redAccent, size: 40),
+                              const Icon(
+                                Icons.error_outline,
+                                color: Colors.redAccent,
+                                size: 40,
+                              ),
                               const SizedBox(height: 12),
                               Text(
                                 _error ?? 'Invalid or expired link.',
@@ -315,14 +339,22 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
                         ),
                         const SizedBox(height: 32),
                         ElevatedButton(
-                          onPressed: () => Navigator.pushReplacementNamed(context, '/auth/login'),
+                          onPressed: () => Navigator.pushReplacementNamed(
+                            context,
+                            '/auth/login',
+                          ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: gold,
                             foregroundColor: Colors.black,
                             minimumSize: const Size(double.infinity, 50),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
-                          child: const Text('Back to Login', style: TextStyle(fontWeight: FontWeight.bold)),
+                          child: const Text(
+                            'Back to Login',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                         ),
                       ] else ...[
                         // Form State
@@ -337,14 +369,22 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
                           'Confirm New Password',
                           _confirmController,
                           _obscureConfirm,
-                          () => setState(() => _obscureConfirm = !_obscureConfirm),
+                          () => setState(
+                            () => _obscureConfirm = !_obscureConfirm,
+                          ),
                         ),
                         const SizedBox(height: 16),
-                        
-                        if (_error != null) 
+
+                        if (_error != null)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 16),
-                            child: Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
+                            child: Text(
+                              _error!,
+                              style: const TextStyle(
+                                color: Colors.redAccent,
+                                fontSize: 13,
+                              ),
+                            ),
                           ),
 
                         const SizedBox(height: 16),
@@ -354,13 +394,29 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
                             backgroundColor: gold,
                             foregroundColor: Colors.black,
                             minimumSize: const Size(double.infinity, 56),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                             elevation: 8,
                             shadowColor: gold.withOpacity(0.3),
                           ),
                           child: _isSaving
-                              ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
-                              : const Text('Update Password', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                              ? const SizedBox(
+                                  height: 24,
+                                  width: 24,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.black,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text(
+                                  'Update Password',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
                         ),
                       ],
                     ],
@@ -384,7 +440,14 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.w500)),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.grey,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
         const SizedBox(height: 8),
         TextField(
           controller: controller,
@@ -393,13 +456,26 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
           decoration: InputDecoration(
             filled: true,
             fillColor: Colors.white.withOpacity(0.05),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: gold, width: 1.5)),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: gold, width: 1.5),
+            ),
             suffixIcon: IconButton(
-              icon: Icon(obscure ? Icons.visibility_off : Icons.visibility, color: Colors.grey, size: 20),
+              icon: Icon(
+                obscure ? Icons.visibility_off : Icons.visibility,
+                color: Colors.grey,
+                size: 20,
+              ),
               onPressed: onToggle,
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: 18,
+            ),
           ),
         ),
       ],

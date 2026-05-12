@@ -17,8 +17,16 @@ class DeveloperControlsService {
 
   static Future<List<SystemBannerModel>> fetchBanners() async {
     try {
-      final data = await _client.from('system_banners').select().order('updated_at', ascending: false);
-      return (data as List).map((e) => SystemBannerModel.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+      final data = await _client
+          .from('system_banners')
+          .select()
+          .order('updated_at', ascending: false);
+      return (data as List)
+          .map(
+            (e) =>
+                SystemBannerModel.fromJson(Map<String, dynamic>.from(e as Map)),
+          )
+          .toList();
     } catch (e) {
       if (_missingTable(e)) return [];
       rethrow;
@@ -27,22 +35,38 @@ class DeveloperControlsService {
 
   static Future<List<FeatureFlagModel>> fetchFeatureFlags() async {
     try {
-      final data = await _client.from('feature_flags').select().order('sort_order');
-      return (data as List).map((e) => FeatureFlagModel.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+      final data = await _client
+          .from('feature_flags')
+          .select()
+          .order('sort_order');
+      return (data as List)
+          .map(
+            (e) =>
+                FeatureFlagModel.fromJson(Map<String, dynamic>.from(e as Map)),
+          )
+          .toList();
     } catch (e) {
       if (_missingTable(e)) return [];
       rethrow;
     }
   }
 
-  static Future<List<DeveloperActionLogModel>> fetchActionLog({int limit = 100}) async {
+  static Future<List<DeveloperActionLogModel>> fetchActionLog({
+    int limit = 100,
+  }) async {
     try {
       final data = await _client
           .from('developer_action_log')
           .select()
           .order('created_at', ascending: false)
           .limit(limit);
-      return (data as List).map((e) => DeveloperActionLogModel.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+      return (data as List)
+          .map(
+            (e) => DeveloperActionLogModel.fromJson(
+              Map<String, dynamic>.from(e as Map),
+            ),
+          )
+          .toList();
     } catch (e) {
       if (_missingTable(e)) return [];
       rethrow;
@@ -97,41 +121,60 @@ class DeveloperControlsService {
   }
 
   static Future<void> updateBanner(SystemBannerModel banner) async {
-    await _client.from('system_banners').update({
-      'banner_type': banner.bannerType,
-      'title': banner.title,
-      'message': banner.message,
-      'severity': banner.severity,
-      'is_enabled': banner.isEnabled,
-      'starts_at': banner.startsAt.toIso8601String(),
-      'ends_at': banner.endsAt?.toIso8601String(),
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    }).eq('id', banner.id);
+    await _client
+        .from('system_banners')
+        .update({
+          'banner_type': banner.bannerType,
+          'title': banner.title,
+          'message': banner.message,
+          'severity': banner.severity,
+          'is_enabled': banner.isEnabled,
+          'starts_at': banner.startsAt.toIso8601String(),
+          'ends_at': banner.endsAt?.toIso8601String(),
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('id', banner.id);
   }
 
   /// When enabling [bannerId], turn off all other banners (single active strip).
-  static Future<void> setBannerEnabledExclusive(String bannerId, bool enabled) async {
+  static Future<void> setBannerEnabledExclusive(
+    String bannerId,
+    bool enabled,
+  ) async {
     if (enabled) {
-      await _client.from('system_banners').update({
-        'is_enabled': false,
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      }).neq('id', bannerId);
+      await _client
+          .from('system_banners')
+          .update({
+            'is_enabled': false,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .neq('id', bannerId);
     }
-    await _client.from('system_banners').update({
-      'is_enabled': enabled,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    }).eq('id', bannerId);
+    await _client
+        .from('system_banners')
+        .update({
+          'is_enabled': enabled,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('id', bannerId);
   }
 
   static Future<void> deleteBanner(String id) async {
     await _client.from('system_banners').delete().eq('id', id);
   }
 
-  static Future<void> setFeatureEnabled(String featureKey, bool enabled, String? userId) async {
-    await _client.from('feature_flags').update({
-      'enabled': enabled,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-      if (userId != null) 'updated_by': userId,
-    }).eq('feature_key', featureKey);
+  static Future<void> setFeatureEnabled(
+    String featureKey,
+    bool enabled,
+    String? userId,
+  ) async {
+    await _client
+        .from('feature_flags')
+        .update({
+          'enabled': enabled,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+          if (userId != null) 'updated_by': userId,
+        })
+        .eq('feature_key', featureKey);
   }
 }

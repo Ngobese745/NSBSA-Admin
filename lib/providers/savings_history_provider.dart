@@ -20,8 +20,10 @@ class SavingsHistoryProvider with ChangeNotifier {
           .select()
           .eq('vendor_id', vendorId)
           .order('created_at', ascending: false);
-      
-      _history = (response as List).map((e) => SavingsHistoryModel.fromJson(e)).toList();
+
+      _history = (response as List)
+          .map((e) => SavingsHistoryModel.fromJson(e))
+          .toList();
     } catch (e) {
       debugPrint('Error fetching savings history: $e');
     } finally {
@@ -37,7 +39,7 @@ class SavingsHistoryProvider with ChangeNotifier {
           .insert(entry.toJson())
           .select()
           .single();
-      
+
       final newEntry = SavingsHistoryModel.fromJson(response);
       _history.insert(0, newEntry);
       notifyListeners();
@@ -45,5 +47,26 @@ class SavingsHistoryProvider with ChangeNotifier {
       debugPrint('Error adding savings history: $e');
       rethrow;
     }
+  }
+
+  Future<void> addEntry({
+    required String vendorId,
+    required double amount,
+    required String type,
+    required String updatedBy,
+    double? previousBalance,
+    double? newBalance,
+  }) async {
+    final entry = SavingsHistoryModel(
+      id: '',
+      vendorId: vendorId,
+      amount: amount,
+      previousBalance: previousBalance ?? 0,
+      newBalance: newBalance ?? 0,
+      actionType: type,
+      updatedBy: updatedBy,
+      createdAt: DateTime.now(),
+    );
+    await addHistoryEntry(entry);
   }
 }

@@ -5,7 +5,6 @@ import '../models/vendor.dart';
 import '../services/cache_service.dart';
 import '../services/system_audit_service.dart';
 
-
 class VendorProvider with ChangeNotifier {
   final _supabase = Supabase.instance.client;
   List<VendorModel> _vendors = [];
@@ -28,10 +27,18 @@ class VendorProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await _supabase.from('vendors').select().order('created_at', ascending: false);
-      _vendors = (response as List).map((e) => VendorModel.fromJson(e)).toList();
-      
-      await CacheService.saveCache('vendors_cache', _vendors.map((e) => e.toJson()).toList());
+      final response = await _supabase
+          .from('vendors')
+          .select()
+          .order('created_at', ascending: false);
+      _vendors = (response as List)
+          .map((e) => VendorModel.fromJson(e))
+          .toList();
+
+      await CacheService.saveCache(
+        'vendors_cache',
+        _vendors.map((e) => e.toJson()).toList(),
+      );
     } catch (e) {
       debugPrint('Error fetching vendors: $e');
     } finally {
@@ -42,19 +49,27 @@ class VendorProvider with ChangeNotifier {
 
   Future<VendorModel> addVendor(VendorModel vendor) async {
     try {
-      final response = await _supabase.from('vendors').insert(vendor.toJson()).select().single();
+      final response = await _supabase
+          .from('vendors')
+          .insert(vendor.toJson())
+          .select()
+          .single();
       final newVendor = VendorModel.fromJson(response);
-      
+
       _vendors.insert(0, newVendor);
       notifyListeners();
-      CacheService.saveCache('vendors_cache', _vendors.map((e) => e.toJson()).toList());
-      
+      CacheService.saveCache(
+        'vendors_cache',
+        _vendors.map((e) => e.toJson()).toList(),
+      );
+
       SystemAuditService.logAction(
         actionType: 'CREATE_VENDOR',
-        affectedEntity: 'Vendor: ${vendor.name} (${vendor.idNumber ?? vendor.phone})',
+        affectedEntity:
+            'Vendor: ${vendor.name} (${vendor.idNumber ?? vendor.phone})',
         description: 'Created a new vendor/member.',
       );
-      
+
       return newVendor;
     } catch (e) {
       debugPrint('Error adding vendor: $e');
@@ -154,6 +169,32 @@ class VendorProvider with ChangeNotifier {
     } catch (e) {
       debugPrint('Error checking duplicate vendor: $e');
       return null;
+    }
+  }
+
+  Future<void> updateSavingsBalance({
+    required String vendorId,
+    required double newBalance,
+    required String actionType,
+    required double amount,
+  }) async {
+    try {
+      await _supabase
+          .from('vendors')
+          .update({'savings_amount': newBalance})
+          .eq('id', vendorId);
+
+      SystemAuditService.logAction(
+        actionType: 'SAVINGS_TRANSACTION',
+        affectedEntity: 'Vendor ID: $vendorId',
+        description:
+            'Recorded $actionType of R $amount. New balance: R $newBalance.',
+      );
+
+      await fetchVendors(forceRefresh: true);
+    } catch (e) {
+      debugPrint('Error updating savings balance: $e');
+      rethrow;
     }
   }
 }

@@ -24,10 +24,12 @@ import 'vendor_profile_screen.dart';
 import 'user_profile_screen.dart';
 import 'analytics_screen.dart';
 import 'developer_management_screen.dart';
+import 'center_management_screen.dart';
 import '../providers/developer_controls_provider.dart';
 import '../services/access_control_service.dart';
 import '../widgets/feature_disabled_placeholder.dart';
 import '../widgets/system_status_banner_strip.dart';
+import '../widgets/notification_bell.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -53,6 +55,7 @@ class _MainShellState extends State<MainShell> {
     'Advanced Analytics',
     'Financial Reports',
     'Import Data',
+    'Center Management',
     'User Management',
     'Developer Management',
   ];
@@ -74,6 +77,7 @@ class _MainShellState extends State<MainShell> {
       }
       return child;
     }
+
     switch (index) {
       case 0:
         return guard('dashboard', const DashboardScreen());
@@ -92,8 +96,10 @@ class _MainShellState extends State<MainShell> {
       case 7:
         return guard('import', const ImportScreen());
       case 8:
-        return guard('user_management', const UserManagementScreen());
+        return const CenterManagementScreen();
       case 9:
+        return guard('user_management', const UserManagementScreen());
+      case 10:
         return const DeveloperManagementScreen();
       default:
         return guard('dashboard', const DashboardScreen());
@@ -116,9 +122,13 @@ class _MainShellState extends State<MainShell> {
             Container(
               height: 70, // Increased height for a more premium feel
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 20), // More horizontal padding
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20,
+              ), // More horizontal padding
               decoration: BoxDecoration(
-                color: isLight ? const Color(0xFF1E1E1E) : theme.colorScheme.surface,
+                color: isLight
+                    ? const Color(0xFF1E1E1E)
+                    : theme.colorScheme.surface,
                 border: Border(
                   bottom: BorderSide(
                     color: isLight ? Colors.white10 : theme.dividerColor,
@@ -131,11 +141,14 @@ class _MainShellState extends State<MainShell> {
                   children: [
                     // Left section: Menu and Logo (Aligned to Sidebar width)
                     SizedBox(
-                      width: 200, // Matching sidebar width (220) - padding adjustments
+                      width:
+                          200, // Matching sidebar width (220) - padding adjustments
                       child: Row(
                         children: [
                           IconButton(
-                            tooltip: _isSidebarVisible ? 'Hide sidebar' : 'Show sidebar',
+                            tooltip: _isSidebarVisible
+                                ? 'Hide sidebar'
+                                : 'Show sidebar',
                             icon: Icon(
                               _isSidebarVisible ? Icons.menu_open : Icons.menu,
                               color: Colors.white,
@@ -152,7 +165,12 @@ class _MainShellState extends State<MainShell> {
                             AppAssets.logo,
                             height: 58,
                             fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) => const Icon(Icons.account_balance_wallet, color: Colors.white, size: 36),
+                            errorBuilder: (context, error, stackTrace) =>
+                                const Icon(
+                                  Icons.account_balance_wallet,
+                                  color: Colors.white,
+                                  size: 36,
+                                ),
                           ),
                         ],
                       ),
@@ -180,14 +198,26 @@ class _MainShellState extends State<MainShell> {
                     const Spacer(),
                     IconButton(
                       tooltip: 'Refresh data & system banner',
-                      icon: const Icon(Icons.refresh, color: Colors.white70, size: 22),
+                      icon: const Icon(
+                        Icons.refresh,
+                        color: Colors.white70,
+                        size: 22,
+                      ),
                       onPressed: () {
                         setState(() => _dismissedStripBannerId = null);
                         context.read<DeveloperControlsProvider>().refresh();
-                        context.read<GroupProvider>().fetchGroups(forceRefresh: true);
-                        context.read<VendorProvider>().fetchVendors(forceRefresh: true);
-                        context.read<LoanProvider>().fetchLoans(forceRefresh: true);
-                        context.read<PaymentProvider>().fetchPayments(forceRefresh: true);
+                        context.read<GroupProvider>().fetchGroups(
+                          forceRefresh: true,
+                        );
+                        context.read<VendorProvider>().fetchVendors(
+                          forceRefresh: true,
+                        );
+                        context.read<LoanProvider>().fetchLoans(
+                          forceRefresh: true,
+                        );
+                        context.read<PaymentProvider>().fetchPayments(
+                          forceRefresh: true,
+                        );
                       },
                     ),
                     const SizedBox(width: 8),
@@ -196,18 +226,34 @@ class _MainShellState extends State<MainShell> {
                       width: 320,
                       child: TextField(
                         controller: _searchController,
-                        style: const TextStyle(fontSize: 13, color: Colors.white),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Colors.white,
+                        ),
                         decoration: InputDecoration(
                           hintText: 'Search groups, vendors or loans...',
-                          hintStyle: const TextStyle(fontSize: 12, color: Colors.white54),
-                          prefixIcon: const Icon(Icons.search, size: 18, color: Colors.white54),
+                          hintStyle: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.white54,
+                          ),
+                          prefixIcon: const Icon(
+                            Icons.search,
+                            size: 18,
+                            color: Colors.white54,
+                          ),
                           isDense: true,
                           suffixIcon: _searchController.text.isNotEmpty
                               ? IconButton(
-                                  icon: const Icon(Icons.clear, size: 16, color: Colors.white54),
+                                  icon: const Icon(
+                                    Icons.clear,
+                                    size: 16,
+                                    color: Colors.white54,
+                                  ),
                                   onPressed: () {
                                     _searchController.clear();
-                                    context.read<SearchProvider>().clearSearch();
+                                    context
+                                        .read<SearchProvider>()
+                                        .clearSearch();
                                     _hideOverlay();
                                   },
                                 )
@@ -218,17 +264,31 @@ class _MainShellState extends State<MainShell> {
                             borderRadius: BorderRadius.circular(6),
                             borderSide: BorderSide.none,
                           ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
                         ),
                         onChanged: (value) {
                           String contextType = 'global';
                           switch (_selectedIndex) {
-                            case 1: contextType = 'groups'; break;
-                            case 2: contextType = 'vendors'; break;
-                            case 3: contextType = 'loans'; break;
-                            case 4: contextType = 'payments'; break;
+                            case 1:
+                              contextType = 'groups';
+                              break;
+                            case 2:
+                              contextType = 'vendors';
+                              break;
+                            case 3:
+                              contextType = 'loans';
+                              break;
+                            case 4:
+                              contextType = 'payments';
+                              break;
                           }
-                          context.read<SearchProvider>().search(value, contextType: contextType);
+                          context.read<SearchProvider>().search(
+                            value,
+                            contextType: contextType,
+                          );
                           if (value.isNotEmpty) {
                             _showOverlay(context);
                           } else {
@@ -238,67 +298,83 @@ class _MainShellState extends State<MainShell> {
                       ),
                     ),
                     const SizedBox(width: 24),
-                    // Notifications (Visual Placeholder for professional look)
-                    Stack(
-                      children: [
-                        const Icon(Icons.notifications_none, color: Colors.white70, size: 24),
-                        Positioned(
-                          right: 0,
-                          top: 0,
-                          child: Container(
-                            padding: const EdgeInsets.all(2),
-                            decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                            constraints: const BoxConstraints(minWidth: 12, minHeight: 12),
-                            child: const Text('1', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-                          ),
-                        ),
-                      ],
-                    ),
+                    const NotificationBell(),
                     const SizedBox(width: 24),
                     // Profile Button
                     PopupMenuButton<String>(
-                       offset: const Offset(0, 50),
-                       color: theme.cardColor,
-                       shape: RoundedRectangleBorder(
-                         borderRadius: BorderRadius.circular(12),
-                         side: BorderSide(color: theme.primaryColor.withOpacity(0.2)),
-                       ),
-                       child: Builder(builder: (context) {
-                         final authProvider = context.watch<AuthProvider>();
-                         final profile = authProvider.userProfile;
-                         final displayName = profile?.fullName ?? authProvider.currentUser?.email?.split('@').first ?? 'User';
-                         final role = authProvider.userRole;
-                         return Row(
-                           children: [
-                             Column(
-                               mainAxisAlignment: MainAxisAlignment.center,
-                               crossAxisAlignment: CrossAxisAlignment.end,
-                               children: [
-                                 Text(
-                                   displayName,
-                                   style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                                 ),
-                                 Text(
-                                   role,
-                                   style: const TextStyle(color: Colors.white70, fontSize: 10),
-                                 ),
-                               ],
-                             ),
-                             const SizedBox(width: 12),
-                             CircleAvatar(
-                               radius: 16,
-                               backgroundColor: theme.primaryColor.withOpacity(0.2),
-                               child: const Icon(Icons.person, color: Colors.white, size: 18),
-                             ),
-                             const Icon(Icons.keyboard_arrow_down, color: Colors.white54, size: 18),
-                           ],
-                         );
-                       }),
+                      offset: const Offset(0, 50),
+                      color: theme.cardColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(
+                          color: theme.primaryColor.withOpacity(0.2),
+                        ),
+                      ),
+                      child: Builder(
+                        builder: (context) {
+                          final authProvider = context.watch<AuthProvider>();
+                          final profile = authProvider.userProfile;
+                          final displayName =
+                              profile?.fullName ??
+                              authProvider.currentUser?.email
+                                  ?.split('@')
+                                  .first ??
+                              'User';
+                          final role = authProvider.userRole;
+                          return Row(
+                            children: [
+                              Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    displayName,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  Text(
+                                    role,
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 10,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(width: 12),
+                              CircleAvatar(
+                                radius: 16,
+                                backgroundColor: theme.primaryColor.withOpacity(
+                                  0.2,
+                                ),
+                                child: const Icon(
+                                  Icons.person,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                              ),
+                              const Icon(
+                                Icons.keyboard_arrow_down,
+                                color: Colors.white54,
+                                size: 18,
+                              ),
+                            ],
+                          );
+                        },
+                      ),
                       onSelected: (value) {
                         if (value == 'logout') {
                           context.read<AuthProvider>().logout();
                         } else if (value == 'preferences') {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => const UserProfileScreen()));
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const UserProfileScreen(),
+                            ),
+                          );
                         } else if (value == 'theme') {
                           context.read<ThemeProvider>().toggleTheme();
                         }
@@ -307,8 +383,16 @@ class _MainShellState extends State<MainShell> {
                         PopupMenuItem(
                           value: 'preferences',
                           child: ListTile(
-                            leading: Icon(Icons.manage_accounts, color: theme.iconTheme.color),
-                            title: Text('Account Preferences', style: TextStyle(color: theme.textTheme.bodyMedium?.color)),
+                            leading: Icon(
+                              Icons.manage_accounts,
+                              color: theme.iconTheme.color,
+                            ),
+                            title: Text(
+                              'Account Preferences',
+                              style: TextStyle(
+                                color: theme.textTheme.bodyMedium?.color,
+                              ),
+                            ),
                             contentPadding: EdgeInsets.zero,
                             dense: true,
                           ),
@@ -316,8 +400,16 @@ class _MainShellState extends State<MainShell> {
                         PopupMenuItem(
                           value: 'theme',
                           child: ListTile(
-                            leading: Icon(Icons.palette, color: theme.iconTheme.color),
-                            title: Text('Toggle Theme', style: TextStyle(color: theme.textTheme.bodyMedium?.color)),
+                            leading: Icon(
+                              Icons.palette,
+                              color: theme.iconTheme.color,
+                            ),
+                            title: Text(
+                              'Toggle Theme',
+                              style: TextStyle(
+                                color: theme.textTheme.bodyMedium?.color,
+                              ),
+                            ),
                             contentPadding: EdgeInsets.zero,
                             dense: true,
                           ),
@@ -326,8 +418,14 @@ class _MainShellState extends State<MainShell> {
                         PopupMenuItem(
                           value: 'logout',
                           child: ListTile(
-                            leading: const Icon(Icons.logout, color: Colors.redAccent),
-                            title: const Text('Logout', style: TextStyle(color: Colors.redAccent)),
+                            leading: const Icon(
+                              Icons.logout,
+                              color: Colors.redAccent,
+                            ),
+                            title: const Text(
+                              'Logout',
+                              style: TextStyle(color: Colors.redAccent),
+                            ),
                             contentPadding: EdgeInsets.zero,
                             dense: true,
                           ),
@@ -342,7 +440,8 @@ class _MainShellState extends State<MainShell> {
             builder: (context, dev, _) {
               final b = dev.primaryActiveBanner;
               if (b == null) return const SizedBox.shrink();
-              if (_dismissedStripBannerId == b.id) return const SizedBox.shrink();
+              if (_dismissedStripBannerId == b.id)
+                return const SizedBox.shrink();
               return SystemStatusBannerStrip(
                 banner: b,
                 onDismiss: () => setState(() => _dismissedStripBannerId = b.id),
@@ -370,7 +469,9 @@ class _MainShellState extends State<MainShell> {
     return Container(
       width: 220,
       decoration: BoxDecoration(
-        color: theme.brightness == Brightness.light ? theme.primaryColor : theme.colorScheme.surface,
+        color: theme.brightness == Brightness.light
+            ? theme.primaryColor
+            : theme.colorScheme.surface,
         border: Border(
           right: BorderSide(color: theme.dividerColor.withOpacity(0.1)),
         ),
@@ -390,26 +491,74 @@ class _MainShellState extends State<MainShell> {
           child: ListView(
             padding: const EdgeInsets.symmetric(vertical: 8),
             children: [
-              _buildNavItem(Icons.dashboard, 'Dashboard', 0, featureKey: 'dashboard'),
+              _buildNavItem(
+                Icons.dashboard,
+                'Dashboard',
+                0,
+                featureKey: 'dashboard',
+              ),
               _buildNavItem(Icons.group, 'Groups', 1, featureKey: 'groups'),
               _buildNavItem(Icons.person, 'Vendors', 2, featureKey: 'vendors'),
-              if (AccessControlService.canProcessPayments(profile)) ...[  
-                _buildNavItem(Icons.account_balance, 'Loans', 3, featureKey: 'loans'),
-                _buildNavItem(Icons.payment, 'Payments', 4, featureKey: 'payments'),
+              if (AccessControlService.canProcessPayments(profile)) ...[
+                _buildNavItem(
+                  Icons.account_balance,
+                  'Loans',
+                  3,
+                  featureKey: 'loans',
+                ),
+                _buildNavItem(
+                  Icons.payment,
+                  'Payments',
+                  4,
+                  featureKey: 'payments',
+                ),
               ],
               if (AccessControlService.canViewReports(profile))
-                _buildNavItem(Icons.insights, 'Analytics', 5, featureKey: 'analytics'),
+                _buildNavItem(
+                  Icons.insights,
+                  'Analytics',
+                  5,
+                  featureKey: 'analytics',
+                ),
               if (AccessControlService.canViewReports(profile))
-                _buildNavItem(Icons.assessment, 'Reports', 6, featureKey: 'reports'),
+                _buildNavItem(
+                  Icons.assessment,
+                  'Reports',
+                  6,
+                  featureKey: 'reports',
+                ),
               if (!AccessControlService.isFieldAgent(profile))
-                _buildNavItem(Icons.upload_file, 'Import Data', 7, featureKey: 'import'),
-              if (AccessControlService.canManageUsers(profile)) ...[  
-                const Divider(height: 24, thickness: 0.3, indent: 16, endIndent: 16),
-                _buildNavItem(Icons.manage_accounts, 'User Management', 8, featureKey: 'user_management'),
+                _buildNavItem(
+                  Icons.upload_file,
+                  'Import Data',
+                  7,
+                  featureKey: 'import',
+                ),
+
+              _buildNavItem(Icons.business, 'Centers', 8),
+
+              if (AccessControlService.canManageUsers(profile)) ...[
+                const Divider(
+                  height: 24,
+                  thickness: 0.3,
+                  indent: 16,
+                  endIndent: 16,
+                ),
+                _buildNavItem(
+                  Icons.manage_accounts,
+                  'User Management',
+                  9,
+                  featureKey: 'user_management',
+                ),
               ],
               if (AccessControlService.canAccessDeveloperTools(profile)) ...[
-                const Divider(height: 24, thickness: 0.3, indent: 16, endIndent: 16),
-                _buildNavItem(Icons.developer_mode, 'Developer Management', 9),
+                const Divider(
+                  height: 24,
+                  thickness: 0.3,
+                  indent: 16,
+                  endIndent: 16,
+                ),
+                _buildNavItem(Icons.developer_mode, 'Developer Management', 10),
               ],
             ],
           ),
@@ -427,7 +576,12 @@ class _MainShellState extends State<MainShell> {
     );
   }
 
-  Widget _buildNavItem(IconData icon, String title, int index, {String? featureKey}) {
+  Widget _buildNavItem(
+    IconData icon,
+    String title,
+    int index, {
+    String? featureKey,
+  }) {
     final isSelected = _selectedIndex == index;
     final theme = Theme.of(context);
     final isLight = theme.brightness == Brightness.light;
@@ -445,11 +599,7 @@ class _MainShellState extends State<MainShell> {
       child: ListTile(
         dense: true,
         visualDensity: VisualDensity.compact,
-        leading: Icon(
-          icon,
-          size: 18,
-          color: color,
-        ),
+        leading: Icon(icon, size: 18, color: color),
         title: Text(
           title,
           style: TextStyle(
@@ -459,11 +609,15 @@ class _MainShellState extends State<MainShell> {
           ),
         ),
         selected: isSelected,
-        selectedTileColor: isLight ? Colors.white.withOpacity(0.3) : theme.primaryColor.withOpacity(0.08),
+        selectedTileColor: isLight
+            ? Colors.white.withOpacity(0.3)
+            : theme.primaryColor.withOpacity(0.08),
         onTap: () {
           if (!featureOn) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('This feature is temporarily unavailable.')),
+              const SnackBar(
+                content: Text('This feature is temporarily unavailable.'),
+              ),
             );
             return;
           }
@@ -521,10 +675,9 @@ class _MainShellState extends State<MainShell> {
                       searchProvider.vendorResults.isEmpty &&
                       searchProvider.loanResults.isEmpty &&
                       searchProvider.paymentResults.isEmpty) {
-                    
                     String contextName = searchProvider.currentContext;
                     if (contextName == 'global') contextName = 'all sections';
-                    
+
                     return Padding(
                       padding: const EdgeInsets.all(16.0),
                       child: Text(
@@ -613,14 +766,20 @@ class _MainShellState extends State<MainShell> {
                           padding: EdgeInsets.all(12),
                           child: Text(
                             'Loans',
-                            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.amber),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.amber,
+                            ),
                           ),
                         ),
                         ...searchProvider.loanResults.map(
                           (loan) => ListTile(
                             title: Text('Loan: R ${loan.amount}'),
                             subtitle: Text('Status: ${loan.status}'),
-                            leading: const Icon(Icons.account_balance, color: Colors.grey),
+                            leading: const Icon(
+                              Icons.account_balance,
+                              color: Colors.grey,
+                            ),
                             onTap: () {
                               _hideOverlay();
                               _searchController.clear();
@@ -628,7 +787,8 @@ class _MainShellState extends State<MainShell> {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => LoanDetailsScreen(loan: loan),
+                                  builder: (context) =>
+                                      LoanDetailsScreen(loan: loan),
                                 ),
                               );
                             },
@@ -640,20 +800,32 @@ class _MainShellState extends State<MainShell> {
                           padding: EdgeInsets.all(12),
                           child: Text(
                             'Payments',
-                            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.amber),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.amber,
+                            ),
                           ),
                         ),
                         ...searchProvider.paymentResults.map(
                           (payment) => ListTile(
                             title: Text('Payment: R ${payment.amountPaid}'),
-                            subtitle: Text('Method: ${payment.paymentMethod ?? 'Unknown'} • Date: ${payment.datePaid.toString().substring(0, 10)}'),
-                            leading: const Icon(Icons.payment, color: Colors.grey),
+                            subtitle: Text(
+                              'Method: ${payment.paymentMethod ?? 'Unknown'} • Date: ${payment.datePaid.toString().substring(0, 10)}',
+                            ),
+                            leading: const Icon(
+                              Icons.payment,
+                              color: Colors.grey,
+                            ),
                             onTap: () {
                               _hideOverlay();
                               _searchController.clear();
                               searchProvider.clearSearch();
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Navigate to loan via Payments tab to view details.')),
+                                const SnackBar(
+                                  content: Text(
+                                    'Navigate to loan via Payments tab to view details.',
+                                  ),
+                                ),
                               );
                             },
                           ),

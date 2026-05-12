@@ -38,11 +38,21 @@ class LoanModel {
       durationMonths: json['duration_months'],
       monthlyPayment: (json['monthly_payment'] as num).toDouble(),
       status: json['status'],
-      initiationFee: json['initiation_fee'] != null ? (json['initiation_fee'] as num).toDouble() : null,
-      monthlyAdminFee: json['monthly_admin_fee'] != null ? (json['monthly_admin_fee'] as num).toDouble() : null,
-      penaltyFee: json['penalty_fee'] != null ? (json['penalty_fee'] as num).toDouble() : null,
-      openingAmount: json['opening_amount'] != null ? (json['opening_amount'] as num).toDouble() : null,
-      firstInstalmentDate: json['first_instalment_date'] != null ? DateTime.parse(json['first_instalment_date']) : null,
+      initiationFee: json['initiation_fee'] != null
+          ? (json['initiation_fee'] as num).toDouble()
+          : null,
+      monthlyAdminFee: json['monthly_admin_fee'] != null
+          ? (json['monthly_admin_fee'] as num).toDouble()
+          : null,
+      penaltyFee: json['penalty_fee'] != null
+          ? (json['penalty_fee'] as num).toDouble()
+          : null,
+      openingAmount: json['opening_amount'] != null
+          ? (json['opening_amount'] as num).toDouble()
+          : null,
+      firstInstalmentDate: json['first_instalment_date'] != null
+          ? DateTime.parse(json['first_instalment_date'])
+          : null,
       createdAt: DateTime.parse(json['created_at']),
     );
   }

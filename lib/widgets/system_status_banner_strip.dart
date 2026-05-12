@@ -7,7 +7,11 @@ class SystemStatusBannerStrip extends StatelessWidget {
   final SystemBannerModel banner;
   final VoidCallback? onDismiss;
 
-  const SystemStatusBannerStrip({super.key, required this.banner, this.onDismiss});
+  const SystemStatusBannerStrip({
+    super.key,
+    required this.banner,
+    this.onDismiss,
+  });
 
   Color _background(ThemeData theme) {
     switch (banner.severity) {
@@ -35,7 +39,9 @@ class SystemStatusBannerStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final bg = _background(theme);
-    final textColor = banner.severity == 'warning' ? Colors.black87 : Colors.white;
+    final textColor = banner.severity == 'warning'
+        ? Colors.black87
+        : Colors.white;
 
     return Material(
       color: bg,
@@ -43,12 +49,14 @@ class SystemStatusBannerStrip extends StatelessWidget {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(
-                banner.bannerType == 'under_development' ? Icons.engineering : Icons.info_outline,
+                banner.bannerType == 'under_development'
+                    ? Icons.engineering
+                    : Icons.info_outline,
                 color: textColor,
                 size: 22,
               ),
@@ -69,18 +77,29 @@ class SystemStatusBannerStrip extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       banner.title,
-                      style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14),
+                      style: TextStyle(
+                        color: textColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
                       banner.message,
-                      style: TextStyle(color: textColor.withOpacity(0.95), fontSize: 12, height: 1.35),
+                      style: TextStyle(
+                        color: textColor.withOpacity(0.95),
+                        fontSize: 12,
+                        height: 1.35,
+                      ),
                     ),
                     if (banner.endsAt != null) ...[
                       const SizedBox(height: 6),
                       Text(
                         'Until ${banner.endsAt!.toLocal().toString().substring(0, 16)}',
-                        style: TextStyle(color: textColor.withOpacity(0.75), fontSize: 11),
+                        style: TextStyle(
+                          color: textColor.withOpacity(0.75),
+                          fontSize: 11,
+                        ),
                       ),
                     ],
                   ],
@@ -88,7 +107,11 @@ class SystemStatusBannerStrip extends StatelessWidget {
               ),
               if (onDismiss != null)
                 IconButton(
-                  icon: Icon(Icons.close, color: textColor.withOpacity(0.85), size: 20),
+                  icon: Icon(
+                    Icons.close,
+                    color: textColor.withOpacity(0.85),
+                    size: 20,
+                  ),
                   onPressed: onDismiss,
                   tooltip: 'Hide for this session',
                 ),

@@ -1,21 +1,24 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:spreadsheet_decoder/spreadsheet_decoder.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/vendor.dart';
 import '../models/loan.dart';
+import 'notification_service.dart';
 
 class ImportService {
   final _supabase = Supabase.instance.client;
 
   Future<void> importExcel(List<int> bytes) async {
     var decoder = SpreadsheetDecoder.decodeBytes(bytes);
-    Set<String> processedGroupLoans = {}; // Track groups that already got a loan in this sheet
+    Set<String> processedGroupLoans =
+        {}; // Track groups that already got a loan in this sheet
 
     for (var table in decoder.tables.keys) {
       if (!_isMonthSheet(table)) continue;
 
       var sheet = decoder.tables[table]!;
-      
+
       for (int i = 1; i < sheet.maxRows; i++) {
         var row = sheet.rows[i];
         if (row.isEmpty || row[0] == null) continue;
@@ -29,7 +32,7 @@ class ImportService {
         String businessType = row[4]?.toString() ?? '';
         String dfName = row[5]?.toString() ?? '';
         String gender = row[6]?.toString() ?? '';
-        
+
         double amount = _toDouble(row[7]);
         int term = _toInt(row[8]);
         DateTime? firstPaymentDate = _toDateTime(row[9]);
@@ -44,7 +47,8 @@ class ImportService {
         double paidAdmin = _toDouble(row.length > 16 ? row[16] : 0);
         double paidInstalment = _toDouble(row.length > 17 ? row[17] : 0);
         double paidPenalty = _toDouble(row.length > 18 ? row[18] : 0);
-        double totalPaidThisMonth = paidInit + paidAdmin + paidInstalment + paidPenalty;
+        double totalPaidThisMonth =
+            paidInit + paidAdmin + paidInstalment + paidPenalty;
 
         // 1. Get or Create Group
         String groupId = await _getOrCreateGroup(groupName);
@@ -64,7 +68,7 @@ class ImportService {
         if (amount > 0) {
           // Check if this vendor already has an active loan of this amount
           String? existingLoanId = await _findExistingLoan(vendorId, amount);
-          
+
           if (existingLoanId == null) {
             // First time seeing this loan, create it
             existingLoanId = await _upsertLoan(
@@ -80,7 +84,7 @@ class ImportService {
               firstPaymentDate: firstPaymentDate,
             );
           }
-          
+
           if (totalPaidThisMonth > 0) {
             await _recordPayment(
               loanId: existingLoanId,
@@ -91,6 +95,12 @@ class ImportService {
         }
       }
     }
+
+    await NotificationService.notifyAdmins(
+      'Data Import Complete',
+      'The Excel data import has finished successfully.',
+      type: 'SYSTEM',
+    );
   }
 
   Future<void> _recordPayment({
@@ -119,8 +129,18 @@ class ImportService {
 
   bool _isMonthSheet(String name) {
     final months = [
-      'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
-      'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'
+      'JANUARY',
+      'FEBRUARY',
+      'MARCH',
+      'APRIL',
+      'MAY',
+      'JUNE',
+      'JULY',
+      'AUGUST',
+      'SEPTEMBER',
+      'OCTOBER',
+      'NOVEMBER',
+      'DECEMBER',
     ];
     String upper = name.toUpperCase().replaceAll('.', '').trim();
     return months.contains(upper);
@@ -129,18 +149,29 @@ class ImportService {
   DateTime _getSheetDate(String sheetName) {
     String upper = sheetName.toUpperCase().replaceAll('.', '').trim();
     int month = 1;
-    if (upper.contains('FEB')) month = 2;
-    else if (upper.contains('MAR')) month = 3;
-    else if (upper.contains('APR')) month = 4;
-    else if (upper.contains('MAY')) month = 5;
-    else if (upper.contains('JUN')) month = 6;
-    else if (upper.contains('JUL')) month = 7;
-    else if (upper.contains('AUG')) month = 8;
-    else if (upper.contains('SEP')) month = 9;
-    else if (upper.contains('OCT')) month = 10;
-    else if (upper.contains('NOV')) month = 11;
-    else if (upper.contains('DEC')) month = 12;
-    
+    if (upper.contains('FEB'))
+      month = 2;
+    else if (upper.contains('MAR'))
+      month = 3;
+    else if (upper.contains('APR'))
+      month = 4;
+    else if (upper.contains('MAY'))
+      month = 5;
+    else if (upper.contains('JUN'))
+      month = 6;
+    else if (upper.contains('JUL'))
+      month = 7;
+    else if (upper.contains('AUG'))
+      month = 8;
+    else if (upper.contains('SEP'))
+      month = 9;
+    else if (upper.contains('OCT'))
+      month = 10;
+    else if (upper.contains('NOV'))
+      month = 11;
+    else if (upper.contains('DEC'))
+      month = 12;
+
     // Stable date based on the month sheet to prevent duplicates if re-run
     return DateTime(2026, month, 1);
   }
@@ -172,10 +203,14 @@ class ImportService {
 
     if (existing != null) return existing['id'];
 
-    final inserted = await _supabase.from('groups').insert({
-      'name': name,
-      'reference_number': 'GRP-${DateTime.now().millisecondsSinceEpoch}',
-    }).select('id').single();
+    final inserted = await _supabase
+        .from('groups')
+        .insert({
+          'name': name,
+          'reference_number': 'GRP-${DateTime.now().millisecondsSinceEpoch}',
+        })
+        .select('id')
+        .single();
 
     return inserted['id'];
   }
@@ -239,7 +274,11 @@ class ImportService {
     } else {
       // CREATE new vendor
       vendorData['reference_number'] = await _getGroupRef(groupId);
-      final inserted = await _supabase.from('vendors').insert(vendorData).select('id').single();
+      final inserted = await _supabase
+          .from('vendors')
+          .insert(vendorData)
+          .select('id')
+          .single();
       return inserted['id'];
     }
   }
@@ -255,12 +294,16 @@ class ImportService {
         .order('created_at', ascending: false)
         .limit(1)
         .maybeSingle();
-    
+
     return response?['id'];
   }
 
   Future<String> _getGroupRef(String groupId) async {
-    final res = await _supabase.from('groups').select('reference_number').eq('id', groupId).single();
+    final res = await _supabase
+        .from('groups')
+        .select('reference_number')
+        .eq('id', groupId)
+        .single();
     return res['reference_number'];
   }
 
@@ -298,63 +341,197 @@ class ImportService {
       return existingLoanId;
     } else {
       // Insert new loan
-      final inserted = await _supabase.from('loans').insert(loanData).select('id').single();
+      final inserted = await _supabase
+          .from('loans')
+          .insert(loanData)
+          .select('id')
+          .single();
       return inserted['id'];
     }
   }
 
   Future<void> clearAllData() async {
-    // Delete in reverse order of dependencies
-    await _supabase.from('payments').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    await _supabase.from('loans').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    await _supabase.from('vendors').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    await _supabase.from('groups').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    // Delete in reverse order of dependencies to respect foreign keys
+    await _supabase
+        .from('payments')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+    await _supabase
+        .from('savings_history')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+    await _supabase
+        .from('documents')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+    await _supabase
+        .from('comments')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+    await _supabase
+        .from('loans')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+    await _supabase
+        .from('group_payments')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+    await _supabase
+        .from('announcements')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+    await _supabase
+        .from('vendors')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+    await _supabase
+        .from('password_reset_requests')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+    await _supabase
+        .from('groups')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
   }
 
   /// Generates a full system backup as a JSON string
   Future<Map<String, dynamic>> generateBackup() async {
-    final groups = await _supabase.from('groups').select();
-    final vendors = await _supabase.from('vendors').select();
-    final loans = await _supabase.from('loans').select();
-    final payments = await _supabase.from('payments').select();
-    final profiles = await _supabase.from('profiles').select();
-    final settings = await _supabase.from('system_settings').select();
+    final Map<String, dynamic> data = {};
+
+    final tables = [
+      'groups',
+      'profiles',
+      'system_settings',
+      'email_outbox',
+      'password_reset_requests',
+      'account_audit_log',
+      'system_audit_log',
+      'vendors',
+      'announcements',
+      'group_payments',
+      'loans',
+      'comments',
+      'documents',
+      'savings_history',
+      'payments',
+    ];
+
+    for (var table in tables) {
+      try {
+        final response = await _supabase.from(table).select();
+        data[table] = response;
+      } catch (e) {
+        debugPrint('Backup: Skipping table $table as it might not exist: $e');
+        data[table] = []; // Default to empty if table is missing
+      }
+    }
+
+    await NotificationService.notifyAdmins(
+      'System Backup Created',
+      'A full system data backup has been generated.',
+      type: 'SYSTEM',
+    );
 
     return {
-      'version': '1.0.0',
+      'version': '1.1.1',
       'timestamp': DateTime.now().toIso8601String(),
-      'data': {
-        'groups': groups,
-        'vendors': vendors,
-        'loans': loans,
-        'payments': payments,
-        'profiles': profiles,
-        'system_settings': settings,
-      }
+      'data': data,
     };
   }
 
   /// Restores the system from a backup map
   Future<void> restoreBackup(Map<String, dynamic> backup) async {
     final data = backup['data'] as Map<String, dynamic>;
-    
-    // 1. Wipe existing data (except the current user's profile to prevent logout)
+
+    // 1. Wipe existing data (Full system wipe)
     await clearAllData();
-    
-    // 2. Restore in order of dependencies
-    if (data['groups'] != null) await _supabase.from('groups').insert(data['groups']);
-    if (data['vendors'] != null) await _supabase.from('vendors').insert(data['vendors']);
-    if (data['loans'] != null) await _supabase.from('loans').insert(data['loans']);
-    if (data['payments'] != null) await _supabase.from('payments').insert(data['payments']);
-    
-    // 3. Restore settings
-    if (data['system_settings'] != null) {
+    // Wipe independent log tables too
+    await _supabase
+        .from('system_audit_log')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+    await _supabase
+        .from('account_audit_log')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+    await _supabase
+        .from('email_outbox')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+
+    // 2. Restore in strict order of dependencies
+    if (data['groups'] != null && (data['groups'] as List).isNotEmpty) {
+      await _supabase.from('groups').insert(data['groups']);
+    }
+
+    // Profiles and Settings (Independent/Critical)
+    if (data['profiles'] != null && (data['profiles'] as List).isNotEmpty) {
+      await _supabase.from('profiles').upsert(data['profiles']);
+    }
+    if (data['system_settings'] != null &&
+        (data['system_settings'] as List).isNotEmpty) {
       await _supabase.from('system_settings').upsert(data['system_settings']);
     }
 
-    // 4. Restore profiles (using upsert to avoid conflicts with the current active Super Admin)
-    if (data['profiles'] != null) {
-      await _supabase.from('profiles').upsert(data['profiles']);
+    // Independent Logs
+    if (data['email_outbox'] != null &&
+        (data['email_outbox'] as List).isNotEmpty) {
+      await _supabase.from('email_outbox').insert(data['email_outbox']);
     }
+    if (data['password_reset_requests'] != null &&
+        (data['password_reset_requests'] as List).isNotEmpty) {
+      await _supabase
+          .from('password_reset_requests')
+          .insert(data['password_reset_requests']);
+    }
+    if (data['account_audit_log'] != null &&
+        (data['account_audit_log'] as List).isNotEmpty) {
+      await _supabase
+          .from('account_audit_log')
+          .insert(data['account_audit_log']);
+    }
+    if (data['system_audit_log'] != null &&
+        (data['system_audit_log'] as List).isNotEmpty) {
+      await _supabase.from('system_audit_log').insert(data['system_audit_log']);
+    }
+
+    // Level 2 (Depends on Groups)
+    if (data['vendors'] != null && (data['vendors'] as List).isNotEmpty) {
+      await _supabase.from('vendors').insert(data['vendors']);
+    }
+    if (data['announcements'] != null &&
+        (data['announcements'] as List).isNotEmpty) {
+      await _supabase.from('announcements').insert(data['announcements']);
+    }
+    if (data['group_payments'] != null &&
+        (data['group_payments'] as List).isNotEmpty) {
+      await _supabase.from('group_payments').insert(data['group_payments']);
+    }
+
+    // Level 3 (Depends on Vendors/Groups/GroupPayments)
+    if (data['loans'] != null && (data['loans'] as List).isNotEmpty) {
+      await _supabase.from('loans').insert(data['loans']);
+    }
+    if (data['comments'] != null && (data['comments'] as List).isNotEmpty) {
+      await _supabase.from('comments').insert(data['comments']);
+    }
+    if (data['documents'] != null && (data['documents'] as List).isNotEmpty) {
+      await _supabase.from('documents').insert(data['documents']);
+    }
+    if (data['savings_history'] != null &&
+        (data['savings_history'] as List).isNotEmpty) {
+      await _supabase.from('savings_history').insert(data['savings_history']);
+    }
+
+    // Level 4 (Depends on Loans and GroupPayments)
+    if (data['payments'] != null && (data['payments'] as List).isNotEmpty) {
+      await _supabase.from('payments').insert(data['payments']);
+    }
+
+    await NotificationService.notifySuperAdmin(
+      'System Restored',
+      'The system has been successfully restored from a backup.',
+      type: 'SYSTEM',
+    );
   }
 }

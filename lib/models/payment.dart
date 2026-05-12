@@ -25,8 +25,8 @@ class PaymentModel {
       loanId: json['loan_id'],
       groupPaymentId: json['group_payment_id'],
       amountPaid: (json['amount_paid'] as num).toDouble(),
-      balanceRemaining: json['balance_remaining'] != null 
-          ? (json['balance_remaining'] as num).toDouble() 
+      balanceRemaining: json['balance_remaining'] != null
+          ? (json['balance_remaining'] as num).toDouble()
           : null,
       paymentMethod: json['payment_method'],
       datePaid: DateTime.parse(json['date_paid']),

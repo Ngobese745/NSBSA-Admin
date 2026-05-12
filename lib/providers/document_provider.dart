@@ -23,7 +23,9 @@ class DocumentProvider with ChangeNotifier {
           .eq('group_id', groupId)
           .order('uploaded_at', ascending: false);
 
-      _documents = (response as List).map((e) => DocumentModel.fromJson(e)).toList();
+      _documents = (response as List)
+          .map((e) => DocumentModel.fromJson(e))
+          .toList();
     } catch (e) {
       debugPrint('Error fetching group documents: $e');
     } finally {
@@ -43,7 +45,9 @@ class DocumentProvider with ChangeNotifier {
           .eq('vendor_id', vendorId)
           .order('uploaded_at', ascending: false);
 
-      _documents = (response as List).map((e) => DocumentModel.fromJson(e)).toList();
+      _documents = (response as List)
+          .map((e) => DocumentModel.fromJson(e))
+          .toList();
     } catch (e) {
       debugPrint('Error fetching vendor documents: $e');
     } finally {
@@ -62,13 +66,17 @@ class DocumentProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final String folder = groupId != null ? 'groups/$groupId' : 'vendors/$vendorId';
+      final String folder = groupId != null
+          ? 'groups/$groupId'
+          : 'vendors/$vendorId';
       debugPrint('Starting upload for $fileName to $folder');
       final String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
       final String path = '$folder/$timestamp\_$fileName';
 
       // 1. Upload to Supabase Storage
-      await _supabase.storage.from('documents').uploadBinary(
+      await _supabase.storage
+          .from('documents')
+          .uploadBinary(
             path,
             fileBytes,
             fileOptions: const FileOptions(cacheControl: '3600', upsert: false),
@@ -86,10 +94,13 @@ class DocumentProvider with ChangeNotifier {
         uploadedAt: DateTime.now(),
       );
 
-      final response = await _supabase.from('documents').insert(docMetadata.toJson()).select().single();
+      final response = await _supabase
+          .from('documents')
+          .insert(docMetadata.toJson())
+          .select()
+          .single();
       debugPrint('Database metadata saved');
       _documents.insert(0, DocumentModel.fromJson(response));
-      
     } catch (e) {
       debugPrint('Error in uploadDocument: $e');
       rethrow;
@@ -106,7 +117,7 @@ class DocumentProvider with ChangeNotifier {
 
       // 2. Delete from Database
       await _supabase.from('documents').delete().eq('id', document.id);
-      
+
       _documents.removeWhere((doc) => doc.id == document.id);
       notifyListeners();
     } catch (e) {

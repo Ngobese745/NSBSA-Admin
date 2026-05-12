@@ -10,6 +10,8 @@ export 'group_provider.dart';
 export 'loan_provider.dart';
 export 'payment_provider.dart';
 export 'savings_history_provider.dart';
+export 'notification_provider.dart';
 export 'search_provider.dart';
 export 'theme_provider.dart';
 export 'vendor_provider.dart';
+export 'center_provider.dart';

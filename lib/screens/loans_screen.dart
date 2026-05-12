@@ -33,7 +33,7 @@ class _LoansScreenState extends State<LoansScreen> {
     final loanProvider = context.watch<LoanProvider>();
     final groupProvider = context.watch<GroupProvider>();
     final paymentProvider = context.watch<PaymentProvider>();
-    
+
     // Group loans by Group ID
     final Map<String, List<dynamic>> groupedLoans = {};
     for (var loan in loanProvider.loans) {
@@ -42,8 +42,8 @@ class _LoansScreenState extends State<LoansScreen> {
 
     final sortedGroupIds = groupedLoans.keys.toList();
 
-    final isMobile = MediaQuery.of(context).size.width <
-        AppBreakpoints.contentTabletMin;
+    final isMobile =
+        MediaQuery.of(context).size.width < AppBreakpoints.contentTabletMin;
 
     return Padding(
       padding: EdgeInsets.all(isMobile ? 12.0 : 24.0),
@@ -69,13 +69,21 @@ class _LoansScreenState extends State<LoansScreen> {
           Expanded(
             child: Card(
               child: (loanProvider.isLoading || groupProvider.isLoading)
-                ? const Center(child: CircularProgressIndicator())
-                : groupedLoans.isEmpty
-                  ? const Center(child: Text('No active loan groups found.', style: TextStyle(fontSize: 12, color: Colors.grey)))
+                  ? const Center(child: CircularProgressIndicator())
+                  : groupedLoans.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No active loan groups found.',
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    )
                   : ListView.separated(
                       padding: EdgeInsets.zero,
                       itemCount: sortedGroupIds.length,
-                      separatorBuilder: (context, index) => Divider(height: 1, color: Theme.of(context).dividerColor.withOpacity(0.1)),
+                      separatorBuilder: (context, index) => Divider(
+                        height: 1,
+                        color: Theme.of(context).dividerColor.withOpacity(0.1),
+                      ),
                       itemBuilder: (context, index) {
                         final groupId = sortedGroupIds[index];
                         final loans = groupedLoans[groupId]!;
@@ -83,11 +91,17 @@ class _LoansScreenState extends State<LoansScreen> {
                           (g) => g.id == groupId,
                           orElse: GroupModel.unknown,
                         );
- 
+
                         // Aggregated data
-                        double totalAmount = loans.fold(0, (sum, l) => sum + l.amount);
-                        double totalMonthly = loans.fold(0, (sum, l) => sum + l.monthlyPayment);
-                        
+                        double totalAmount = loans.fold(
+                          0,
+                          (sum, l) => sum + l.amount,
+                        );
+                        double totalMonthly = loans.fold(
+                          0,
+                          (sum, l) => sum + l.monthlyPayment,
+                        );
+
                         // Calculate total paid for this group's loans
                         final loanIds = loans.map((l) => l.id).toSet();
                         double totalPaid = paymentProvider.payments
@@ -97,36 +111,69 @@ class _LoansScreenState extends State<LoansScreen> {
                         // Calculate total balance by summing individual loan balances
                         double balance = 0;
                         for (final loan in loans) {
-                          final loanPayments = paymentProvider.payments.where((p) => p.loanId == loan.id).toList();
-                          balance += LoanCalculationService.calculateBalance(loan, loanPayments);
+                          final loanPayments = paymentProvider.payments
+                              .where((p) => p.loanId == loan.id)
+                              .toList();
+                          balance += LoanCalculationService.calculateBalance(
+                            loan,
+                            loanPayments,
+                          );
                         }
- 
+
                         return ListTile(
                           dense: true,
                           visualDensity: VisualDensity.compact,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          leading: isMobile ? null : CircleAvatar(
-                            radius: 14,
-                            backgroundColor: theme.primaryColor.withOpacity(0.1),
-                            child: const Icon(Icons.groups, color: AppTheme.primaryGold, size: 14),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
                           ),
+                          leading: isMobile
+                              ? null
+                              : CircleAvatar(
+                                  radius: 14,
+                                  backgroundColor: theme.primaryColor
+                                      .withOpacity(0.1),
+                                  child: const Icon(
+                                    Icons.groups,
+                                    color: AppTheme.primaryGold,
+                                    size: 14,
+                                  ),
+                                ),
                           title: Text(
                             group.name,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
                           ),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const SizedBox(height: 4),
-                              Text('${loans.length} Loans • Status: Active', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                              Text(
+                                '${loans.length} Loans • Status: Active',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey,
+                                ),
+                              ),
                               const SizedBox(height: 8),
                               Wrap(
                                 spacing: 8,
                                 runSpacing: 8,
                                 children: [
-                                  _buildSmallStat('Value: R ${totalAmount.toStringAsFixed(0)}', Colors.grey),
-                                  _buildSmallStat('Paid: R ${totalPaid.toStringAsFixed(0)}', Colors.greenAccent),
-                                  _buildSmallStat('Bal: R ${balance.toStringAsFixed(0)}', Colors.amberAccent),
+                                  _buildSmallStat(
+                                    'Value: R ${totalAmount.toStringAsFixed(0)}',
+                                    Colors.grey,
+                                  ),
+                                  _buildSmallStat(
+                                    'Paid: R ${totalPaid.toStringAsFixed(0)}',
+                                    Colors.greenAccent,
+                                  ),
+                                  _buildSmallStat(
+                                    'Bal: R ${balance.toStringAsFixed(0)}',
+                                    Colors.amberAccent,
+                                  ),
                                 ],
                               ),
                             ],
@@ -135,7 +182,8 @@ class _LoansScreenState extends State<LoansScreen> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => GroupDetailsScreen(group: group),
+                                builder: (context) =>
+                                    GroupDetailsScreen(group: group),
                               ),
                             );
                           },
@@ -145,16 +193,26 @@ class _LoansScreenState extends State<LoansScreen> {
                             children: [
                               Text(
                                 'R ${totalMonthly.toStringAsFixed(0)}',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.primaryGold),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                  color: AppTheme.primaryGold,
+                                ),
                               ),
-                              const Text('/month', style: TextStyle(fontSize: 9, color: Colors.grey)),
+                              const Text(
+                                '/month',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  color: Colors.grey,
+                                ),
+                              ),
                             ],
                           ),
                         );
                       },
                     ),
             ),
-          )
+          ),
         ],
       ),
     );
@@ -169,7 +227,11 @@ class _LoansScreenState extends State<LoansScreen> {
       ),
       child: Text(
         label,
-        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w500),
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+        ),
       ),
     );
   }

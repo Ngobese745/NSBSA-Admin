@@ -12,7 +12,9 @@ class FeatureDisabledPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final label = context.watch<DeveloperControlsProvider>().flagFor(featureKey)?.label ?? featureKey;
+    final label =
+        context.watch<DeveloperControlsProvider>().flagFor(featureKey)?.label ??
+        featureKey;
 
     return Center(
       child: ConstrainedBox(
@@ -22,12 +24,18 @@ class FeatureDisabledPlaceholder extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.construction, size: 64, color: theme.colorScheme.primary.withOpacity(0.6)),
+              Icon(
+                Icons.construction,
+                size: 64,
+                color: theme.colorScheme.primary.withOpacity(0.6),
+              ),
               const SizedBox(height: 24),
               Text(
                 label,
                 textAlign: TextAlign.center,
-                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 12),
               Text(

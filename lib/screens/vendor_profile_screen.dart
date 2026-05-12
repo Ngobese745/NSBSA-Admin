@@ -23,6 +23,7 @@ import '../providers/analytics_provider.dart';
 import '../services/loan_calculation_service.dart';
 import '../models/savings_history.dart';
 import '../providers/savings_history_provider.dart';
+import '../services/vendor_pdf_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -50,30 +51,45 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
 
   Future<void> _loadData() async {
     final loanProvider = context.read<LoanProvider>();
+    final vendorProvider = context.read<VendorProvider>();
 
     await loanProvider.fetchLoans();
+
+    // Find the latest vendor data from provider
+    final updatedVendor = vendorProvider.vendors.firstWhere(
+      (v) => v.id == _currentVendor.id,
+      orElse: () => _currentVendor,
+    );
+
     final vendorLoans = loanProvider.loans
         .where((l) => l.vendorId == _currentVendor.id)
         .toList();
 
-    await context.read<CommentProvider>().fetchCommentsByVendor(_currentVendor.id);
-    await context.read<DocumentProvider>().fetchDocumentsByVendor(_currentVendor.id);
-    await context.read<SavingsHistoryProvider>().fetchHistoryByVendor(_currentVendor.id);
+    await context.read<CommentProvider>().fetchCommentsByVendor(
+      _currentVendor.id,
+    );
+    await context.read<DocumentProvider>().fetchDocumentsByVendor(
+      _currentVendor.id,
+    );
+    await context.read<SavingsHistoryProvider>().fetchHistoryByVendor(
+      _currentVendor.id,
+    );
 
     // Fetch data for analytics calculation
     final groupProvider = context.read<GroupProvider>();
     final analyticsProvider = context.read<AnalyticsProvider>();
-    
+
     // Ensure all data is present for score calculation
     analyticsProvider.calculateAnalytics(
       groups: groupProvider.groups,
-      vendors: context.read<VendorProvider>().vendors,
+      vendors: vendorProvider.vendors,
       loans: context.read<LoanProvider>().loans,
       payments: context.read<PaymentProvider>().payments,
     );
 
     if (mounted) {
       setState(() {
+        _currentVendor = updatedVendor;
         _loans = vendorLoans;
         _isLoading = false;
       });
@@ -98,9 +114,11 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
       orElse: GroupModel.unknown,
     );
 
-    final isDesktop = MediaQuery.of(context).size.width >=
+    final isDesktop =
+        MediaQuery.of(context).size.width >=
         AppBreakpoints.vendorProfileDesktopMin;
-    final isTablet = MediaQuery.of(context).size.width >=
+    final isTablet =
+        MediaQuery.of(context).size.width >=
         AppBreakpoints.vendorProfileTabletMin;
 
     return Scaffold(
@@ -116,7 +134,12 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
-            onPressed: () => _generateProfilePDF(context, group),
+            onPressed: () => VendorPdfService.generateProfilePDF(
+              context: context,
+              vendor: _currentVendor,
+              group: group,
+              loans: _loans,
+            ),
             tooltip: 'Download Profile PDF',
           ),
           const SizedBox(width: 8),
@@ -157,9 +180,19 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildHistorySection(theme, 'My Loan History', _loans, true),
+                        _buildHistorySection(
+                          theme,
+                          'My Loan History',
+                          _loans,
+                          true,
+                        ),
                         const SizedBox(height: 24),
-                        _buildHistorySection(theme, 'My Payment History', vendorPayments, false),
+                        _buildHistorySection(
+                          theme,
+                          'My Payment History',
+                          vendorPayments,
+                          false,
+                        ),
                         const SizedBox(height: 24),
                         _buildSavingsHistorySection(theme),
                         const SizedBox(height: 24),
@@ -189,52 +222,56 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
             ),
             ElevatedButton.icon(
-              onPressed: docProvider.isLoading ? null : () async {
-                final result = await FilePicker.platform.pickFiles(
-                  allowMultiple: true,
-                  type: FileType.custom,
-                  allowedExtensions: [
-                    'pdf',
-                    'jpg',
-                    'jpeg',
-                    'png',
-                    'doc',
-                    'docx'
-                  ],
-                );
+              onPressed: docProvider.isLoading
+                  ? null
+                  : () async {
+                      final result = await FilePicker.platform.pickFiles(
+                        allowMultiple: true,
+                        type: FileType.custom,
+                        allowedExtensions: [
+                          'pdf',
+                          'jpg',
+                          'jpeg',
+                          'png',
+                          'doc',
+                          'docx',
+                        ],
+                      );
 
-                if (result != null) {
-                  try {
-                    int count = 0;
-                    for (var file in result.files) {
-                      if (file.bytes != null) {
-                        await docProvider.uploadDocument(
-                          vendorId: _currentVendor.id,
-                          fileName: file.name,
-                          fileBytes: file.bytes!,
-                        );
-                        count++;
+                      if (result != null) {
+                        try {
+                          int count = 0;
+                          for (var file in result.files) {
+                            if (file.bytes != null) {
+                              await docProvider.uploadDocument(
+                                vendorId: _currentVendor.id,
+                                fileName: file.name,
+                                fileBytes: file.bytes!,
+                              );
+                              count++;
+                            }
+                          }
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Successfully uploaded $count document(s)',
+                                ),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Upload failed: $e'),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
+                          }
+                        }
                       }
-                    }
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Successfully uploaded $count document(s)'),
-                        ),
-                      );
-                    }
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Upload failed: $e'),
-                          backgroundColor: Colors.redAccent,
-                        ),
-                      );
-                    }
-                  }
-                }
-              },
+                    },
               icon: docProvider.isLoading
                   ? const SizedBox(
                       width: 18,
@@ -261,45 +298,70 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                   child: Center(child: CircularProgressIndicator()),
                 )
               : docProvider.documents.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.all(32),
-                      child: Center(child: Text('No documents uploaded yet.', style: TextStyle(color: Colors.grey))),
-                    )
-                  : ListView.separated(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: docProvider.documents.length,
-                      separatorBuilder: (context, index) => const Divider(height: 1, color: Colors.white10),
-                      itemBuilder: (context, index) {
-                        final doc = docProvider.documents[index];
-                        return ListTile(
-                          leading: Icon(
-                            _getFileIcon(doc.fileType),
-                            color: theme.primaryColor,
-                          ),
-                          title: Text(doc.fileName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                          subtitle: Text('Uploaded: ${doc.uploadedAt.toString().substring(0, 16)}', style: const TextStyle(fontSize: 11)),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.open_in_new, size: 20, color: Colors.blueAccent),
-                                onPressed: () {
-                                  final url = docProvider.getPublicUrl(doc.filePath);
-                                  launchUrl(Uri.parse(url));
-                                },
-                                tooltip: 'View Document',
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete_outline, size: 20, color: Colors.redAccent),
-                                onPressed: () => docProvider.deleteDocument(doc),
-                                tooltip: 'Delete Document',
-                              ),
-                            ],
-                          ),
-                        );
-                      },
+              ? const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(
+                    child: Text(
+                      'No documents uploaded yet.',
+                      style: TextStyle(color: Colors.grey),
                     ),
+                  ),
+                )
+              : ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: docProvider.documents.length,
+                  separatorBuilder: (context, index) =>
+                      const Divider(height: 1, color: Colors.white10),
+                  itemBuilder: (context, index) {
+                    final doc = docProvider.documents[index];
+                    return ListTile(
+                      leading: Icon(
+                        _getFileIcon(doc.fileType),
+                        color: theme.primaryColor,
+                      ),
+                      title: Text(
+                        doc.fileName,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      subtitle: Text(
+                        'Uploaded: ${doc.uploadedAt.toString().substring(0, 16)}',
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(
+                              Icons.open_in_new,
+                              size: 20,
+                              color: Colors.blueAccent,
+                            ),
+                            onPressed: () {
+                              final url = docProvider.getPublicUrl(
+                                doc.filePath,
+                              );
+                              launchUrl(Uri.parse(url));
+                            },
+                            tooltip: 'View Document',
+                          ),
+                          IconButton(
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              size: 20,
+                              color: Colors.redAccent,
+                            ),
+                            onPressed: () => docProvider.deleteDocument(doc),
+                            tooltip: 'Delete Document',
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
         ),
       ],
     );
@@ -348,8 +410,9 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                     TextField(
                       controller: _commentController,
                       maxLines: 2,
-                      style:
-                          TextStyle(color: theme.textTheme.bodyMedium?.color),
+                      style: TextStyle(
+                        color: theme.textTheme.bodyMedium?.color,
+                      ),
                       decoration: InputDecoration(
                         hintText: 'Add a personal note...',
                         hintStyle: const TextStyle(color: Colors.grey),
@@ -415,8 +478,9 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                       const Divider(height: 1, color: Colors.white10),
                   itemBuilder: (context, index) {
                     final comment = commentProvider.comments[index];
-                    final isMention =
-                        comment.mentionedVendorIds.contains(_currentVendor.id);
+                    final isMention = comment.mentionedVendorIds.contains(
+                      _currentVendor.id,
+                    );
 
                     return InkWell(
                       onTap: () => _showCommentDetailsDialog(comment),
@@ -488,37 +552,38 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
 
   Widget _buildMainHeader(ThemeData theme, GroupModel group, bool isDesktop) {
     final analyticsProvider = context.watch<AnalyticsProvider>();
-    final score = analyticsProvider.vendorCreditScores[_currentVendor.id] ?? 0.0;
-    
+    final score =
+        analyticsProvider.vendorCreditScores[_currentVendor.id] ?? 0.0;
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: theme.cardColor,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: isDesktop 
-      ? Row(
-        children: [
-          _buildVendorAvatar(theme),
-          const SizedBox(width: 24),
-          Expanded(child: _buildVendorTitle(theme, group, isDesktop)),
-          const SizedBox(width: 24),
-          _buildCreditBadge(score),
-        ],
-      )
-      : Column(
-          children: [
-            Row(
+      child: isDesktop
+          ? Row(
               children: [
-                _buildVendorAvatar(theme, radius: 25),
-                const SizedBox(width: 16),
+                _buildVendorAvatar(theme),
+                const SizedBox(width: 24),
                 Expanded(child: _buildVendorTitle(theme, group, isDesktop)),
+                const SizedBox(width: 24),
+                _buildCreditBadge(score),
+              ],
+            )
+          : Column(
+              children: [
+                Row(
+                  children: [
+                    _buildVendorAvatar(theme, radius: 25),
+                    const SizedBox(width: 16),
+                    Expanded(child: _buildVendorTitle(theme, group, isDesktop)),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                _buildCreditBadge(score),
               ],
             ),
-            const SizedBox(height: 20),
-            _buildCreditBadge(score),
-          ],
-        ),
     );
   }
 
@@ -536,7 +601,10 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
       children: [
         Text(
           _currentVendor.name,
-          style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, fontSize: isDesktop ? 24 : 18),
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+            fontSize: isDesktop ? 24 : 18,
+          ),
           overflow: TextOverflow.ellipsis,
         ),
         const SizedBox(height: 4),
@@ -548,16 +616,24 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
         const SizedBox(height: 4),
         SelectableText(
           'GRP-${group.id}',
-          style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.bold, fontSize: 10),
+          style: TextStyle(
+            color: theme.primaryColor,
+            fontWeight: FontWeight.bold,
+            fontSize: 10,
+          ),
         ),
       ],
     );
   }
 
   Widget _buildCreditBadge(double score) {
-    String status = score > 85 ? 'Excellent' : (score > 60 ? 'Moderate' : 'High Risk');
-    Color statusColor = score > 85 ? Colors.greenAccent : (score > 60 ? Colors.amberAccent : Colors.redAccent);
-    
+    String status = score > 85
+        ? 'Excellent'
+        : (score > 60 ? 'Moderate' : 'High Risk');
+    Color statusColor = score > 85
+        ? Colors.greenAccent
+        : (score > 60 ? Colors.amberAccent : Colors.redAccent);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -568,22 +644,36 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('Credit Profile Score', style: TextStyle(color: Colors.grey, fontSize: 10)),
+          const Text(
+            'Credit Profile Score',
+            style: TextStyle(color: Colors.grey, fontSize: 10),
+          ),
           const SizedBox(height: 4),
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 score.toStringAsFixed(0),
-                style: TextStyle(color: statusColor, fontSize: 24, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: statusColor,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(color: statusColor, borderRadius: BorderRadius.circular(4)),
+                decoration: BoxDecoration(
+                  color: statusColor,
+                  borderRadius: BorderRadius.circular(4),
+                ),
                 child: Text(
                   status.toUpperCase(),
-                  style: const TextStyle(color: Colors.black, fontSize: 8, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    color: Colors.black,
+                    fontSize: 8,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
@@ -597,26 +687,56 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Personal Information', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+        const Text(
+          'Personal Information',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
         const SizedBox(height: 16),
         Container(
           padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(color: theme.cardColor, borderRadius: BorderRadius.circular(12)),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(12),
+          ),
           child: Column(
             children: [
-              _buildInfoRow('Role', _currentVendor.role ?? 'Member', Icons.stars_outlined),
-              _buildInfoRow('Home Address', _currentVendor.address ?? 'N/A', Icons.location_on_outlined),
-              _buildInfoRow('Phone', _currentVendor.phone ?? 'N/A', Icons.phone_outlined),
-              _buildInfoRow('ID Number', _currentVendor.idNumber ?? 'N/A', Icons.badge_outlined),
-              _buildInfoRow('Business', _currentVendor.businessType ?? 'N/A', Icons.business_center_outlined),
+              _buildInfoRow(
+                'Role',
+                _currentVendor.role ?? 'Member',
+                Icons.stars_outlined,
+              ),
+              _buildInfoRow(
+                'Home Address',
+                _currentVendor.address ?? 'N/A',
+                Icons.location_on_outlined,
+              ),
+              _buildInfoRow(
+                'Phone',
+                _currentVendor.phone ?? 'N/A',
+                Icons.phone_outlined,
+              ),
+              _buildInfoRow(
+                'ID Number',
+                _currentVendor.idNumber ?? 'N/A',
+                Icons.badge_outlined,
+              ),
+              _buildInfoRow(
+                'Business',
+                _currentVendor.businessType ?? 'N/A',
+                Icons.business_center_outlined,
+              ),
               InkWell(
                 onTap: () => _showUpdateSavingsDialog(context),
                 borderRadius: BorderRadius.circular(8),
                 child: _buildInfoRow(
-                  'Savings Balance', 
-                  'R ${_currentVendor.savingsAmount?.toStringAsFixed(0) ?? '0'} (${_currentVendor.savingsFrequency ?? 'Monthly'})', 
+                  'Savings Balance',
+                  'R ${_currentVendor.savingsAmount?.toStringAsFixed(0) ?? '0'} (${_currentVendor.savingsFrequency ?? 'Monthly'})',
                   Icons.savings_outlined,
-                  trailing: const Icon(Icons.edit_outlined, size: 14, color: Colors.amber),
+                  trailing: const Icon(
+                    Icons.edit_outlined,
+                    size: 14,
+                    color: Colors.amber,
+                  ),
                 ),
               ),
               if (context.watch<SavingsHistoryProvider>().history.isNotEmpty)
@@ -624,7 +744,11 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                   padding: const EdgeInsets.only(top: 4, left: 30),
                   child: Text(
                     'Last updated: ${context.watch<SavingsHistoryProvider>().history.first.createdAt.toString().substring(0, 16)} by ${context.watch<SavingsHistoryProvider>().history.first.updatedBy}',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 10, fontStyle: FontStyle.italic),
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 10,
+                      fontStyle: FontStyle.italic,
+                    ),
                   ),
                 ),
             ],
@@ -634,7 +758,12 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     );
   }
 
-  Widget _buildInfoRow(String label, String value, IconData icon, {Widget? trailing}) {
+  Widget _buildInfoRow(
+    String label,
+    String value,
+    IconData icon, {
+    Widget? trailing,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
@@ -645,8 +774,18 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: TextStyle(color: Colors.grey[500], fontSize: 11)),
-                Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis),
+                Text(
+                  label,
+                  style: TextStyle(color: Colors.grey[500], fontSize: 11),
+                ),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ],
             ),
           ),
@@ -656,26 +795,36 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     );
   }
 
-  Widget _buildFinancialSummary(ThemeData theme, double totalPaid, bool isTablet) {
+  Widget _buildFinancialSummary(
+    ThemeData theme,
+    double totalPaid,
+    bool isTablet,
+  ) {
     final paymentProvider = context.read<PaymentProvider>();
     final allPayments = paymentProvider.payments;
-    
+
     double totalLiability = 0;
     for (var loan in _loans) {
-      final loanPayments = allPayments.where((p) => p.loanId == loan.id).toList();
-      totalLiability += loan.amount + 
-                        (loan.initiationFee ?? 0) + 
-                        ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) + 
-                        LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
+      final loanPayments = allPayments
+          .where((p) => p.loanId == loan.id)
+          .toList();
+      totalLiability +=
+          loan.amount +
+          (loan.initiationFee ?? 0) +
+          ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) +
+          LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
     }
-    
+
     final outstanding = totalLiability - totalPaid;
     final activeLoans = _loans.where((l) => l.status == 'Active').length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Financial Summary', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+        const Text(
+          'Financial Summary',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
         const SizedBox(height: 16),
         LayoutBuilder(
           builder: (context, constraints) {
@@ -688,9 +837,21 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
               mainAxisSpacing: 12,
               childAspectRatio: 2.0,
               children: [
-                _buildSummaryTile('Total Paid', 'R ${totalPaid.toStringAsFixed(0)}', Colors.greenAccent),
-                _buildSummaryTile('Outstanding', 'R ${outstanding.toStringAsFixed(0)}', Colors.redAccent),
-                _buildSummaryTile('Active', activeLoans.toString(), Colors.blueAccent),
+                _buildSummaryTile(
+                  'Total Paid',
+                  'R ${totalPaid.toStringAsFixed(0)}',
+                  Colors.greenAccent,
+                ),
+                _buildSummaryTile(
+                  'Outstanding',
+                  'R ${outstanding.toStringAsFixed(0)}',
+                  Colors.redAccent,
+                ),
+                _buildSummaryTile(
+                  'Active',
+                  activeLoans.toString(),
+                  Colors.blueAccent,
+                ),
               ],
             );
           },
@@ -702,418 +863,25 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
   Widget _buildSummaryTile(String label, String value, Color color) {
     return Container(
       padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(color: color.withOpacity(0.05), borderRadius: BorderRadius.circular(8), border: Border.all(color: color.withOpacity(0.2))),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(label, style: const TextStyle(color: Colors.grey, fontSize: 10)),
-          Text(value, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16), overflow: TextOverflow.ellipsis),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _generateProfilePDF(
-    BuildContext context,
-    GroupModel group,
-  ) async {
-    final commentProvider = context.read<CommentProvider>();
-    final paymentProvider = context.read<PaymentProvider>();
-    final savingsHistoryProvider = context.read<SavingsHistoryProvider>();
-    final pdf = pw.Document();
-
-    final logo = await PdfBranding.loadLogo();
-
-    // Filter payments for this vendor's loans
-    final loanIds = _loans.map((l) => l.id).toSet();
-    final vendorPayments = paymentProvider.payments
-        .where((p) => loanIds.contains(p.loanId))
-        .toList();
-    double totalPaid = vendorPayments.fold(0, (sum, p) => sum + p.amountPaid);
-    final totalExpected = _loans.fold(
-      0.0,
-      (sum, loan) =>
-          sum +
-          loan.amount +
-          (loan.initiationFee ?? 0) +
-          ((loan.monthlyAdminFee ?? 0) * loan.durationMonths),
-    );
-
-    pdf.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(32),
-        header: (pw.Context context) {
-          return pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Image(logo, height: 50),
-              pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.end,
-                children: [
-                  pw.Text(
-                    'Member Profile Report',
-                    style: pw.TextStyle(
-                      fontSize: 18,
-                      fontWeight: pw.FontWeight.bold,
-                    ),
-                  ),
-                  pw.Text(
-                    'Reference: ${_currentVendor.referenceNumber ?? 'N/A'}',
-                  ),
-                  pw.Text(
-                    'Date: ${DateTime.now().toString().substring(0, 10)}',
-                  ),
-                ],
-              ),
-            ],
-          );
-        },
-        build: (pw.Context context) {
-          return [
-            pw.SizedBox(height: 20),
-            pw.Text(
-              'Personal Information',
-              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
             ),
-            pw.Divider(thickness: 0.5),
-            pw.SizedBox(height: 10),
-            pw.Row(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Expanded(
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      _pdfInfoRow('Name', _currentVendor.name),
-                      _pdfInfoRow('Role', _currentVendor.role ?? 'Member'),
-                      _pdfInfoRow('Group', group.name),
-                      _pdfInfoRow('Phone', _currentVendor.phone ?? 'N/A'),
-                      _pdfInfoRow(
-                        'WhatsApp',
-                        _currentVendor.whatsappNumber ?? 'N/A',
-                      ),
-                      _pdfInfoRow(
-                        'Address',
-                        _currentVendor.address ?? 'N/A',
-                      ),
-                      _pdfInfoRow(
-                        'Savings Balance',
-                        'R ${_currentVendor.savingsAmount?.toStringAsFixed(2) ?? '0.00'} (${_currentVendor.savingsFrequency ?? 'Monthly'})',
-                      ),
-                    ],
-                  ),
-                ),
-                pw.Expanded(
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      _pdfInfoRow(
-                        'ID Number',
-                        _currentVendor.idNumber ?? 'N/A',
-                      ),
-                      _pdfInfoRow(
-                        'Business',
-                        _currentVendor.businessType ?? 'N/A',
-                      ),
-                      _pdfInfoRow('Gender', _currentVendor.gender ?? 'N/A'),
-                      _pdfInfoRow('DF Name', _currentVendor.dfName ?? 'N/A'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            pw.SizedBox(height: 24),
-
-            // Comments Section
-            if (commentProvider.comments.isNotEmpty) ...[
-              pw.Text(
-                'Notes & Comments',
-                style:
-                    pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
-              ),
-              pw.Divider(thickness: 0.5),
-              pw.SizedBox(height: 10),
-              ...commentProvider.comments.map((comment) {
-                final isMention =
-                    comment.mentionedVendorIds.contains(_currentVendor.id);
-                return pw.Padding(
-                  padding: const pw.EdgeInsets.only(bottom: 12),
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Row(
-                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                        children: [
-                          pw.Text(
-                            '${comment.authorName} ${isMention ? "(Mentioned)" : ""}',
-                            style: pw.TextStyle(
-                              fontSize: 10,
-                              fontWeight: pw.FontWeight.bold,
-                            ),
-                          ),
-                          pw.Text(
-                            comment.createdAt.toString().substring(0, 10),
-                            style: const pw.TextStyle(
-                              fontSize: 8,
-                              color: PdfColors.grey,
-                            ),
-                          ),
-                        ],
-                      ),
-                      pw.Text(
-                        comment.content,
-                        style: const pw.TextStyle(fontSize: 10),
-                      ),
-                    ],
-                  ),
-                );
-              }),
-              pw.SizedBox(height: 24),
-            ],
-
-            // Savings History Section
-            if (savingsHistoryProvider.history.isNotEmpty) ...[
-              pw.Text(
-                'Savings History Log',
-                style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
-              ),
-              pw.Divider(thickness: 0.5),
-              pw.SizedBox(height: 10),
-              pw.Table(
-                border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-                children: [
-                  pw.TableRow(
-                    decoration: const pw.BoxDecoration(color: PdfColors.grey200),
-                    children: [
-                      _pdfCell('Date/Time', isBold: true),
-                      _pdfCell('Action', isBold: true),
-                      _pdfCell('Amount', isBold: true),
-                      _pdfCell('New Balance', isBold: true),
-                      _pdfCell('Operator', isBold: true),
-                    ],
-                  ),
-                  ...savingsHistoryProvider.history.map((entry) => pw.TableRow(
-                    children: [
-                      _pdfCell(entry.createdAt.toString().substring(0, 16)),
-                      _pdfCell(entry.actionType),
-                      _pdfCell('R ${entry.amount.toStringAsFixed(2)}'),
-                      _pdfCell('R ${entry.newBalance.toStringAsFixed(2)}'),
-                      _pdfCell(entry.updatedBy),
-                    ],
-                  )).toList(),
-                ],
-              ),
-              pw.SizedBox(height: 24),
-            ],
-
-            pw.Text(
-              'Financial Summary',
-              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
-            ),
-            pw.Divider(thickness: 0.5),
-            pw.SizedBox(height: 10),
-            pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                _pdfStatItem('Total Loans', _loans.length.toString()),
-                _pdfStatItem('Total Paid', 'R ${totalPaid.toStringAsFixed(2)}'),
-                _pdfStatItem(
-                  'Outstanding',
-                  'R ${(totalExpected - totalPaid).toStringAsFixed(2)}',
-                ),
-                _pdfStatItem('Account Status', 'Active'),
-              ],
-            ),
-            pw.SizedBox(height: 24),
-            pw.Text(
-              'Loan History',
-              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
-            ),
-            pw.Divider(thickness: 0.5),
-            pw.SizedBox(height: 10),
-            _loans.isEmpty
-                ? pw.Text(
-                    'No loan history found.',
-                    style: const pw.TextStyle(color: PdfColors.grey),
-                  )
-                : pw.Table(
-                    border: pw.TableBorder.all(
-                      color: PdfColors.grey300,
-                      width: 0.5,
-                    ),
-                    children: [
-                      pw.TableRow(
-                        decoration: const pw.BoxDecoration(
-                          color: PdfColors.grey100,
-                        ),
-                        children: [
-                          _pdfCell('Amount', isBold: true),
-                          _pdfCell('Duration', isBold: true),
-                          _pdfCell('Monthly', isBold: true),
-                          _pdfCell('Balance', isBold: true),
-                          _pdfCell('Status', isBold: true),
-                        ],
-                      ),
-                      ..._loans.map((loan) {
-                        final loanPayments = vendorPayments
-                            .where((p) => p.loanId == loan.id)
-                            .toList();
-                        final totalPaidForLoan = loanPayments.fold(
-                          0.0,
-                          (sum, p) => sum + p.amountPaid,
-                        );
-                        final balance = LoanCalculationService.calculateBalance(loan, loanPayments);
-
-                        return pw.TableRow(
-                          children: [
-                            _pdfCell('R ${loan.amount.toStringAsFixed(0)}'),
-                            _pdfCell('${loan.durationMonths} Months'),
-                            _pdfCell(
-                              'R ${loan.monthlyPayment.toStringAsFixed(0)}',
-                            ),
-                            _pdfCell('R ${balance.toStringAsFixed(0)}'),
-                            _pdfCell(loan.status),
-                          ],
-                        );
-                      }).toList(),
-                    ],
-                  ),
-            pw.SizedBox(height: 24),
-            pw.Text(
-              'Payment History',
-              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
-            ),
-            pw.Divider(thickness: 0.5),
-            pw.SizedBox(height: 10),
-            vendorPayments.isEmpty
-                ? pw.Text(
-                    'No payment history found.',
-                    style: const pw.TextStyle(color: PdfColors.grey),
-                  )
-                : pw.Table(
-                    border: pw.TableBorder.all(
-                      color: PdfColors.grey300,
-                      width: 0.5,
-                    ),
-                    children: [
-                      pw.TableRow(
-                        decoration: const pw.BoxDecoration(
-                          color: PdfColors.grey100,
-                        ),
-                        children: [
-                          _pdfCell('Date', isBold: true),
-                          _pdfCell('Amount', isBold: true),
-                          _pdfCell('Method', isBold: true),
-                          _pdfCell('Balance', isBold: true),
-                        ],
-                      ),
-                      ...(() {
-                        double currentRunningBalance =
-                            totalExpected - totalPaid;
-                        final sorted = List<PaymentModel>.from(vendorPayments)
-                          ..sort((a, b) => b.datePaid.compareTo(a.datePaid));
-
-                        return sorted.map((payment) {
-                          final balanceAfterPayment = currentRunningBalance;
-                          currentRunningBalance += payment.amountPaid;
-                          return pw.TableRow(
-                            children: [
-                              _pdfCell(
-                                payment.datePaid.toString().substring(0, 10),
-                              ),
-                              _pdfCell(
-                                'R ${payment.amountPaid.toStringAsFixed(2)}',
-                              ),
-                              _pdfCell(payment.paymentMethod ?? 'Manual'),
-                              _pdfCell(
-                                'R ${balanceAfterPayment.toStringAsFixed(2)}',
-                              ),
-                            ],
-                          );
-                        }).toList();
-                      })(),
-                    ],
-                  ),
-          ];
-        },
-        footer: (pw.Context context) {
-          return pw.Column(
-            mainAxisSize: pw.MainAxisSize.min,
-            children: [
-              pw.Divider(thickness: 0.5),
-              pw.SizedBox(height: 4),
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text(
-                    'All applicable fees are included in the amounts shown above.',
-                    style: const pw.TextStyle(
-                      fontSize: 8,
-                      color: PdfColors.grey700,
-                    ),
-                  ),
-                  pw.Text(
-                    'Page ${context.pageNumber} of ${context.pagesCount}',
-                    style: const pw.TextStyle(fontSize: 9),
-                  ),
-                ],
-              ),
-            ],
-          );
-        },
-      ),
-    );
-
-    await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => pdf.save(),
-      name: 'Member_Profile_${_currentVendor.name.replaceAll(' ', '_')}',
-    );
-  }
-
-  pw.Widget _pdfInfoRow(String label, String value) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.only(bottom: 4),
-      child: pw.Row(
-        children: [
-          pw.SizedBox(
-            width: 80,
-            child: pw.Text(
-              '$label:',
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
-            ),
+            overflow: TextOverflow.ellipsis,
           ),
-          pw.Text(value, style: const pw.TextStyle(fontSize: 9)),
         ],
-      ),
-    );
-  }
-
-  pw.Widget _pdfStatItem(String label, String value) {
-    return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.Text(
-          label,
-          style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
-        ),
-        pw.Text(
-          value,
-          style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
-        ),
-      ],
-    );
-  }
-
-  pw.Widget _pdfCell(String text, {bool isBold = false}) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.all(6),
-      child: pw.Text(
-        text,
-        style: pw.TextStyle(
-          fontSize: 9,
-          fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
-        ),
       ),
     );
   }
@@ -1151,10 +919,8 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: items.length,
-                  separatorBuilder: (context, index) => Divider(
-                    height: 1,
-                    color: theme.dividerColor,
-                  ),
+                  separatorBuilder: (context, index) =>
+                      Divider(height: 1, color: theme.dividerColor),
                   itemBuilder: (context, index) {
                     final item = items[index];
                     if (isLoans) {
@@ -1198,12 +964,22 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                         onTap: () {
                           final loanProvider = context.read<LoanProvider>();
                           final groupProvider = context.read<GroupProvider>();
-                          
-                          final loan = loanProvider.loans.where((l) => l.id == payment.loanId).firstOrNull;
-                          final group = groupProvider.groups.where((g) => g.id == _currentVendor.groupId).firstOrNull;
-                          
+
+                          final loan = loanProvider.loans
+                              .where((l) => l.id == payment.loanId)
+                              .firstOrNull;
+                          final group = groupProvider.groups
+                              .where((g) => g.id == _currentVendor.groupId)
+                              .firstOrNull;
+
                           if (loan != null && group != null) {
-                            _showPaymentDetailsDialog(context, payment, loan, _currentVendor, group);
+                            _showPaymentDetailsDialog(
+                              context,
+                              payment,
+                              loan,
+                              _currentVendor,
+                              group,
+                            );
                           }
                         },
                         dense: true,
@@ -1226,7 +1002,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
   }
 
   String _selectedActionFilter = 'All';
-  
+
   Widget _buildSavingsHistorySection(ThemeData theme) {
     final savingsHistoryProvider = context.watch<SavingsHistoryProvider>();
     final history = savingsHistoryProvider.history.where((e) {
@@ -1251,12 +1027,18 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                   dropdownColor: theme.cardColor,
                   style: const TextStyle(fontSize: 12, color: Colors.grey),
                   underline: const SizedBox(),
-                  items: ['All', 'Deposit', 'Withdrawal', 'Adjustment'].map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
-                  onChanged: (val) => setState(() => _selectedActionFilter = val!),
+                  items: ['All', 'Deposit', 'Withdrawal', 'Adjustment']
+                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                      .toList(),
+                  onChanged: (val) =>
+                      setState(() => _selectedActionFilter = val!),
                 ),
                 if (history.isNotEmpty)
                   IconButton(
-                    onPressed: () => _exportSavingsHistoryPDF(history),
+                    onPressed: () => VendorPdfService.exportSavingsHistoryPDF(
+                      vendor: _currentVendor,
+                      history: history,
+                    ),
                     icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
                     tooltip: 'Export PDF',
                   ),
@@ -1289,7 +1071,11 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                     horizontalMargin: 16,
                     headingRowHeight: 40,
                     dataRowHeight: 52,
-                    headingTextStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.amber),
+                    headingTextStyle: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      color: Colors.amber,
+                    ),
                     columns: const [
                       DataColumn(label: Text('Date/Time')),
                       DataColumn(label: Text('Action')),
@@ -1300,28 +1086,77 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                     rows: history.map((entry) {
                       Color actionColor;
                       switch (entry.actionType) {
-                        case 'Deposit': actionColor = Colors.greenAccent; break;
-                        case 'Withdrawal': actionColor = Colors.redAccent; break;
-                        default: actionColor = Colors.amberAccent;
+                        case 'Deposit':
+                          actionColor = Colors.greenAccent;
+                          break;
+                        case 'Withdrawal':
+                          actionColor = Colors.redAccent;
+                          break;
+                        default:
+                          actionColor = Colors.amberAccent;
                       }
-                      
-                      return DataRow(cells: [
-                        DataCell(Text(entry.createdAt.toString().substring(0, 16), style: const TextStyle(fontSize: 11))),
-                        DataCell(
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: actionColor.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: actionColor.withOpacity(0.5)),
+
+                      return DataRow(
+                        cells: [
+                          DataCell(
+                            Text(
+                              entry.createdAt.toString().substring(0, 16),
+                              style: const TextStyle(fontSize: 11),
                             ),
-                            child: Text(entry.actionType, style: TextStyle(color: actionColor, fontSize: 10, fontWeight: FontWeight.bold)),
                           ),
-                        ),
-                        DataCell(Text('R ${entry.amount.toStringAsFixed(0)}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold))),
-                        DataCell(Text('R ${entry.newBalance.toStringAsFixed(0)}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber))),
-                        DataCell(Text(entry.updatedBy, style: const TextStyle(fontSize: 11, color: Colors.grey))),
-                      ]);
+                          DataCell(
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: actionColor.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(
+                                  color: actionColor.withOpacity(0.5),
+                                ),
+                              ),
+                              child: Text(
+                                entry.actionType,
+                                style: TextStyle(
+                                  color: actionColor,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                          DataCell(
+                            Text(
+                              'R ${entry.amount.toStringAsFixed(0)}',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          DataCell(
+                            Text(
+                              'R ${entry.newBalance.toStringAsFixed(0)}',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.amber,
+                              ),
+                            ),
+                          ),
+                          DataCell(
+                            Text(
+                              entry.updatedBy,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
                     }).toList(),
                   ),
                 ),
@@ -1330,68 +1165,11 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     );
   }
 
-  Future<void> _exportSavingsHistoryPDF(List<SavingsHistoryModel> history) async {
-    final pdf = pw.Document();
-    final logo = await PdfBranding.loadLogo();
-
-    pdf.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(32),
-        header: (pw.Context context) => pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Image(logo, height: 40),
-            pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.end,
-              children: [
-                pw.Text('Savings Audit Log', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
-                pw.Text('Member: ${_currentVendor.name}'),
-                pw.Text('Date: ${DateTime.now().toString().substring(0, 10)}'),
-              ],
-            ),
-          ],
-        ),
-        build: (pw.Context context) => [
-          pw.SizedBox(height: 20),
-          pw.Table(
-            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-            children: [
-              pw.TableRow(
-                decoration: const pw.BoxDecoration(color: PdfColors.grey200),
-                children: [
-                  _pdfCell('Date/Time', isBold: true),
-                  _pdfCell('Action', isBold: true),
-                  _pdfCell('Amount', isBold: true),
-                  _pdfCell('New Balance', isBold: true),
-                  _pdfCell('Operator', isBold: true),
-                ],
-              ),
-              ...history.map((entry) => pw.TableRow(
-                children: [
-                  _pdfCell(entry.createdAt.toString().substring(0, 16)),
-                  _pdfCell(entry.actionType),
-                  _pdfCell('R ${entry.amount.toStringAsFixed(2)}'),
-                  _pdfCell('R ${entry.newBalance.toStringAsFixed(2)}'),
-                  _pdfCell(entry.updatedBy),
-                ],
-              )).toList(),
-            ],
-          ),
-        ],
-      ),
-    );
-
-    await Printing.layoutPdf(
-      onLayout: (format) async => pdf.save(),
-      name: 'Savings_History_${_currentVendor.name.replaceAll(' ', '_')}',
-    );
-  }
 
   void _showUpdateSavingsDialog(BuildContext context) {
-    final controller = TextEditingController(text: _currentVendor.savingsAmount?.toStringAsFixed(0) ?? '0');
+    final controller = TextEditingController(text: '0');
     String selectedAction = 'Deposit';
-    
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -1401,7 +1179,10 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             children: [
               Icon(Icons.savings_outlined, color: Colors.amber, size: 24),
               SizedBox(width: 12),
-              Text('Update Savings Balance', style: TextStyle(color: Colors.white, fontSize: 18)),
+              Text(
+                'Record Savings Transaction',
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
             ],
           ),
           content: Column(
@@ -1409,20 +1190,40 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Enter the current savings balance for ${_currentVendor.name}.',
-                style: const TextStyle(color: Colors.grey, fontSize: 14),
+                'Current Balance: R ${_currentVendor.savingsAmount?.toStringAsFixed(0) ?? '0'}',
+                style: const TextStyle(
+                  color: Colors.amber,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
               ),
-              const SizedBox(height: 24),
-              const Text('Action Type', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              const SizedBox(height: 16),
+              const Text(
+                'Action Type',
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
               DropdownButtonFormField<String>(
                 value: selectedAction,
                 dropdownColor: Theme.of(context).cardColor,
-                style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                decoration: const InputDecoration(border: UnderlineInputBorder()),
+                style: TextStyle(
+                  color: Theme.of(context).textTheme.bodyMedium?.color,
+                ),
+                decoration: const InputDecoration(
+                  border: UnderlineInputBorder(),
+                ),
                 items: const [
-                  DropdownMenuItem(value: 'Deposit', child: Text('Deposit')),
-                  DropdownMenuItem(value: 'Withdrawal', child: Text('Withdrawal')),
-                  DropdownMenuItem(value: 'Adjustment', child: Text('Adjustment')),
+                  DropdownMenuItem(
+                    value: 'Deposit',
+                    child: Text('Deposit (Add)'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Withdrawal',
+                    child: Text('Withdrawal (Subtract)'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Adjustment',
+                    child: Text('Manual Adjustment (Override)'),
+                  ),
                 ],
                 onChanged: (val) => setState(() => selectedAction = val!),
               ),
@@ -1431,15 +1232,29 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                 controller: controller,
                 keyboardType: TextInputType.number,
                 autofocus: true,
-                style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color, fontSize: 20, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: Theme.of(context).textTheme.bodyMedium?.color,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
                 decoration: InputDecoration(
-                  labelText: 'Total Savings Balance',
+                  labelText: 'Transaction Amount',
                   labelStyle: const TextStyle(color: Colors.grey),
                   prefixText: 'R ',
-                  prefixStyle: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white10)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.amber)),
+                  prefixStyle: TextStyle(
+                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.white10),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.amber),
+                  ),
                 ),
               ),
             ],
@@ -1451,66 +1266,75 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             ),
             ElevatedButton(
               onPressed: () async {
-                final newAmount = double.tryParse(controller.text) ?? 0;
-                final previousAmount = _currentVendor.savingsAmount ?? 0;
-                final diff = newAmount - previousAmount;
-                
+                final amount = double.tryParse(controller.text) ?? 0.0;
+                if (amount <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please enter a valid amount'),
+                    ),
+                  );
+                  return;
+                }
+
+                double currentBalance = _currentVendor.savingsAmount ?? 0.0;
+                double newBalance;
+
+                if (selectedAction == 'Deposit') {
+                  newBalance = currentBalance + amount;
+                } else if (selectedAction == 'Withdrawal') {
+                  if (amount > currentBalance) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Insufficient savings for this withdrawal',
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+                  newBalance = currentBalance - amount;
+                } else {
+                  // Manual Adjustment
+                  newBalance = amount;
+                }
+
                 try {
-                  final authProvider = context.read<AuthProvider>();
-                  final savingsProvider = context.read<SavingsHistoryProvider>();
-                  
-                  // 1. Update Vendor
-                  await context.read<VendorProvider>().updateVendor(_currentVendor.id, {'savings_amount': newAmount});
-                  
-                  // 2. Record History
-                  await savingsProvider.addHistoryEntry(SavingsHistoryModel(
-                    id: '',
+                  await context.read<VendorProvider>().updateSavingsBalance(
                     vendorId: _currentVendor.id,
-                    amount: diff.abs(),
-                    previousBalance: previousAmount,
-                    newBalance: newAmount,
+                    newBalance: newBalance,
                     actionType: selectedAction,
-                    updatedBy: authProvider.currentUser?.email ?? 'Admin',
-                    createdAt: DateTime.now(),
-                  ));
+                    amount: amount,
+                  );
+
+                  // Update history log
+                  await context.read<SavingsHistoryProvider>().addEntry(
+                    vendorId: _currentVendor.id,
+                    amount: amount,
+                    type: selectedAction,
+                    previousBalance: currentBalance,
+                    newBalance: newBalance,
+                    updatedBy:
+                        context.read<AuthProvider>().currentUser?.email ??
+                        'Admin',
+                  );
 
                   if (context.mounted) {
-                    this.setState(() {
-                      _currentVendor = VendorModel(
-                        id: _currentVendor.id,
-                        groupId: _currentVendor.groupId,
-                        name: _currentVendor.name,
-                        phone: _currentVendor.phone,
-                        referenceNumber: _currentVendor.referenceNumber,
-                        idNumber: _currentVendor.idNumber,
-                        gender: _currentVendor.gender,
-                        businessType: _currentVendor.businessType,
-                        whatsappNumber: _currentVendor.whatsappNumber,
-                        dfName: _currentVendor.dfName,
-                        address: _currentVendor.address,
-                        role: _currentVendor.role,
-                        savingsAmount: newAmount,
-                        savingsFrequency: _currentVendor.savingsFrequency,
-                        savingsStartDate: _currentVendor.savingsStartDate,
-                        createdAt: _currentVendor.createdAt,
-                      );
-                    });
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Savings balance updated & logged!')));
                     Navigator.pop(context);
+                    _loadData(); // Refresh vendor profile data
                   }
                 } catch (e) {
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error updating balance: $e')));
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('Error: $e')));
                   }
                 }
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber, 
+                backgroundColor: Colors.amber,
                 foregroundColor: Colors.black,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
-              child: const Text('Update Balance', style: TextStyle(fontWeight: FontWeight.bold)),
+              child: const Text('Confirm Transaction'),
             ),
           ],
         ),
@@ -1529,12 +1353,17 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     final whatsappController = TextEditingController(
       text: _currentVendor.whatsappNumber,
     );
-    final addressController = TextEditingController(text: _currentVendor.address);
-    final savingsAmountController = TextEditingController(text: _currentVendor.savingsAmount?.toString() ?? '0');
+    final addressController = TextEditingController(
+      text: _currentVendor.address,
+    );
+    final savingsAmountController = TextEditingController(
+      text: _currentVendor.savingsAmount?.toString() ?? '0',
+    );
     String selectedGender = _currentVendor.gender ?? 'F';
     String selectedRole = _currentVendor.role ?? 'Member';
     String selectedFrequency = _currentVendor.savingsFrequency ?? 'Monthly';
-    DateTime selectedSavingsDate = _currentVendor.savingsStartDate ?? DateTime.now();
+    DateTime selectedSavingsDate =
+        _currentVendor.savingsStartDate ?? DateTime.now();
 
     showDialog(
       context: context,
@@ -1655,10 +1484,22 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                             labelStyle: TextStyle(color: Colors.grey),
                           ),
                           items: const [
-                            DropdownMenuItem(value: 'Member', child: Text('Member')),
-                            DropdownMenuItem(value: 'Chairperson', child: Text('Chairperson')),
-                            DropdownMenuItem(value: 'Secretary', child: Text('Secretary')),
-                            DropdownMenuItem(value: 'Treasurer', child: Text('Treasurer')),
+                            DropdownMenuItem(
+                              value: 'Member',
+                              child: Text('Member'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Chairperson',
+                              child: Text('Chairperson'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Secretary',
+                              child: Text('Secretary'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Treasurer',
+                              child: Text('Treasurer'),
+                            ),
                           ],
                           onChanged: (val) =>
                               setState(() => selectedRole = val ?? 'Member'),
@@ -1669,7 +1510,9 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                         child: TextField(
                           controller: dfNameController,
                           style: TextStyle(
-                            color: Theme.of(context).textTheme.bodyMedium?.color,
+                            color: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.color,
                           ),
                           decoration: InputDecoration(
                             labelText: 'DF Name',
@@ -1707,7 +1550,13 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                   ),
                   const Align(
                     alignment: Alignment.centerLeft,
-                    child: Text('Savings Balance', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+                    child: Text(
+                      'Savings Balance',
+                      style: TextStyle(
+                        color: Colors.amber,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Row(
@@ -1716,8 +1565,15 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                         child: TextField(
                           controller: savingsAmountController,
                           keyboardType: TextInputType.number,
-                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                          decoration: const InputDecoration(labelText: 'Savings Balance (R)', labelStyle: TextStyle(color: Colors.grey)),
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.color,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Savings Balance (R)',
+                            labelStyle: TextStyle(color: Colors.grey),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -1725,14 +1581,31 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                         child: DropdownButtonFormField<String>(
                           value: selectedFrequency,
                           dropdownColor: Theme.of(context).cardColor,
-                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                          decoration: const InputDecoration(labelText: 'Frequency', labelStyle: TextStyle(color: Colors.grey)),
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.color,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Frequency',
+                            labelStyle: TextStyle(color: Colors.grey),
+                          ),
                           items: const [
-                            DropdownMenuItem(value: 'Weekly', child: Text('Weekly')),
-                            DropdownMenuItem(value: 'Bi-Weekly', child: Text('Bi-Weekly')),
-                            DropdownMenuItem(value: 'Monthly', child: Text('Monthly')),
+                            DropdownMenuItem(
+                              value: 'Weekly',
+                              child: Text('Weekly'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Bi-Weekly',
+                              child: Text('Bi-Weekly'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Monthly',
+                              child: Text('Monthly'),
+                            ),
                           ],
-                          onChanged: (val) => setState(() => selectedFrequency = val!),
+                          onChanged: (val) =>
+                              setState(() => selectedFrequency = val!),
                         ),
                       ),
                     ],
@@ -1740,12 +1613,18 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                   const SizedBox(height: 12),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('Start Date', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    title: const Text(
+                      'Start Date',
+                      style: TextStyle(color: Colors.grey, fontSize: 12),
+                    ),
                     subtitle: Text(
                       "${selectedSavingsDate.toLocal()}".split(' ')[0],
                       style: const TextStyle(color: Colors.white, fontSize: 16),
                     ),
-                    trailing: const Icon(Icons.calendar_today, color: Colors.amber),
+                    trailing: const Icon(
+                      Icons.calendar_today,
+                      color: Colors.amber,
+                    ),
                     onTap: () async {
                       final DateTime? picked = await showDatePicker(
                         context: context,
@@ -1781,7 +1660,8 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                   'whatsapp_number': whatsappController.text,
                   'address': addressController.text,
                   'role': selectedRole,
-                  'savings_amount': double.tryParse(savingsAmountController.text) ?? 0,
+                  'savings_amount':
+                      double.tryParse(savingsAmountController.text) ?? 0,
                   'savings_frequency': selectedFrequency,
                   'savings_start_date': selectedSavingsDate.toIso8601String(),
                 };
@@ -1807,7 +1687,8 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                         dfName: dfNameController.text,
                         address: addressController.text,
                         role: selectedRole,
-                        savingsAmount: double.tryParse(savingsAmountController.text) ?? 0,
+                        savingsAmount:
+                            double.tryParse(savingsAmountController.text) ?? 0,
                         savingsFrequency: selectedFrequency,
                         savingsStartDate: selectedSavingsDate,
                         createdAt: _currentVendor.createdAt,
@@ -1912,12 +1793,23 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             ElevatedButton(
               onPressed: () async {
                 final amount = double.tryParse(amountController.text) ?? 0;
-                final loanPayments = context.read<PaymentProvider>().payments.where((p) => p.loanId == loan.id).toList();
-                final currentBalance = LoanCalculationService.calculateBalance(loan, loanPayments);
+                final loanPayments = context
+                    .read<PaymentProvider>()
+                    .payments
+                    .where((p) => p.loanId == loan.id)
+                    .toList();
+                final currentBalance = LoanCalculationService.calculateBalance(
+                  loan,
+                  loanPayments,
+                );
 
                 if (amount > currentBalance + 0.01) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Payment R $amount exceeds outstanding balance R ${currentBalance.toStringAsFixed(2)}')),
+                    SnackBar(
+                      content: Text(
+                        'Payment R $amount exceeds outstanding balance R ${currentBalance.toStringAsFixed(2)}',
+                      ),
+                    ),
                   );
                   return;
                 }
@@ -1962,14 +1854,16 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     GroupModel group,
   ) {
     // Calculate balance at the time of payment
-    final allLoanPayments = context
-        .read<PaymentProvider>()
-        .payments
-        .where((p) => p.loanId == loan.id)
-        .toList()
-      ..sort((a, b) => a.datePaid.compareTo(b.datePaid));
+    final allLoanPayments =
+        context
+            .read<PaymentProvider>()
+            .payments
+            .where((p) => p.loanId == loan.id)
+            .toList()
+          ..sort((a, b) => a.datePaid.compareTo(b.datePaid));
 
-    final totalExpected = loan.amount +
+    final totalExpected =
+        loan.amount +
         (loan.initiationFee ?? 0) +
         ((loan.monthlyAdminFee ?? 0) * loan.durationMonths);
 
@@ -2296,8 +2190,9 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
   void _showCommentDetailsDialog(CommentModel comment) {
     final theme = Theme.of(context);
     final commentProvider = context.read<CommentProvider>();
-    final TextEditingController _editController =
-        TextEditingController(text: comment.content);
+    final TextEditingController _editController = TextEditingController(
+      text: comment.content,
+    );
     bool _isEditing = false;
 
     showDialog(
@@ -2312,8 +2207,10 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
               const Spacer(),
               if (comment.authorRole != null)
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: theme.primaryColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(4),
@@ -2337,8 +2234,11 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.person_outline,
-                        size: 16, color: Colors.grey),
+                    const Icon(
+                      Icons.person_outline,
+                      size: 16,
+                      color: Colors.grey,
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       comment.authorName,
@@ -2362,7 +2262,8 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                       filled: true,
                       fillColor: theme.scaffoldBackgroundColor,
                       border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8)),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   )
                 else
@@ -2390,11 +2291,13 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                     builder: (context) => AlertDialog(
                       title: const Text('Delete Comment?'),
                       content: const Text(
-                          'Are you sure you want to remove this comment? This action cannot be undone.'),
+                        'Are you sure you want to remove this comment? This action cannot be undone.',
+                      ),
                       actions: [
                         TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('Cancel')),
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Cancel'),
+                        ),
                         TextButton(
                           onPressed: () async {
                             await commentProvider.deleteComment(comment.id);
@@ -2404,17 +2307,24 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                               const SnackBar(content: Text('Comment deleted')),
                             );
                           },
-                          child: const Text('Delete',
-                              style: TextStyle(color: Colors.redAccent)),
+                          child: const Text(
+                            'Delete',
+                            style: TextStyle(color: Colors.redAccent),
+                          ),
                         ),
                       ],
                     ),
                   );
                 },
-                icon: const Icon(Icons.delete_outline,
-                    color: Colors.redAccent, size: 18),
-                label: const Text('Delete',
-                    style: TextStyle(color: Colors.redAccent)),
+                icon: const Icon(
+                  Icons.delete_outline,
+                  color: Colors.redAccent,
+                  size: 18,
+                ),
+                label: const Text(
+                  'Delete',
+                  style: TextStyle(color: Colors.redAccent),
+                ),
               ),
               TextButton.icon(
                 onPressed: () => setDialogState(() => _isEditing = true),
@@ -2430,7 +2340,9 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                 onPressed: () async {
                   if (_editController.text.trim().isEmpty) return;
                   await commentProvider.updateComment(
-                      comment.id, _editController.text.trim());
+                    comment.id,
+                    _editController.text.trim(),
+                  );
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Comment updated')),

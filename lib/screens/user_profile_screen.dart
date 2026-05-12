@@ -51,10 +51,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     setState(() => _isSaving = true);
     try {
       await Supabase.instance.client.auth.updateUser(
-        UserAttributes(data: {
-          'full_name': _nameController.text,
-          'phone': _phoneController.text,
-        }),
+        UserAttributes(
+          data: {
+            'full_name': _nameController.text,
+            'phone': _phoneController.text,
+          },
+        ),
       );
       setState(() => _displayName = _nameController.text);
       if (mounted) {
@@ -65,7 +67,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save: $error'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Failed to save: $error'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -122,13 +127,21 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       const SizedBox(height: 16),
                       Text(
                         _displayName,
-                        style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       const SizedBox(height: 4),
-                      Text(_emailController.text, style: TextStyle(color: Colors.grey[400])),
+                      Text(
+                        _emailController.text,
+                        style: TextStyle(color: Colors.grey[400]),
+                      ),
                       const SizedBox(height: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: roleColor.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(12),
@@ -136,7 +149,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         ),
                         child: Text(
                           role.toUpperCase(),
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: roleColor, letterSpacing: 1.2),
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: roleColor,
+                            letterSpacing: 1.2,
+                          ),
                         ),
                       ),
                     ],

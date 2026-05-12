@@ -9,10 +9,18 @@ class AppTheme {
   static const Color textMuted = Color(0xFFA0A0A0);
 
   // Light Theme Colors
-  static const Color lightBackground = Color(0xFFF8F9FA); // Professional, very light grey background
-  static const Color lightSurfaceColor = Color(0xFFFFFFFF); // Pure white for cards/surfaces
-  static const Color textDark = Color(0xFF1A1A1A); // Soft black for high contrast but easy reading
-  static const Color textMutedDark = Color(0xFF6C757D); // Clear, professional muted text
+  static const Color lightBackground = Color(
+    0xFFF8F9FA,
+  ); // Professional, very light grey background
+  static const Color lightSurfaceColor = Color(
+    0xFFFFFFFF,
+  ); // Pure white for cards/surfaces
+  static const Color textDark = Color(
+    0xFF1A1A1A,
+  ); // Soft black for high contrast but easy reading
+  static const Color textMutedDark = Color(
+    0xFF6C757D,
+  ); // Clear, professional muted text
 
   static ThemeData get darkGoldTheme {
     final baseTextTheme = GoogleFonts.interTextTheme(
@@ -195,7 +203,8 @@ class AppTheme {
             ),
           )
           .apply(bodyColor: textDark, displayColor: textDark),
-      dividerColor: Colors.black26, // Strong black lines for tables and dividers
+      dividerColor:
+          Colors.black26, // Strong black lines for tables and dividers
       appBarTheme: const AppBarTheme(
         backgroundColor: lightSurfaceColor,
         elevation: 0,
@@ -235,7 +244,9 @@ class AppTheme {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(6),
-          borderSide: const BorderSide(color: Color(0xFFEBEBEB)), // Visible boundary for inputs
+          borderSide: const BorderSide(
+            color: Color(0xFFEBEBEB),
+          ), // Visible boundary for inputs
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(6),

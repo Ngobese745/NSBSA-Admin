@@ -5,7 +5,6 @@ import '../models/group.dart';
 import '../services/cache_service.dart';
 import '../services/system_audit_service.dart';
 
-
 class GroupProvider with ChangeNotifier {
   final _supabase = Supabase.instance.client;
   List<GroupModel> _groups = [];
@@ -29,11 +28,17 @@ class GroupProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await _supabase.from('groups').select().order('created_at', ascending: false);
+      final response = await _supabase
+          .from('groups')
+          .select()
+          .order('created_at', ascending: false);
       _groups = (response as List).map((e) => GroupModel.fromJson(e)).toList();
-      
+
       // Save fresh data to cache
-      await CacheService.saveCache('groups_cache', _groups.map((e) => e.toJson()).toList());
+      await CacheService.saveCache(
+        'groups_cache',
+        _groups.map((e) => e.toJson()).toList(),
+      );
     } catch (e) {
       debugPrint('Error fetching groups: $e');
     } finally {
@@ -42,59 +47,103 @@ class GroupProvider with ChangeNotifier {
     }
   }
 
-  Future<GroupModel> addGroupWithMembers(String name, String referenceNumber, List<Map<String, dynamic>> members) async {
+  Future<GroupModel> addGroupWithMembers(
+    String name,
+    String referenceNumber,
+    String centerId,
+    List<Map<String, dynamic>> members,
+  ) async {
     try {
-      final response = await _supabase.from('groups').insert({
-        'name': name,
-        'reference_number': referenceNumber,
-      }).select().single();
+      final response = await _supabase
+          .from('groups')
+          .insert({
+            'name': name,
+            'reference_number': referenceNumber,
+            'center_id': centerId,
+          })
+          .select()
+          .single();
 
       final groupId = response['id'];
       final newGroup = GroupModel.fromJson(response);
 
       if (members.isNotEmpty) {
-        final vendorData = members.map((m) => {
-          'group_id': groupId,
-          'name': m['name'],
-          'phone': m['phone'],
-          'id_number': m['id_number'],
-          'gender': m['gender'],
-          'business_type': m['business'],
-          'whatsapp_number': m['whatsapp'],
-          'address': m['address'],
-          'role': m['role'],
-          'savings_amount': m['savings_amount'],
-          'savings_frequency': m['savings_frequency'],
-          'savings_start_date': m['savings_start_date'],
-          'reference_number': referenceNumber,
-        }).toList();
+        final vendorData = members
+            .map(
+              (m) => {
+                'group_id': groupId,
+                'name': m['name'],
+                'phone': m['phone'],
+                'id_number': m['id_number'],
+                'gender': m['gender'],
+                'business_type': m['business'],
+                'whatsapp_number': m['whatsapp'],
+                'address': m['address'],
+                'role': m['role'],
+                'savings_amount': m['savings_amount'],
+                'savings_frequency': m['savings_frequency'],
+                'savings_start_date': m['savings_start_date'],
+                'reference_number': referenceNumber,
+              },
+            )
+            .toList();
 
-        await _supabase.from('vendors').insert(vendorData);
+        await _supabase.from('vendors').insert(vendorData).select();
+
+        // Populate Leadership table for targeted communication
+        final List<Map<String, dynamic>> leadershipEntries = [];
+        final vendorsResponse = await _supabase
+            .from('vendors')
+            .select()
+            .eq('group_id', groupId);
+
+        for (var vendor in (vendorsResponse as List)) {
+          final role = vendor['role'];
+          if (['Chairperson', 'Secretary', 'Treasurer'].contains(role)) {
+            leadershipEntries.add({
+              'group_id': groupId,
+              'vendor_id': vendor['id'],
+              'role': role,
+            });
+          }
+        }
+
+        if (leadershipEntries.isNotEmpty) {
+          await _supabase.from('leadership').insert(leadershipEntries);
+        }
       }
-      
+
       _groups.insert(0, newGroup);
       notifyListeners();
-      CacheService.saveCache('groups_cache', _groups.map((e) => e.toJson()).toList());
-      
+      CacheService.saveCache(
+        'groups_cache',
+        _groups.map((e) => e.toJson()).toList(),
+      );
+
       SystemAuditService.logAction(
         actionType: 'CREATE_GROUP',
         affectedEntity: 'Group: $name ($referenceNumber)',
         description: 'Created a new group with ${members.length} members.',
       );
-      
+
       return newGroup;
     } catch (e) {
       debugPrint('Error adding group: $e');
       rethrow;
     }
   }
-  Future<void> updateGroup(String id, String name) async {
+
+  Future<void> updateGroup(String id, String name, {String? centerId}) async {
     try {
-      await _supabase.from('groups').update({'name': name}).eq('id', id);
+      final Map<String, dynamic> updates = {'name': name};
+      if (centerId != null) updates['center_id'] = centerId;
+
+      await _supabase.from('groups').update(updates).eq('id', id);
       SystemAuditService.logAction(
         actionType: 'UPDATE_GROUP',
         affectedEntity: 'Group ID: $id',
-        description: 'Updated group name to $name.',
+        description:
+            'Updated group $name (Center: ${centerId ?? "unchanged"}).',
       );
       await fetchGroups(forceRefresh: true);
     } catch (e) {
@@ -108,7 +157,10 @@ class GroupProvider with ChangeNotifier {
       await _supabase.from('groups').delete().eq('id', id);
       _groups.removeWhere((g) => g.id == id);
       notifyListeners();
-      await CacheService.saveCache('groups_cache', _groups.map((e) => e.toJson()).toList());
+      await CacheService.saveCache(
+        'groups_cache',
+        _groups.map((e) => e.toJson()).toList(),
+      );
       SystemAuditService.logAction(
         actionType: 'DELETE_GROUP',
         affectedEntity: 'Group ID: $id',

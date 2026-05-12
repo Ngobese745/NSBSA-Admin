@@ -21,5 +21,9 @@ List<SingleChildWidget> buildAppProviders() {
     ChangeNotifierProvider(create: (_) => AnalyticsProvider()),
     ChangeNotifierProvider(create: (_) => SavingsHistoryProvider()),
     ChangeNotifierProvider(create: (_) => DeveloperControlsProvider()),
+    ChangeNotifierProvider(create: (_) => CenterProvider()..fetchCenters()),
+    ChangeNotifierProvider(
+      create: (_) => NotificationProvider()..fetchNotifications(),
+    ),
   ];
 }

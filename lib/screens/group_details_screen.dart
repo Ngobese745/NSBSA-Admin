@@ -15,6 +15,9 @@ import '../providers/vendor_provider.dart';
 import '../providers/loan_provider.dart';
 import '../providers/payment_provider.dart';
 import '../providers/group_provider.dart';
+import '../providers/center_provider.dart';
+import '../models/center.dart';
+import '../models/leadership.dart';
 import 'vendor_profile_screen.dart';
 import 'loan_details_screen.dart';
 import '../services/loan_calculation_service.dart';
@@ -38,6 +41,8 @@ class GroupDetailsScreen extends StatefulWidget {
 class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   List<VendorModel> _members = [];
   List<LoanModel> _loans = [];
+  CenterModel? _center;
+  List<LeadershipModel> _leaders = [];
   bool _isLoading = true;
   late String _currentName;
 
@@ -48,24 +53,36 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     _loadData();
   }
 
-
   Future<void> _loadData() async {
     final vendorProvider = context.read<VendorProvider>();
     final loanProvider = context.read<LoanProvider>();
     final paymentProvider = context.read<PaymentProvider>();
+    final centerProvider = context.read<CenterProvider>();
 
-    final results = await Future.wait([
+    final results = await Future.wait<dynamic>([
       vendorProvider.fetchVendorsByGroup(widget.group.id),
       loanProvider.fetchLoansByGroup(widget.group.id),
       paymentProvider.fetchPayments(),
       context.read<CommentProvider>().fetchCommentsByGroup(widget.group.id),
       context.read<DocumentProvider>().fetchDocumentsByGroup(widget.group.id),
+      if (widget.group.centerId != null)
+        centerProvider.fetchLeadership(groupId: widget.group.id),
     ]);
+
+    if (widget.group.centerId != null) {
+      final centers = centerProvider.centers;
+      try {
+        _center = centers.firstWhere((c) => c.id == widget.group.centerId);
+      } catch (_) {}
+    }
 
     if (mounted) {
       setState(() {
         _members = results[0] as List<VendorModel>;
         _loans = results[1] as List<LoanModel>;
+        if (results.length > 5) {
+          _leaders = results[5] as List<LeadershipModel>;
+        }
         _isLoading = false;
       });
     }
@@ -74,9 +91,11 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDesktop = MediaQuery.of(context).size.width >=
+    final isDesktop =
+        MediaQuery.of(context).size.width >=
         AppBreakpoints.groupDetailsDesktopMin;
-    final isTablet = MediaQuery.of(context).size.width >=
+    final isTablet =
+        MediaQuery.of(context).size.width >=
         AppBreakpoints.groupDetailsTabletMin;
 
     return Scaffold(
@@ -124,6 +143,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             ),
     );
   }
+
   Widget _buildCommentsSection(ThemeData theme) {
     final commentProvider = context.watch<CommentProvider>();
     final TextEditingController _commentController = TextEditingController();
@@ -150,7 +170,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     TextField(
                       controller: _commentController,
                       maxLines: 3,
-                      style: TextStyle(color: theme.textTheme.bodyMedium?.color),
+                      style: TextStyle(
+                        color: theme.textTheme.bodyMedium?.color,
+                      ),
                       decoration: InputDecoration(
                         hintText: 'Add a comment...',
                         hintStyle: const TextStyle(color: Colors.grey),
@@ -185,13 +207,18 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                                             final m = _members[index];
                                             return CheckboxListTile(
                                               title: Text(m.name),
-                                              value: _selectedMentionIds.contains(m.id),
+                                              value: _selectedMentionIds
+                                                  .contains(m.id),
                                               onChanged: (val) {
                                                 setState(() {
                                                   if (val == true) {
-                                                    _selectedMentionIds.add(m.id);
+                                                    _selectedMentionIds.add(
+                                                      m.id,
+                                                    );
                                                   } else {
-                                                    _selectedMentionIds.remove(m.id);
+                                                    _selectedMentionIds.remove(
+                                                      m.id,
+                                                    );
                                                   }
                                                 });
                                               },
@@ -201,22 +228,36 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                                       ),
                                       actions: [
                                         TextButton(
-                                          onPressed: () => Navigator.pop(context),
+                                          onPressed: () =>
+                                              Navigator.pop(context),
                                           child: const Text('Done'),
                                         ),
                                       ],
                                     ),
-                                  ).then((_) => (context as Element).markNeedsBuild());
+                                  ).then(
+                                    (_) =>
+                                        (context as Element).markNeedsBuild(),
+                                  );
                                 },
-                                icon: const Icon(Icons.alternate_email, size: 16),
+                                icon: const Icon(
+                                  Icons.alternate_email,
+                                  size: 16,
+                                ),
                                 label: const Text('Mention'),
                               ),
                               ..._selectedMentionIds.map((id) {
-                                final name = _members.firstWhere((m) => m.id == id).name;
+                                final name = _members
+                                    .firstWhere((m) => m.id == id)
+                                    .name;
                                 return Chip(
-                                  label: Text(name, style: const TextStyle(fontSize: 10)),
+                                  label: Text(
+                                    name,
+                                    style: const TextStyle(fontSize: 10),
+                                  ),
                                   onDeleted: () {
-                                    setState(() => _selectedMentionIds.remove(id));
+                                    setState(
+                                      () => _selectedMentionIds.remove(id),
+                                    );
                                   },
                                 );
                               }),
@@ -226,12 +267,13 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                         ElevatedButton(
                           onPressed: () async {
                             if (_commentController.text.trim().isEmpty) return;
-                            
+
                             final authProvider = context.read<AuthProvider>();
                             final comment = CommentModel(
                               id: '',
                               groupId: widget.group.id,
-                              authorName: authProvider.currentUser?.email ?? 'Admin',
+                              authorName:
+                                  authProvider.currentUser?.email ?? 'Admin',
                               authorRole: 'Staff', // Default for now
                               content: _commentController.text.trim(),
                               mentionedVendorIds: _selectedMentionIds,
@@ -260,14 +302,20 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               else if (commentProvider.comments.isEmpty)
                 const Padding(
                   padding: EdgeInsets.all(32),
-                  child: Center(child: Text('No comments yet.', style: TextStyle(color: Colors.grey))),
+                  child: Center(
+                    child: Text(
+                      'No comments yet.',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
                 )
               else
                 ListView.separated(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: commentProvider.comments.length,
-                  separatorBuilder: (context, index) => const Divider(height: 1, color: Colors.white10),
+                  separatorBuilder: (context, index) =>
+                      const Divider(height: 1, color: Colors.white10),
                   itemBuilder: (context, index) {
                     final comment = commentProvider.comments[index];
                     return InkWell(
@@ -281,25 +329,40 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                               children: [
                                 Text(
                                   comment.authorName,
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                  ),
                                 ),
                                 const SizedBox(width: 8),
                                 if (comment.authorRole != null)
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
                                     decoration: BoxDecoration(
-                                      color: theme.primaryColor.withOpacity(0.1),
+                                      color: theme.primaryColor.withOpacity(
+                                        0.1,
+                                      ),
                                       borderRadius: BorderRadius.circular(4),
                                     ),
                                     child: Text(
                                       comment.authorRole!,
-                                      style: TextStyle(color: theme.primaryColor, fontSize: 10, fontWeight: FontWeight.bold),
+                                      style: TextStyle(
+                                        color: theme.primaryColor,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
                                   ),
                                 const Spacer(),
                                 Text(
                                   _formatDate(comment.createdAt),
-                                  style: const TextStyle(color: Colors.grey, fontSize: 11),
+                                  style: const TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 11,
+                                  ),
                                 ),
                               ],
                             ),
@@ -308,17 +371,28 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                               comment.content,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(color: theme.textTheme.bodyMedium?.color),
+                              style: TextStyle(
+                                color: theme.textTheme.bodyMedium?.color,
+                              ),
                             ),
                             if (comment.mentionedVendorIds.isNotEmpty) ...[
                               const SizedBox(height: 8),
                               Wrap(
                                 spacing: 4,
                                 children: comment.mentionedVendorIds.map((id) {
-                                  final name = _members.where((m) => m.id == id).firstOrNull?.name ?? 'Unknown';
+                                  final name =
+                                      _members
+                                          .where((m) => m.id == id)
+                                          .firstOrNull
+                                          ?.name ??
+                                      'Unknown';
                                   return Text(
                                     '@$name',
-                                    style: const TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.bold),
+                                    style: const TextStyle(
+                                      color: Colors.blueAccent,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   );
                                 }).toList(),
                               ),
@@ -352,16 +426,26 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: _members.length,
-            separatorBuilder: (context, index) => const Divider(height: 1, color: Colors.white10),
+            separatorBuilder: (context, index) =>
+                const Divider(height: 1, color: Colors.white10),
             itemBuilder: (context, index) {
               final member = _members[index];
               return ListTile(
                 leading: CircleAvatar(
                   backgroundColor: Colors.amber.withOpacity(0.1),
-                  child: const Icon(Icons.savings, color: Colors.amber, size: 20),
+                  child: const Icon(
+                    Icons.savings,
+                    color: Colors.amber,
+                    size: 20,
+                  ),
                 ),
-                title: Text(member.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text('Frequency: ${member.savingsFrequency ?? 'Monthly'} • Starts: ${member.savingsStartDate?.toLocal().toString().split(' ')[0] ?? 'N/A'}'),
+                title: Text(
+                  member.name,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: Text(
+                  'Frequency: ${member.savingsFrequency ?? 'Monthly'} • Starts: ${member.savingsStartDate?.toLocal().toString().split(' ')[0] ?? 'N/A'}',
+                ),
                 trailing: Text(
                   'R ${member.savingsAmount?.toStringAsFixed(0) ?? '0'}',
                   style: const TextStyle(
@@ -382,15 +466,43 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     final leftSide = Row(
       children: [
         CircleAvatar(
-          radius: 30,
-          backgroundColor: theme.primaryColor.withOpacity(0.2),
-          child: Icon(Icons.group, size: 32, color: theme.primaryColor),
+          radius: 32,
+          backgroundColor: theme.primaryColor.withOpacity(0.1),
+          child: Icon(Icons.group, size: 36, color: theme.primaryColor),
         ),
         const SizedBox(width: 24),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (_center != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  margin: const EdgeInsets.only(bottom: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.business, size: 10, color: Colors.amber),
+                      const SizedBox(width: 4),
+                      Text(
+                        _center!.name.toUpperCase(),
+                        style: const TextStyle(
+                          color: Colors.amber,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               Row(
                 children: [
                   Flexible(
@@ -398,7 +510,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                       _currentName,
                       style: theme.textTheme.headlineMedium?.copyWith(
                         fontWeight: FontWeight.bold,
-                        fontSize: isDesktop ? 28 : 20,
+                        fontSize: isDesktop ? 28 : 22,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -407,17 +519,22 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     icon: const Icon(Icons.edit, size: 20, color: Colors.grey),
                     onPressed: _showEditDialog,
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline, size: 20, color: Colors.redAccent),
-                    onPressed: _confirmDeleteGroup,
-                  ),
                 ],
               ),
               const SizedBox(height: 4),
-              Text(
-                'Reference: ${widget.group.referenceNumber}',
-                style: TextStyle(color: Colors.grey[400], fontSize: isDesktop ? 16 : 12),
-                overflow: TextOverflow.ellipsis,
+              Row(
+                children: [
+                  Text(
+                    'REF: ${widget.group.referenceNumber}',
+                    style: TextStyle(
+                      color: Colors.grey[500],
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(child: _buildLeadershipBadges(theme)),
+                ],
               ),
             ],
           ),
@@ -426,9 +543,18 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     );
 
     final rightSide = Column(
-      crossAxisAlignment: isDesktop ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      crossAxisAlignment: isDesktop
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
       children: [
-        Text('Created On', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+        Text(
+          'REGISTRATION DATE',
+          style: TextStyle(
+            color: Colors.grey[600],
+            fontSize: 10,
+            letterSpacing: 1,
+          ),
+        ),
         Text(
           widget.group.createdAt.toString().substring(0, 10),
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
@@ -460,12 +586,49 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             )
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                leftSide,
-                const SizedBox(height: 24),
-                rightSide,
-              ],
+              children: [leftSide, const SizedBox(height: 24), rightSide],
             ),
+    );
+  }
+
+  Widget _buildLeadershipBadges(ThemeData theme) {
+    if (_leaders.isEmpty) return const SizedBox.shrink();
+
+    return Wrap(
+      spacing: 6,
+      children: _leaders.map((leader) {
+        Color badgeColor;
+        switch (leader.role) {
+          case 'Chairperson':
+            badgeColor = Colors.blue;
+            break;
+          case 'Secretary':
+            badgeColor = Colors.green;
+            break;
+          case 'Treasurer':
+            badgeColor = Colors.orange;
+            break;
+          default:
+            badgeColor = theme.primaryColor;
+        }
+
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: badgeColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: badgeColor.withOpacity(0.5), width: 0.5),
+          ),
+          child: Text(
+            '${leader.role.substring(0, 1)}: ${leader.vendorName ?? ''}',
+            style: TextStyle(
+              color: badgeColor,
+              fontSize: 9,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -474,21 +637,33 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     final paymentProvider = context.watch<PaymentProvider>();
     final allPayments = paymentProvider.payments;
     final loanIds = _loans.map((loan) => loan.id).toSet();
-    final groupPayments = allPayments.where((payment) => loanIds.contains(payment.loanId)).toList();
+    final groupPayments = allPayments
+        .where((payment) => loanIds.contains(payment.loanId))
+        .toList();
 
-    double totalPaid = groupPayments.fold<double>(0, (sum, p) => sum + p.amountPaid);
-    
+    double totalPaid = groupPayments.fold<double>(
+      0,
+      (sum, p) => sum + p.amountPaid,
+    );
+
     // Calculate total balance by summing individual loan balances (correctly handling fees and capping at 0)
     double balance = 0;
     for (final loan in _loans) {
-      final loanPayments = groupPayments.where((p) => p.loanId == loan.id).toList();
+      final loanPayments = groupPayments
+          .where((p) => p.loanId == loan.id)
+          .toList();
       balance += LoanCalculationService.calculateBalance(loan, loanPayments);
     }
-    final totalSavings = _members.fold(0.0, (sum, m) => sum + (m.savingsAmount ?? 0.0));
+    final totalSavings = _members.fold(
+      0.0,
+      (sum, m) => sum + (m.savingsAmount ?? 0.0),
+    );
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final crossAxisCount = constraints.maxWidth > 1000 ? 4 : (constraints.maxWidth > 600 ? 2 : 1);
+        final crossAxisCount = constraints.maxWidth > 1000
+            ? 4
+            : (constraints.maxWidth > 600 ? 2 : 1);
         return GridView.count(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -497,10 +672,31 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           mainAxisSpacing: 16,
           childAspectRatio: constraints.maxWidth > 1000 ? 2.2 : 4.0,
           children: [
-            _buildStatCard('Members', _members.length.toString(), Icons.people, theme.primaryColor),
-            _buildStatCard('Loans', _loans.length.toString(), Icons.account_balance, Colors.blueAccent),
-            _buildStatCard('Total Value', 'R ${totalLoaned.toStringAsFixed(0)}', Icons.payments, Colors.greenAccent, subtitle: 'Bal: R ${balance.toStringAsFixed(0)}'),
-            _buildStatCard('Savings', 'R ${totalSavings.toStringAsFixed(0)}', Icons.savings, Colors.amber),
+            _buildStatCard(
+              'Members',
+              _members.length.toString(),
+              Icons.people,
+              theme.primaryColor,
+            ),
+            _buildStatCard(
+              'Loans',
+              _loans.length.toString(),
+              Icons.account_balance,
+              Colors.blueAccent,
+            ),
+            _buildStatCard(
+              'Total Value',
+              'R ${totalLoaned.toStringAsFixed(0)}',
+              Icons.payments,
+              Colors.greenAccent,
+              subtitle: 'Bal: R ${balance.toStringAsFixed(0)}',
+            ),
+            _buildStatCard(
+              'Savings',
+              'R ${totalSavings.toStringAsFixed(0)}',
+              Icons.savings,
+              Colors.amber,
+            ),
           ],
         );
       },
@@ -522,7 +718,10 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           children: [
             Icon(icon, color: color, size: 24),
             const SizedBox(height: 8),
-            Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            Text(
+              title,
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
+            ),
             const SizedBox(height: 2),
             Text(
               value,
@@ -577,11 +776,16 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     if (member.role != null && member.role != 'Member') ...[
                       const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: theme.primaryColor.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: theme.primaryColor.withOpacity(0.3)),
+                          border: Border.all(
+                            color: theme.primaryColor.withOpacity(0.3),
+                          ),
                         ),
                         child: Text(
                           member.role!.toUpperCase(),
@@ -762,15 +966,21 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         ],
       ),
     );
-  }  void _showEditMemberDialog(VendorModel member) {
+  }
+
+  void _showEditMemberDialog(VendorModel member) {
     final nameController = TextEditingController(text: member.name);
     final phoneController = TextEditingController(text: member.phone);
     final idController = TextEditingController(text: member.idNumber);
     final businessController = TextEditingController(text: member.businessType);
     final dfController = TextEditingController(text: member.dfName);
-    final whatsappController = TextEditingController(text: member.whatsappNumber);
+    final whatsappController = TextEditingController(
+      text: member.whatsappNumber,
+    );
     final addressController = TextEditingController(text: member.address);
-    final savingsAmountController = TextEditingController(text: member.savingsAmount?.toString() ?? '0');
+    final savingsAmountController = TextEditingController(
+      text: member.savingsAmount?.toString() ?? '0',
+    );
     String selectedGender = member.gender ?? 'F';
     String selectedRole = member.role ?? 'Member';
     String selectedFrequency = member.savingsFrequency ?? 'Monthly';
@@ -781,7 +991,10 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
           backgroundColor: Theme.of(context).colorScheme.surface,
-          title: const Text('Edit Member', style: TextStyle(color: Colors.white)),
+          title: const Text(
+            'Edit Member',
+            style: TextStyle(color: Colors.white),
+          ),
           content: SizedBox(
             width: 700,
             child: SingleChildScrollView(
@@ -790,8 +1003,13 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 children: [
                   TextField(
                     controller: nameController,
-                    style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                    decoration: const InputDecoration(labelText: 'Name', labelStyle: TextStyle(color: Colors.grey)),
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Name',
+                      labelStyle: TextStyle(color: Colors.grey),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Row(
@@ -800,8 +1018,15 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                         flex: 3,
                         child: TextField(
                           controller: idController,
-                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                          decoration: const InputDecoration(labelText: 'ID Number', labelStyle: TextStyle(color: Colors.grey)),
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.color,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'ID Number',
+                            labelStyle: TextStyle(color: Colors.grey),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -810,15 +1035,36 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                         child: DropdownButtonFormField<String>(
                           value: selectedRole,
                           dropdownColor: Theme.of(context).cardColor,
-                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color, fontSize: 12),
-                          decoration: const InputDecoration(labelText: 'Role', labelStyle: TextStyle(color: Colors.grey)),
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.color,
+                            fontSize: 12,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Role',
+                            labelStyle: TextStyle(color: Colors.grey),
+                          ),
                           items: const [
-                            DropdownMenuItem(value: 'Member', child: Text('Member')),
-                            DropdownMenuItem(value: 'Chairperson', child: Text('Chairperson')),
-                            DropdownMenuItem(value: 'Secretary', child: Text('Secretary')),
-                            DropdownMenuItem(value: 'Treasurer', child: Text('Treasurer')),
+                            DropdownMenuItem(
+                              value: 'Member',
+                              child: Text('Member'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Chairperson',
+                              child: Text('Chairperson'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Secretary',
+                              child: Text('Secretary'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Treasurer',
+                              child: Text('Treasurer'),
+                            ),
                           ],
-                          onChanged: (val) => setState(() => selectedRole = val!),
+                          onChanged: (val) =>
+                              setState(() => selectedRole = val!),
                         ),
                       ),
                     ],
@@ -830,44 +1076,79 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                         child: DropdownButtonFormField<String>(
                           value: selectedGender,
                           dropdownColor: Theme.of(context).cardColor,
-                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                          decoration: const InputDecoration(labelText: 'Gender', labelStyle: TextStyle(color: Colors.grey)),
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.color,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Gender',
+                            labelStyle: TextStyle(color: Colors.grey),
+                          ),
                           items: const [
                             DropdownMenuItem(value: 'M', child: Text('M')),
                             DropdownMenuItem(value: 'F', child: Text('F')),
                           ],
-                          onChanged: (val) => setState(() => selectedGender = val!),
+                          onChanged: (val) =>
+                              setState(() => selectedGender = val!),
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: TextField(
                           controller: phoneController,
-                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                          decoration: const InputDecoration(labelText: 'Phone', labelStyle: TextStyle(color: Colors.grey)),
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.color,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Phone',
+                            labelStyle: TextStyle(color: Colors.grey),
+                          ),
                         ),
                       ),
                     ],
                   ),
                   TextField(
                     controller: whatsappController,
-                    style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                    decoration: const InputDecoration(labelText: 'WhatsApp', labelStyle: TextStyle(color: Colors.grey)),
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'WhatsApp',
+                      labelStyle: TextStyle(color: Colors.grey),
+                    ),
                   ),
                   TextField(
                     controller: businessController,
-                    style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                    decoration: const InputDecoration(labelText: 'Business Type', labelStyle: TextStyle(color: Colors.grey)),
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Business Type',
+                      labelStyle: TextStyle(color: Colors.grey),
+                    ),
                   ),
                   TextField(
                     controller: dfController,
-                    style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                    decoration: const InputDecoration(labelText: 'DF Name', labelStyle: TextStyle(color: Colors.grey)),
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'DF Name',
+                      labelStyle: TextStyle(color: Colors.grey),
+                    ),
                   ),
                   TextField(
                     controller: addressController,
-                    style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                    decoration: const InputDecoration(labelText: 'Home Address', labelStyle: TextStyle(color: Colors.grey)),
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Home Address',
+                      labelStyle: TextStyle(color: Colors.grey),
+                    ),
                   ),
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 16),
@@ -875,7 +1156,13 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   ),
                   const Align(
                     alignment: Alignment.centerLeft,
-                    child: Text('Savings Plan', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+                    child: Text(
+                      'Savings Plan',
+                      style: TextStyle(
+                        color: Colors.amber,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Row(
@@ -884,8 +1171,15 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                         child: TextField(
                           controller: savingsAmountController,
                           keyboardType: TextInputType.number,
-                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                          decoration: const InputDecoration(labelText: 'Savings Amount (R)', labelStyle: TextStyle(color: Colors.grey)),
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.color,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Savings Amount (R)',
+                            labelStyle: TextStyle(color: Colors.grey),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -893,14 +1187,31 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                         child: DropdownButtonFormField<String>(
                           value: selectedFrequency,
                           dropdownColor: Theme.of(context).cardColor,
-                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                          decoration: const InputDecoration(labelText: 'Frequency', labelStyle: TextStyle(color: Colors.grey)),
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.color,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Frequency',
+                            labelStyle: TextStyle(color: Colors.grey),
+                          ),
                           items: const [
-                            DropdownMenuItem(value: 'Weekly', child: Text('Weekly')),
-                            DropdownMenuItem(value: 'Bi-Weekly', child: Text('Bi-Weekly')),
-                            DropdownMenuItem(value: 'Monthly', child: Text('Monthly')),
+                            DropdownMenuItem(
+                              value: 'Weekly',
+                              child: Text('Weekly'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Bi-Weekly',
+                              child: Text('Bi-Weekly'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Monthly',
+                              child: Text('Monthly'),
+                            ),
                           ],
-                          onChanged: (val) => setState(() => selectedFrequency = val!),
+                          onChanged: (val) =>
+                              setState(() => selectedFrequency = val!),
                         ),
                       ),
                     ],
@@ -908,12 +1219,18 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   const SizedBox(height: 12),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('Start Date', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    title: const Text(
+                      'Start Date',
+                      style: TextStyle(color: Colors.grey, fontSize: 12),
+                    ),
                     subtitle: Text(
                       "${selectedSavingsDate.toLocal()}".split(' ')[0],
                       style: const TextStyle(color: Colors.white, fontSize: 16),
                     ),
-                    trailing: const Icon(Icons.calendar_today, color: Colors.amber),
+                    trailing: const Icon(
+                      Icons.calendar_today,
+                      color: Colors.amber,
+                    ),
                     onTap: () async {
                       final DateTime? picked = await showDatePicker(
                         context: context,
@@ -933,7 +1250,10 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
             ElevatedButton(
               onPressed: () async {
                 try {
@@ -947,14 +1267,17 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     'whatsapp_number': whatsappController.text,
                     'address': addressController.text,
                     'role': selectedRole,
-                    'savings_amount': double.tryParse(savingsAmountController.text) ?? 0,
+                    'savings_amount':
+                        double.tryParse(savingsAmountController.text) ?? 0,
                     'savings_frequency': selectedFrequency,
                     'savings_start_date': selectedSavingsDate.toIso8601String(),
                   });
                   _loadData();
                   if (context.mounted) Navigator.pop(context);
                 } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('Error: $e')));
                 }
               },
               child: const Text('Save'),
@@ -1069,7 +1392,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 final monthly = double.tryParse(monthlyController.text) ?? 0;
 
                 if (amount > 0 && selectedVendorId != null) {
-                  setState(() => amountController.text = 'Submitting...'); // basic loading state
+                  setState(
+                    () => amountController.text = 'Submitting...',
+                  ); // basic loading state
                   try {
                     final newLoan = await context.read<LoanProvider>().addLoan(
                       LoanModel(
@@ -1086,19 +1411,27 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                         createdAt: DateTime.now(),
                       ),
                     );
-                    
+
                     // Optimistic update
                     this.setState(() {
                       _loans.insert(0, newLoan);
                     });
-                    
+
                     if (context.mounted) {
                       Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Loan created successfully')));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Loan created successfully'),
+                        ),
+                      );
                     }
                   } catch (e) {
-                    setState(() => amountController.text = amount.toString()); // revert
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                    setState(
+                      () => amountController.text = amount.toString(),
+                    ); // revert
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('Error: $e')));
                   }
                 } else if (selectedVendorId == null) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -1204,7 +1537,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     Navigator.pop(context);
                   }
                 } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('Error: $e')));
                 }
               }
             },
@@ -1234,7 +1569,10 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
           backgroundColor: Theme.of(context).colorScheme.surface,
-          title: const Text('Add New Member', style: TextStyle(color: Colors.white)),
+          title: const Text(
+            'Add New Member',
+            style: TextStyle(color: Colors.white),
+          ),
           content: SizedBox(
             width: 700,
             child: SingleChildScrollView(
@@ -1243,8 +1581,13 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 children: [
                   TextField(
                     controller: nameController,
-                    style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                    decoration: const InputDecoration(labelText: 'Name', labelStyle: TextStyle(color: Colors.grey)),
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Name',
+                      labelStyle: TextStyle(color: Colors.grey),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Row(
@@ -1253,8 +1596,15 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                         flex: 3,
                         child: TextField(
                           controller: idController,
-                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                          decoration: const InputDecoration(labelText: 'ID Number', labelStyle: TextStyle(color: Colors.grey)),
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.color,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'ID Number',
+                            labelStyle: TextStyle(color: Colors.grey),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -1263,15 +1613,36 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                         child: DropdownButtonFormField<String>(
                           value: selectedRole,
                           dropdownColor: Theme.of(context).cardColor,
-                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color, fontSize: 12),
-                          decoration: const InputDecoration(labelText: 'Role', labelStyle: TextStyle(color: Colors.grey)),
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.color,
+                            fontSize: 12,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Role',
+                            labelStyle: TextStyle(color: Colors.grey),
+                          ),
                           items: const [
-                            DropdownMenuItem(value: 'Member', child: Text('Member')),
-                            DropdownMenuItem(value: 'Chairperson', child: Text('Chairperson')),
-                            DropdownMenuItem(value: 'Secretary', child: Text('Secretary')),
-                            DropdownMenuItem(value: 'Treasurer', child: Text('Treasurer')),
+                            DropdownMenuItem(
+                              value: 'Member',
+                              child: Text('Member'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Chairperson',
+                              child: Text('Chairperson'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Secretary',
+                              child: Text('Secretary'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Treasurer',
+                              child: Text('Treasurer'),
+                            ),
                           ],
-                          onChanged: (val) => setState(() => selectedRole = val!),
+                          onChanged: (val) =>
+                              setState(() => selectedRole = val!),
                         ),
                       ),
                     ],
@@ -1283,23 +1654,39 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                         child: DropdownButtonFormField<String>(
                           value: selectedGender,
                           dropdownColor: Theme.of(context).cardColor,
-                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                          decoration: const InputDecoration(labelText: 'Gender', labelStyle: TextStyle(color: Colors.grey)),
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.color,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Gender',
+                            labelStyle: TextStyle(color: Colors.grey),
+                          ),
                           items: const [
                             DropdownMenuItem(value: 'M', child: Text('M')),
                             DropdownMenuItem(value: 'F', child: Text('F')),
                           ],
-                          onChanged: (val) => setState(() => selectedGender = val!),
+                          onChanged: (val) =>
+                              setState(() => selectedGender = val!),
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: TextField(
                           controller: phoneController,
-                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                          decoration: const InputDecoration(labelText: 'Phone', labelStyle: TextStyle(color: Colors.grey)),
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.color,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Phone',
+                            labelStyle: TextStyle(color: Colors.grey),
+                          ),
                           onChanged: (val) {
-                            if (whatsappController.text.isEmpty) whatsappController.text = val;
+                            if (whatsappController.text.isEmpty)
+                              whatsappController.text = val;
                           },
                         ),
                       ),
@@ -1307,23 +1694,43 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   ),
                   TextField(
                     controller: whatsappController,
-                    style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                    decoration: const InputDecoration(labelText: 'WhatsApp', labelStyle: TextStyle(color: Colors.grey)),
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'WhatsApp',
+                      labelStyle: TextStyle(color: Colors.grey),
+                    ),
                   ),
                   TextField(
                     controller: businessController,
-                    style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                    decoration: const InputDecoration(labelText: 'Business Type', labelStyle: TextStyle(color: Colors.grey)),
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Business Type',
+                      labelStyle: TextStyle(color: Colors.grey),
+                    ),
                   ),
                   TextField(
                     controller: dfController,
-                    style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                    decoration: const InputDecoration(labelText: 'DF Name', labelStyle: TextStyle(color: Colors.grey)),
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'DF Name',
+                      labelStyle: TextStyle(color: Colors.grey),
+                    ),
                   ),
                   TextField(
                     controller: addressController,
-                    style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                    decoration: const InputDecoration(labelText: 'Home Address', labelStyle: TextStyle(color: Colors.grey)),
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Home Address',
+                      labelStyle: TextStyle(color: Colors.grey),
+                    ),
                   ),
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 16),
@@ -1331,7 +1738,13 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   ),
                   const Align(
                     alignment: Alignment.centerLeft,
-                    child: Text('Savings Plan', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+                    child: Text(
+                      'Savings Plan',
+                      style: TextStyle(
+                        color: Colors.amber,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Row(
@@ -1340,8 +1753,15 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                         child: TextField(
                           controller: savingsAmountController,
                           keyboardType: TextInputType.number,
-                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                          decoration: const InputDecoration(labelText: 'Savings Amount (R)', labelStyle: TextStyle(color: Colors.grey)),
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.color,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Savings Amount (R)',
+                            labelStyle: TextStyle(color: Colors.grey),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -1349,14 +1769,31 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                         child: DropdownButtonFormField<String>(
                           value: selectedFrequency,
                           dropdownColor: Theme.of(context).cardColor,
-                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-                          decoration: const InputDecoration(labelText: 'Frequency', labelStyle: TextStyle(color: Colors.grey)),
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.color,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Frequency',
+                            labelStyle: TextStyle(color: Colors.grey),
+                          ),
                           items: const [
-                            DropdownMenuItem(value: 'Weekly', child: Text('Weekly')),
-                            DropdownMenuItem(value: 'Bi-Weekly', child: Text('Bi-Weekly')),
-                            DropdownMenuItem(value: 'Monthly', child: Text('Monthly')),
+                            DropdownMenuItem(
+                              value: 'Weekly',
+                              child: Text('Weekly'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Bi-Weekly',
+                              child: Text('Bi-Weekly'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Monthly',
+                              child: Text('Monthly'),
+                            ),
                           ],
-                          onChanged: (val) => setState(() => selectedFrequency = val!),
+                          onChanged: (val) =>
+                              setState(() => selectedFrequency = val!),
                         ),
                       ),
                     ],
@@ -1364,12 +1801,18 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   const SizedBox(height: 12),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('Start Date', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    title: const Text(
+                      'Start Date',
+                      style: TextStyle(color: Colors.grey, fontSize: 12),
+                    ),
                     subtitle: Text(
                       "${selectedSavingsDate.toLocal()}".split(' ')[0],
                       style: const TextStyle(color: Colors.white, fontSize: 16),
                     ),
-                    trailing: const Icon(Icons.calendar_today, color: Colors.amber),
+                    trailing: const Icon(
+                      Icons.calendar_today,
+                      color: Colors.amber,
+                    ),
                     onTap: () async {
                       final DateTime? picked = await showDatePicker(
                         context: context,
@@ -1389,7 +1832,10 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
             ElevatedButton(
               onPressed: () async {
                 if (nameController.text.isEmpty) return;
@@ -1400,8 +1846,12 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 );
 
                 if (duplicate != null && context.mounted) {
-                   _showDuplicateAlert(duplicate, idController.text, phoneController.text);
-                   return;
+                  _showDuplicateAlert(
+                    duplicate,
+                    idController.text,
+                    phoneController.text,
+                  );
+                  return;
                 }
 
                 await vendorProvider.addVendor(
@@ -1417,10 +1867,13 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     whatsappNumber: whatsappController.text,
                     address: addressController.text,
                     role: selectedRole,
-                    savingsAmount: double.tryParse(savingsAmountController.text) ?? 0,
+                    savingsAmount:
+                        double.tryParse(savingsAmountController.text) ?? 0,
                     savingsFrequency: selectedFrequency,
                     savingsStartDate: selectedSavingsDate,
-                    referenceNumber: widget.group.name.substring(0, 3).toUpperCase(),
+                    referenceNumber: widget.group.name
+                        .substring(0, 3)
+                        .toUpperCase(),
                     createdAt: DateTime.now(),
                   ),
                 );
@@ -1438,11 +1891,16 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   void _showRecordGroupPaymentDialog() {
     final activeLoans = _loans.where((l) => l.status == 'Active').toList();
     if (activeLoans.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No active loans found in this group.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No active loans found in this group.')),
+      );
       return;
     }
 
-    double totalExpected = activeLoans.fold(0.0, (sum, l) => sum + l.monthlyPayment);
+    double totalExpected = activeLoans.fold(
+      0.0,
+      (sum, l) => sum + l.monthlyPayment,
+    );
     bool isSubmitting = false;
 
     showDialog(
@@ -1452,9 +1910,16 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           backgroundColor: Theme.of(context).colorScheme.surface,
           title: Row(
             children: [
-              Icon(Icons.payments_outlined, color: AppTheme.primaryGold, size: 24),
+              Icon(
+                Icons.payments_outlined,
+                color: AppTheme.primaryGold,
+                size: 24,
+              ),
               const SizedBox(width: 12),
-              const Text('Record Group Payment', style: TextStyle(color: Colors.white)),
+              const Text(
+                'Record Group Payment',
+                style: TextStyle(color: Colors.white),
+              ),
             ],
           ),
           content: SizedBox(
@@ -1480,15 +1945,24 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Total Active Loans', style: TextStyle(color: Colors.grey)),
-                          Text('${activeLoans.length}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          const Text(
+                            'Total Active Loans',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                          Text(
+                            '${activeLoans.length}',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
                         ],
                       ),
                       const Divider(height: 24, color: Colors.white10),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Total Aggregated Amount', style: TextStyle(color: Colors.grey)),
+                          const Text(
+                            'Total Aggregated Amount',
+                            style: TextStyle(color: Colors.grey),
+                          ),
                           Text(
                             'R ${totalExpected.toStringAsFixed(2)}',
                             style: TextStyle(
@@ -1505,7 +1979,11 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 const SizedBox(height: 20),
                 const Text(
                   'Breakdown:',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    color: Colors.grey,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 ConstrainedBox(
@@ -1513,16 +1991,30 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   child: ListView.separated(
                     shrinkWrap: true,
                     itemCount: activeLoans.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1, color: Colors.white10),
+                    separatorBuilder: (_, __) =>
+                        const Divider(height: 1, color: Colors.white10),
                     itemBuilder: (context, index) {
                       final loan = activeLoans[index];
-                      final member = _members.firstWhere((m) => m.id == loan.vendorId, 
-                        orElse: () => VendorModel(id: '', groupId: '', name: 'Unknown', createdAt: DateTime.now()));
+                      final member = _members.firstWhere(
+                        (m) => m.id == loan.vendorId,
+                        orElse: () => VendorModel(
+                          id: '',
+                          groupId: '',
+                          name: 'Unknown',
+                          createdAt: DateTime.now(),
+                        ),
+                      );
                       return ListTile(
                         dense: true,
                         contentPadding: EdgeInsets.zero,
-                        title: Text(member.name, style: const TextStyle(fontSize: 12)),
-                        trailing: Text('R ${loan.monthlyPayment}', style: const TextStyle(fontSize: 12)),
+                        title: Text(
+                          member.name,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        trailing: Text(
+                          'R ${loan.monthlyPayment}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
                       );
                     },
                   ),
@@ -1542,11 +2034,22 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                       setState(() => isSubmitting = true);
                       try {
                         final paymentProvider = context.read<PaymentProvider>();
-                        List<PaymentModel> memberPayments = activeLoans.map((loan) {
-                          final loanPayments = paymentProvider.payments.where((p) => p.loanId == loan.id).toList();
-                          final currentBalance = LoanCalculationService.calculateBalance(loan, loanPayments);
+                        List<PaymentModel> memberPayments = activeLoans.map((
+                          loan,
+                        ) {
+                          final loanPayments = paymentProvider.payments
+                              .where((p) => p.loanId == loan.id)
+                              .toList();
+                          final currentBalance =
+                              LoanCalculationService.calculateBalance(
+                                loan,
+                                loanPayments,
+                              );
                           // Cap payment at remaining balance
-                          final amountToPay = loan.monthlyPayment > currentBalance ? currentBalance : loan.monthlyPayment;
+                          final amountToPay =
+                              loan.monthlyPayment > currentBalance
+                              ? currentBalance
+                              : loan.monthlyPayment;
 
                           return PaymentModel(
                             id: '',
@@ -1567,7 +2070,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                           Navigator.pop(context);
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text('Group payment recorded successfully!'),
+                              content: Text(
+                                'Group payment recorded successfully!',
+                              ),
                               backgroundColor: Colors.green,
                             ),
                           );
@@ -1575,12 +2080,19 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                       } catch (e) {
                         setState(() => isSubmitting = false);
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                          SnackBar(
+                            content: Text('Error: $e'),
+                            backgroundColor: Colors.red,
+                          ),
                         );
                       }
                     },
               child: isSubmitting
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : const Text('Confirm Group Payment'),
             ),
           ],
@@ -1589,24 +2101,40 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     );
   }
 
-  void _showDuplicateAlert(VendorModel duplicate, String inputId, String inputPhone) {
-    final idMatch = inputId.trim().isNotEmpty && duplicate.idNumber?.trim() == inputId.trim();
+  void _showDuplicateAlert(
+    VendorModel duplicate,
+    String inputId,
+    String inputPhone,
+  ) {
+    final idMatch =
+        inputId.trim().isNotEmpty &&
+        duplicate.idNumber?.trim() == inputId.trim();
     final matchField = idMatch ? 'ID Number' : 'Phone Number';
-    final matchValue = idMatch ? (duplicate.idNumber ?? '') : (duplicate.phone ?? '');
+    final matchValue = idMatch
+        ? (duplicate.idNumber ?? '')
+        : (duplicate.phone ?? '');
 
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: Theme.of(context).colorScheme.surface,
-        title: const Text('Duplicate Member Detected', style: TextStyle(color: Colors.white)),
+        title: const Text(
+          'Duplicate Member Detected',
+          style: TextStyle(color: Colors.white),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('A member with this $matchField ($matchValue) already exists: ${duplicate.name}'),
+            Text(
+              'A member with this $matchField ($matchValue) already exists: ${duplicate.name}',
+            ),
           ],
         ),
         actions: [
-          ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
         ],
       ),
     );
@@ -1657,15 +2185,24 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           .toList();
       double totalLiability = 0;
       for (final loan in _loans) {
-        final loanPayments = groupPayments.where((p) => p.loanId == loan.id).toList();
-        totalLiability += loan.amount + 
-                         (loan.initiationFee ?? 0) + 
-                         ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) + 
-                         LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
+        final loanPayments = groupPayments
+            .where((p) => p.loanId == loan.id)
+            .toList();
+        totalLiability +=
+            loan.amount +
+            (loan.initiationFee ?? 0) +
+            ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) +
+            LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
       }
-      final totalPaid = groupPayments.fold<double>(0, (sum, p) => sum + p.amountPaid);
+      final totalPaid = groupPayments.fold<double>(
+        0,
+        (sum, p) => sum + p.amountPaid,
+      );
       final balance = totalLiability - totalPaid;
-      final totalSavings = _members.fold(0.0, (sum, m) => sum + (m.savingsAmount ?? 0.0));
+      final totalSavings = _members.fold(
+        0.0,
+        (sum, m) => sum + (m.savingsAmount ?? 0.0),
+      );
 
       final logo = await PdfBranding.loadLogo();
       final pdf = pw.Document();
@@ -1704,21 +2241,31 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               ..sort((a, b) => b.datePaid.compareTo(a.datePaid));
 
             // Calculate running balances for each loan
-            final ascPayments = [...groupPayments]..sort((a, b) => a.datePaid.compareTo(b.datePaid));
+            final ascPayments = [...groupPayments]
+              ..sort((a, b) => a.datePaid.compareTo(b.datePaid));
             final Map<String, double> paymentBalances = {};
             final Map<String, double> loanInitialLiability = {};
 
             for (final loan in _loans) {
-              final loanPayments = groupPayments.where((p) => p.loanId == loan.id).toList();
-              loanInitialLiability[loan.id] = loan.amount + 
-                                               (loan.initiationFee ?? 0) + 
-                                               ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) + 
-                                               LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
+              final loanPayments = groupPayments
+                  .where((p) => p.loanId == loan.id)
+                  .toList();
+              loanInitialLiability[loan.id] =
+                  loan.amount +
+                  (loan.initiationFee ?? 0) +
+                  ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) +
+                  LoanCalculationService.calculateAppliedPenalty(
+                    loan,
+                    loanPayments,
+                  );
             }
 
-            final Map<String, double> runningLoanBalances = Map.from(loanInitialLiability);
+            final Map<String, double> runningLoanBalances = Map.from(
+              loanInitialLiability,
+            );
             for (var p in ascPayments) {
-              runningLoanBalances[p.loanId] = (runningLoanBalances[p.loanId] ?? 0) - p.amountPaid;
+              runningLoanBalances[p.loanId] =
+                  (runningLoanBalances[p.loanId] ?? 0) - p.amountPaid;
               paymentBalances[p.id] = runningLoanBalances[p.loanId]!;
             }
 
@@ -1777,7 +2324,10 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  _pdfStatItem('Total Liability', _formatCurrency(totalLiability)),
+                  _pdfStatItem(
+                    'Total Liability',
+                    _formatCurrency(totalLiability),
+                  ),
                   _pdfStatItem('Total Paid', _formatCurrency(totalPaid)),
                   _pdfStatItem('Outstanding', _formatCurrency(balance)),
                 ],
@@ -1855,16 +2405,20 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     (member) => pw.TableRow(
                       children: [
                         _pdfCell(member.name),
-                        _pdfCell('R ${member.savingsAmount?.toStringAsFixed(2) ?? '0.00'}'),
+                        _pdfCell(
+                          'R ${member.savingsAmount?.toStringAsFixed(2) ?? '0.00'}',
+                        ),
                         _pdfCell(member.savingsFrequency ?? 'Monthly'),
-                        _pdfCell(member.savingsStartDate != null ? _formatDate(member.savingsStartDate!) : 'N/A'),
+                        _pdfCell(
+                          member.savingsStartDate != null
+                              ? _formatDate(member.savingsStartDate!)
+                              : 'N/A',
+                        ),
                       ],
                     ),
                   ),
                   pw.TableRow(
-                    decoration: const pw.BoxDecoration(
-                      color: PdfColors.grey50,
-                    ),
+                    decoration: const pw.BoxDecoration(color: PdfColors.grey50),
                     children: [
                       _pdfCell('Total Group Savings', isBold: true),
                       _pdfCell(_formatCurrency(totalSavings), isBold: true),
@@ -1906,7 +2460,10 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                             ),
                             pw.Text(
                               _formatDate(comment.createdAt),
-                              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
+                              style: const pw.TextStyle(
+                                fontSize: 8,
+                                color: PdfColors.grey700,
+                              ),
                             ),
                           ],
                         ),
@@ -1921,13 +2478,26 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                             children: [
                               pw.Text(
                                 'Mentioned: ',
-                                style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.blue),
+                                style: pw.TextStyle(
+                                  fontSize: 8,
+                                  fontWeight: pw.FontWeight.bold,
+                                  color: PdfColors.blue,
+                                ),
                               ),
                               pw.Text(
-                                comment.mentionedVendorIds.map((id) {
-                                  return _members.where((m) => m.id == id).firstOrNull?.name ?? 'Unknown';
-                                }).join(', '),
-                                style: const pw.TextStyle(fontSize: 8, color: PdfColors.blue),
+                                comment.mentionedVendorIds
+                                    .map((id) {
+                                      return _members
+                                              .where((m) => m.id == id)
+                                              .firstOrNull
+                                              ?.name ??
+                                          'Unknown';
+                                    })
+                                    .join(', '),
+                                style: const pw.TextStyle(
+                                  fontSize: 8,
+                                  color: PdfColors.blue,
+                                ),
                               ),
                             ],
                           ),
@@ -2026,7 +2596,11 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                               _pdfCell(_formatCurrency(payment.amountPaid)),
                               _pdfCell(payment.paymentMethod ?? 'Manual'),
                               _pdfCell(_loanLabelById(payment.loanId)),
-                              _pdfCell(_formatCurrency(paymentBalances[payment.id] ?? 0)),
+                              _pdfCell(
+                                _formatCurrency(
+                                  paymentBalances[payment.id] ?? 0,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -2165,7 +2739,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Confirm Delete'),
-        content: Text('Are you sure you want to delete the group "$_currentName"? This will permanently remove the group record.'),
+        content: Text(
+          'Are you sure you want to delete the group "$_currentName"? This will permanently remove the group record.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -2176,20 +2752,28 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             onPressed: () async {
               final groupId = widget.group.id;
               await context.read<GroupProvider>().deleteGroup(groupId);
-              
+
               if (context.mounted) {
                 // Refresh all providers to remove orphaned records (due to cascade delete)
                 await Future.wait<void>([
                   context.read<LoanProvider>().fetchLoans(forceRefresh: true),
-                  context.read<VendorProvider>().fetchVendors(forceRefresh: true),
-                  context.read<PaymentProvider>().fetchPayments(forceRefresh: true),
+                  context.read<VendorProvider>().fetchVendors(
+                    forceRefresh: true,
+                  ),
+                  context.read<PaymentProvider>().fetchPayments(
+                    forceRefresh: true,
+                  ),
                 ]);
 
                 if (context.mounted) {
                   Navigator.pop(context); // Close dialog
                   Navigator.pop(context); // Return to groups screen
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Group "$_currentName" and all associated data deleted')),
+                    SnackBar(
+                      content: Text(
+                        'Group "$_currentName" and all associated data deleted',
+                      ),
+                    ),
                   );
                 }
               }
@@ -2217,54 +2801,69 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               ),
             ),
             ElevatedButton.icon(
-              onPressed: docProvider.isLoading ? null : () async {
-                final result = await FilePicker.platform.pickFiles(
-                  allowMultiple: true,
-                  type: FileType.custom,
-                  allowedExtensions: [
-                    'pdf',
-                    'jpg',
-                    'jpeg',
-                    'png',
-                    'doc',
-                    'docx'
-                  ],
-                );
+              onPressed: docProvider.isLoading
+                  ? null
+                  : () async {
+                      final result = await FilePicker.platform.pickFiles(
+                        allowMultiple: true,
+                        type: FileType.custom,
+                        allowedExtensions: [
+                          'pdf',
+                          'jpg',
+                          'jpeg',
+                          'png',
+                          'doc',
+                          'docx',
+                        ],
+                      );
 
-                if (result != null) {
-                  try {
-                    int count = 0;
-                    for (var file in result.files) {
-                      if (file.bytes != null) {
-                        await docProvider.uploadDocument(
-                          groupId: widget.group.id,
-                          fileName: file.name,
-                          fileBytes: file.bytes!,
-                        );
-                        count++;
+                      if (result != null) {
+                        try {
+                          int count = 0;
+                          for (var file in result.files) {
+                            if (file.bytes != null) {
+                              await docProvider.uploadDocument(
+                                groupId: widget.group.id,
+                                fileName: file.name,
+                                fileBytes: file.bytes!,
+                              );
+                              count++;
+                            }
+                          }
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Successfully uploaded $count document(s)',
+                                ),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Upload failed: $e'),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
+                          }
+                        }
                       }
-                    }
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Successfully uploaded $count document(s)')),
-                      );
-                    }
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Upload failed: $e'),
-                          backgroundColor: Colors.redAccent,
-                        ),
-                      );
-                    }
-                  }
-                }
-              },
-              icon: docProvider.isLoading 
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.upload_file, size: 18),
-              label: Text(docProvider.isLoading ? 'Uploading...' : 'Upload Documents'),
+                    },
+              icon: docProvider.isLoading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.upload_file, size: 18),
+              label: Text(
+                docProvider.isLoading ? 'Uploading...' : 'Upload Documents',
+              ),
             ),
           ],
         ),
@@ -2276,70 +2875,70 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   child: Center(child: CircularProgressIndicator()),
                 )
               : docProvider.documents.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.all(32),
-                      child: Center(
-                        child: Text(
-                          'No documents uploaded yet.',
-                          style: TextStyle(color: Colors.grey),
+              ? const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(
+                    child: Text(
+                      'No documents uploaded yet.',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                )
+              : ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: docProvider.documents.length,
+                  separatorBuilder: (context, index) =>
+                      const Divider(height: 1, color: Colors.white10),
+                  itemBuilder: (context, index) {
+                    final doc = docProvider.documents[index];
+                    return ListTile(
+                      leading: Icon(
+                        _getFileIcon(doc.fileType),
+                        color: theme.primaryColor,
+                      ),
+                      title: Text(
+                        doc.fileName,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
                         ),
                       ),
-                    )
-                  : ListView.separated(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: docProvider.documents.length,
-                      separatorBuilder: (context, index) =>
-                          const Divider(height: 1, color: Colors.white10),
-                      itemBuilder: (context, index) {
-                        final doc = docProvider.documents[index];
-                        return ListTile(
-                          leading: Icon(
-                            _getFileIcon(doc.fileType),
-                            color: theme.primaryColor,
-                          ),
-                          title: Text(
-                            doc.fileName,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
+                      subtitle: Text(
+                        'Uploaded: ${doc.uploadedAt.toString().substring(0, 16)}',
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(
+                              Icons.open_in_new,
+                              size: 20,
+                              color: Colors.blueAccent,
                             ),
+                            onPressed: () {
+                              final url = docProvider.getPublicUrl(
+                                doc.filePath,
+                              );
+                              launchUrl(Uri.parse(url));
+                            },
+                            tooltip: 'View Document',
                           ),
-                          subtitle: Text(
-                            'Uploaded: ${doc.uploadedAt.toString().substring(0, 16)}',
-                            style: const TextStyle(fontSize: 11),
+                          IconButton(
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              size: 20,
+                              color: Colors.redAccent,
+                            ),
+                            onPressed: () => docProvider.deleteDocument(doc),
+                            tooltip: 'Delete Document',
                           ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.open_in_new,
-                                  size: 20,
-                                  color: Colors.blueAccent,
-                                ),
-                                onPressed: () {
-                                  final url =
-                                      docProvider.getPublicUrl(doc.filePath);
-                                  launchUrl(Uri.parse(url));
-                                },
-                                tooltip: 'View Document',
-                              ),
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.delete_outline,
-                                  size: 20,
-                                  color: Colors.redAccent,
-                                ),
-                                onPressed: () =>
-                                    docProvider.deleteDocument(doc),
-                                tooltip: 'Delete Document',
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
         ),
       ],
     );
@@ -2364,8 +2963,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   void _showCommentDetailsDialog(CommentModel comment) {
     final theme = Theme.of(context);
     final commentProvider = context.read<CommentProvider>();
-    final TextEditingController _editController =
-        TextEditingController(text: comment.content);
+    final TextEditingController _editController = TextEditingController(
+      text: comment.content,
+    );
     bool _isEditing = false;
 
     showDialog(
@@ -2380,8 +2980,10 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               const Spacer(),
               if (comment.authorRole != null)
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: theme.primaryColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(4),
@@ -2405,8 +3007,11 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.person_outline,
-                        size: 16, color: Colors.grey),
+                    const Icon(
+                      Icons.person_outline,
+                      size: 16,
+                      color: Colors.grey,
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       comment.authorName,
@@ -2430,7 +3035,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                       filled: true,
                       fillColor: theme.scaffoldBackgroundColor,
                       border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8)),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   )
                 else
@@ -2448,16 +3054,16 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   ),
                 if (comment.mentionedVendorIds.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  const Text('Mentions:',
-                      style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  const Text(
+                    'Mentions:',
+                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     children: comment.mentionedVendorIds.map((id) {
-                      final name = _members
-                              .where((m) => m.id == id)
-                              .firstOrNull
-                              ?.name ??
+                      final name =
+                          _members.where((m) => m.id == id).firstOrNull?.name ??
                           'Unknown';
                       return Chip(
                         label: Text(name, style: const TextStyle(fontSize: 11)),
@@ -2478,11 +3084,13 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     builder: (context) => AlertDialog(
                       title: const Text('Delete Comment?'),
                       content: const Text(
-                          'Are you sure you want to remove this comment? This action cannot be undone.'),
+                        'Are you sure you want to remove this comment? This action cannot be undone.',
+                      ),
                       actions: [
                         TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('Cancel')),
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Cancel'),
+                        ),
                         TextButton(
                           onPressed: () async {
                             await commentProvider.deleteComment(comment.id);
@@ -2492,17 +3100,24 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                               const SnackBar(content: Text('Comment deleted')),
                             );
                           },
-                          child: const Text('Delete',
-                              style: TextStyle(color: Colors.redAccent)),
+                          child: const Text(
+                            'Delete',
+                            style: TextStyle(color: Colors.redAccent),
+                          ),
                         ),
                       ],
                     ),
                   );
                 },
-                icon: const Icon(Icons.delete_outline,
-                    color: Colors.redAccent, size: 18),
-                label: const Text('Delete',
-                    style: TextStyle(color: Colors.redAccent)),
+                icon: const Icon(
+                  Icons.delete_outline,
+                  color: Colors.redAccent,
+                  size: 18,
+                ),
+                label: const Text(
+                  'Delete',
+                  style: TextStyle(color: Colors.redAccent),
+                ),
               ),
               TextButton.icon(
                 onPressed: () => setDialogState(() => _isEditing = true),
@@ -2518,7 +3133,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 onPressed: () async {
                   if (_editController.text.trim().isEmpty) return;
                   await commentProvider.updateComment(
-                      comment.id, _editController.text.trim());
+                    comment.id,
+                    _editController.text.trim(),
+                  );
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Comment updated')),

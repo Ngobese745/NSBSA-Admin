@@ -2,12 +2,14 @@ class GroupModel {
   final String id;
   final String referenceNumber;
   final String name;
+  final String? centerId;
   final DateTime createdAt;
 
   GroupModel({
     required this.id,
     required this.referenceNumber,
     required this.name,
+    this.centerId,
     required this.createdAt,
   });
 
@@ -26,6 +28,7 @@ class GroupModel {
       id: json['id'],
       referenceNumber: json['reference_number'],
       name: json['name'],
+      centerId: json['center_id'],
       createdAt: DateTime.parse(json['created_at']),
     );
   }
@@ -34,6 +37,7 @@ class GroupModel {
     final map = <String, dynamic>{
       'reference_number': referenceNumber,
       'name': name,
+      'center_id': centerId,
       'created_at': createdAt.toIso8601String(),
     };
     if (id.isNotEmpty) {

@@ -25,19 +25,24 @@ class LoanDetailsScreen extends StatelessWidget {
     final groupProvider = context.read<GroupProvider>();
     final vendorProvider = context.read<VendorProvider>();
     final paymentProvider = context.watch<PaymentProvider>();
-    
+
     final group = groupProvider.groups.firstWhere(
       (g) => g.id == loan.groupId,
       orElse: GroupModel.unknown,
     );
 
-    final vendor = loan.vendorId != null 
-      ? vendorProvider.vendors.where((v) => v.id == loan.vendorId).firstOrNull
-      : null;
+    final vendor = loan.vendorId != null
+        ? vendorProvider.vendors.where((v) => v.id == loan.vendorId).firstOrNull
+        : null;
 
-    final loanPayments = paymentProvider.payments.where((p) => p.loanId == loan.id).toList();
+    final loanPayments = paymentProvider.payments
+        .where((p) => p.loanId == loan.id)
+        .toList();
     double totalPaid = loanPayments.fold(0, (sum, p) => sum + p.amountPaid);
-    double balance = LoanCalculationService.calculateBalance(loan, loanPayments);
+    double balance = LoanCalculationService.calculateBalance(
+      loan,
+      loanPayments,
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -47,7 +52,14 @@ class LoanDetailsScreen extends StatelessWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.picture_as_pdf),
-            onPressed: () => _generateLoanPDF(context, group, vendor, totalPaid, balance, loanPayments),
+            onPressed: () => _generateLoanPDF(
+              context,
+              group,
+              vendor,
+              totalPaid,
+              balance,
+              loanPayments,
+            ),
             tooltip: 'Download Statement',
           ),
           IconButton(
@@ -88,9 +100,7 @@ class LoanDetailsScreen extends StatelessWidget {
               flex: 3,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildPaymentHistory(theme, loanPayments),
-                ],
+                children: [_buildPaymentHistory(theme, loanPayments)],
               ),
             ),
           ],
@@ -99,7 +109,12 @@ class LoanDetailsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildLoanHeader(BuildContext context, ThemeData theme, GroupModel group, dynamic vendor) {
+  Widget _buildLoanHeader(
+    BuildContext context,
+    ThemeData theme,
+    GroupModel group,
+    dynamic vendor,
+  ) {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -112,7 +127,11 @@ class LoanDetailsScreen extends StatelessWidget {
           CircleAvatar(
             radius: 35,
             backgroundColor: theme.primaryColor.withOpacity(0.1),
-            child: Icon(Icons.account_balance, size: 35, color: theme.primaryColor),
+            child: Icon(
+              Icons.account_balance,
+              size: 35,
+              color: theme.primaryColor,
+            ),
           ),
           const SizedBox(width: 20),
           Expanded(
@@ -122,17 +141,25 @@ class LoanDetailsScreen extends StatelessWidget {
                 if (vendor != null) ...[
                   Text(
                     vendor.name,
-                    style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     'Group: ${group.name}',
-                    style: TextStyle(color: theme.primaryColor, fontSize: 14, fontWeight: FontWeight.w500),
+                    style: TextStyle(
+                      color: theme.primaryColor,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ] else
                   Text(
                     'Group: ${group.name}',
-                    style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 const SizedBox(height: 4),
                 Text(
@@ -141,23 +168,26 @@ class LoanDetailsScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
-                    color: loan.status == 'Active' 
-                        ? Colors.green.withOpacity(0.1) 
+                    color: loan.status == 'Active'
+                        ? Colors.green.withOpacity(0.1)
                         : loan.status == 'Settled'
-                            ? Colors.blue.withOpacity(0.1)
-                            : Colors.amber.withOpacity(0.1),
+                        ? Colors.blue.withOpacity(0.1)
+                        : Colors.amber.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
                     loan.status.toUpperCase(),
                     style: TextStyle(
-                      color: loan.status == 'Active' 
-                          ? Colors.green 
+                      color: loan.status == 'Active'
+                          ? Colors.green
                           : loan.status == 'Settled'
-                              ? Colors.blueAccent
-                              : Colors.amber,
+                          ? Colors.blueAccent
+                          : Colors.amber,
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
                     ),
@@ -182,15 +212,20 @@ class LoanDetailsScreen extends StatelessWidget {
   }
 
   void _showRecordPaymentDialog(BuildContext context) {
-    final amountController = TextEditingController(text: loan.monthlyPayment.toStringAsFixed(0));
+    final amountController = TextEditingController(
+      text: loan.monthlyPayment.toStringAsFixed(0),
+    );
     String selectedType = 'Cash';
-    
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
           backgroundColor: Theme.of(context).colorScheme.surface,
-          title: const Text('Record Loan Payment', style: TextStyle(color: Colors.white)),
+          title: const Text(
+            'Record Loan Payment',
+            style: TextStyle(color: Colors.white),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -200,43 +235,70 @@ class LoanDetailsScreen extends StatelessWidget {
                 style: TextStyle(color: Colors.grey, fontSize: 14),
               ),
               const SizedBox(height: 20),
-              const Text('Payment Type', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              const Text(
+                'Payment Type',
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
               DropdownButtonFormField<String>(
                 value: selectedType,
                 dropdownColor: Theme.of(context).cardColor,
-                style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                style: TextStyle(
+                  color: Theme.of(context).textTheme.bodyMedium?.color,
+                ),
                 items: const [
                   DropdownMenuItem(value: 'Cash', child: Text('Cash')),
                   DropdownMenuItem(value: 'EFT', child: Text('EFT')),
                   DropdownMenuItem(value: 'Card', child: Text('Card')),
                 ],
-                onChanged: (val) => setState(() => selectedType = val ?? 'Cash'),
+                onChanged: (val) =>
+                    setState(() => selectedType = val ?? 'Cash'),
               ),
               const SizedBox(height: 16),
-              const Text('Amount Paid', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              const Text(
+                'Amount Paid',
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
               TextField(
                 controller: amountController,
                 keyboardType: TextInputType.number,
                 autofocus: true,
-                style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                style: TextStyle(
+                  color: Theme.of(context).textTheme.bodyMedium?.color,
+                ),
                 decoration: InputDecoration(
                   prefixText: 'R ',
-                  prefixStyle: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                  prefixStyle: TextStyle(
+                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                  ),
                 ),
               ),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
             ElevatedButton(
               onPressed: () async {
                 final amount = double.tryParse(amountController.text) ?? 0;
-                final loanPayments = context.read<PaymentProvider>().payments.where((p) => p.loanId == loan.id).toList();
-                final currentBalance = LoanCalculationService.calculateBalance(loan, loanPayments);
-                
+                final loanPayments = context
+                    .read<PaymentProvider>()
+                    .payments
+                    .where((p) => p.loanId == loan.id)
+                    .toList();
+                final currentBalance = LoanCalculationService.calculateBalance(
+                  loan,
+                  loanPayments,
+                );
+
                 if (amount > currentBalance + 0.01) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Payment R $amount exceeds outstanding balance R ${currentBalance.toStringAsFixed(2)}')),
+                    SnackBar(
+                      content: Text(
+                        'Payment R $amount exceeds outstanding balance R ${currentBalance.toStringAsFixed(2)}',
+                      ),
+                    ),
                   );
                   return;
                 }
@@ -255,7 +317,9 @@ class LoanDetailsScreen extends StatelessWidget {
                   );
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Payment recorded successfully!')),
+                      const SnackBar(
+                        content: Text('Payment recorded successfully!'),
+                      ),
                     );
                     Navigator.pop(context);
                     // Refresh loan provider to show updated status
@@ -271,29 +335,64 @@ class LoanDetailsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildFinancialGrid(ThemeData theme, double totalPaid, double balance) {
+  Widget _buildFinancialGrid(
+    ThemeData theme,
+    double totalPaid,
+    double balance,
+  ) {
     return Column(
       children: [
         Row(
           children: [
-            Expanded(child: _buildSimpleStat('Loan Amount', 'R ${loan.amount.toStringAsFixed(0)}', theme)),
+            Expanded(
+              child: _buildSimpleStat(
+                'Loan Amount',
+                'R ${loan.amount.toStringAsFixed(0)}',
+                theme,
+              ),
+            ),
             const SizedBox(width: 16),
-            Expanded(child: _buildSimpleStat('Monthly Payment', 'R ${loan.monthlyPayment.toStringAsFixed(0)}', theme)),
+            Expanded(
+              child: _buildSimpleStat(
+                'Monthly Payment',
+                'R ${loan.monthlyPayment.toStringAsFixed(0)}',
+                theme,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 16),
         Row(
           children: [
-            Expanded(child: _buildSimpleStat('Total Paid', 'R ${totalPaid.toStringAsFixed(0)}', theme, color: Colors.greenAccent)),
+            Expanded(
+              child: _buildSimpleStat(
+                'Total Paid',
+                'R ${totalPaid.toStringAsFixed(0)}',
+                theme,
+                color: Colors.greenAccent,
+              ),
+            ),
             const SizedBox(width: 16),
-            Expanded(child: _buildSimpleStat('Est. Balance', 'R ${balance.toStringAsFixed(0)}', theme, color: Colors.amberAccent)),
+            Expanded(
+              child: _buildSimpleStat(
+                'Est. Balance',
+                'R ${balance.toStringAsFixed(0)}',
+                theme,
+                color: Colors.amberAccent,
+              ),
+            ),
           ],
         ),
       ],
     );
   }
 
-  Widget _buildSimpleStat(String label, String value, ThemeData theme, {Color? color}) {
+  Widget _buildSimpleStat(
+    String label,
+    String value,
+    ThemeData theme, {
+    Color? color,
+  }) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -305,14 +404,24 @@ class LoanDetailsScreen extends StatelessWidget {
         children: [
           Text(label, style: TextStyle(color: Colors.grey[500], fontSize: 12)),
           const SizedBox(height: 4),
-          Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color)),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildFeeDetails(ThemeData theme, List<PaymentModel> payments) {
-    final appliedPenalty = LoanCalculationService.calculateAppliedPenalty(loan, payments);
+    final appliedPenalty = LoanCalculationService.calculateAppliedPenalty(
+      loan,
+      payments,
+    );
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -323,28 +432,63 @@ class LoanDetailsScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Fee Structure & Dates', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const Text(
+            'Fee Structure & Dates',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
           const SizedBox(height: 20),
-          _buildInfoRow('Initiation Fee', 'R ${loan.initiationFee?.toStringAsFixed(0) ?? '0'}'),
-          _buildInfoRow('Monthly Admin Fee', 'R ${loan.monthlyAdminFee?.toStringAsFixed(0) ?? '0'}'),
-          _buildInfoRow('Applied Penalty', 'R ${appliedPenalty.toStringAsFixed(0)}', isValueBold: appliedPenalty > 0, valueColor: appliedPenalty > 0 ? Colors.redAccent : null),
-          _buildInfoRow('Opening Amount', 'R ${loan.openingAmount?.toStringAsFixed(0) ?? '0'}'),
+          _buildInfoRow(
+            'Initiation Fee',
+            'R ${loan.initiationFee?.toStringAsFixed(0) ?? '0'}',
+          ),
+          _buildInfoRow(
+            'Monthly Admin Fee',
+            'R ${loan.monthlyAdminFee?.toStringAsFixed(0) ?? '0'}',
+          ),
+          _buildInfoRow(
+            'Applied Penalty',
+            'R ${appliedPenalty.toStringAsFixed(0)}',
+            isValueBold: appliedPenalty > 0,
+            valueColor: appliedPenalty > 0 ? Colors.redAccent : null,
+          ),
+          _buildInfoRow(
+            'Opening Amount',
+            'R ${loan.openingAmount?.toStringAsFixed(0) ?? '0'}',
+          ),
           _buildInfoRow('Term Duration', '${loan.durationMonths} Months'),
-          _buildInfoRow('First Instalment', loan.firstInstalmentDate?.toString().substring(0, 10) ?? 'N/A'),
-          _buildInfoRow('Created On', loan.createdAt.toString().substring(0, 10)),
+          _buildInfoRow(
+            'First Instalment',
+            loan.firstInstalmentDate?.toString().substring(0, 10) ?? 'N/A',
+          ),
+          _buildInfoRow(
+            'Created On',
+            loan.createdAt.toString().substring(0, 10),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildInfoRow(String label, String value, {bool isValueBold = false, Color? valueColor}) {
+  Widget _buildInfoRow(
+    String label,
+    String value, {
+    bool isValueBold = false,
+    Color? valueColor,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: TextStyle(color: Colors.grey[500], fontSize: 13)),
-          Text(value, style: TextStyle(fontWeight: isValueBold ? FontWeight.bold : FontWeight.w500, fontSize: 13, color: valueColor)),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: isValueBold ? FontWeight.bold : FontWeight.w500,
+              fontSize: 13,
+              color: valueColor,
+            ),
+          ),
         ],
       ),
     );
@@ -354,7 +498,10 @@ class LoanDetailsScreen extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Loan Payment History', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+        const Text(
+          'Loan Payment History',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
         const SizedBox(height: 16),
         Container(
           decoration: BoxDecoration(
@@ -362,59 +509,97 @@ class LoanDetailsScreen extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
           ),
           child: payments.isEmpty
-            ? const Padding(
-                padding: EdgeInsets.all(32),
-                child: Center(child: Text('No payments recorded for this loan.', style: TextStyle(color: Colors.grey))),
-              )
-            : ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: payments.length,
-                separatorBuilder: (context, index) => Divider(height: 1, color: theme.dividerColor),
-                itemBuilder: (context, index) {
-                  final payment = payments[index];
-                  return ListTile(
-                    dense: true,
-                    leading: const Icon(Icons.check_circle_outline, color: Colors.green, size: 18),
-                    title: Text('Payment R ${payment.amountPaid.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text('Date: ${payment.datePaid.toString().substring(0, 10)}'),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
-                      onPressed: () async {
-                        // Confirm deletion of payment
-                        final confirm = await showDialog<bool>(
-                          context: context,
-                          builder: (c) => AlertDialog(
-                            backgroundColor: Theme.of(context).colorScheme.surface,
-                            title: const Text('Delete Payment?'),
-                            content: const Text('Are you sure you want to delete this payment?'),
-                            actions: [
-                              TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-                                onPressed: () => Navigator.pop(c, true),
-                                child: const Text('Delete'),
+              ? const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(
+                    child: Text(
+                      'No payments recorded for this loan.',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                )
+              : ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: payments.length,
+                  separatorBuilder: (context, index) =>
+                      Divider(height: 1, color: theme.dividerColor),
+                  itemBuilder: (context, index) {
+                    final payment = payments[index];
+                    return ListTile(
+                      dense: true,
+                      leading: const Icon(
+                        Icons.check_circle_outline,
+                        color: Colors.green,
+                        size: 18,
+                      ),
+                      title: Text(
+                        'Payment R ${payment.amountPaid.toStringAsFixed(0)}',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Text(
+                        'Date: ${payment.datePaid.toString().substring(0, 10)}',
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(
+                          Icons.delete_outline,
+                          size: 16,
+                          color: Colors.redAccent,
+                        ),
+                        onPressed: () async {
+                          // Confirm deletion of payment
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (c) => AlertDialog(
+                              backgroundColor: Theme.of(
+                                context,
+                              ).colorScheme.surface,
+                              title: const Text('Delete Payment?'),
+                              content: const Text(
+                                'Are you sure you want to delete this payment?',
                               ),
-                            ],
-                          ),
-                        );
-                        if (confirm == true && context.mounted) {
-                          try {
-                            await context.read<PaymentProvider>().deletePayment(payment.id);
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Payment deleted successfully')));
-                            }
-                          } catch (e) {
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(c, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.redAccent,
+                                  ),
+                                  onPressed: () => Navigator.pop(c, true),
+                                  child: const Text('Delete'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirm == true && context.mounted) {
+                            try {
+                              await context
+                                  .read<PaymentProvider>()
+                                  .deletePayment(payment.id);
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Payment deleted successfully',
+                                    ),
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Error: $e')),
+                                );
+                              }
                             }
                           }
-                        }
-                      },
-                    ),
-                  );
-                },
-              ),
+                        },
+                      ),
+                    );
+                  },
+                ),
         ),
       ],
     );
@@ -425,13 +610,19 @@ class LoanDetailsScreen extends StatelessWidget {
       context: context,
       builder: (c) => AlertDialog(
         backgroundColor: Theme.of(c).colorScheme.surface,
-        title: const Text('Delete Loan', style: TextStyle(color: Colors.redAccent)),
+        title: const Text(
+          'Delete Loan',
+          style: TextStyle(color: Colors.redAccent),
+        ),
         content: const Text(
           'Are you sure you want to permanently delete this loan? This action cannot be undone.\n\n'
           'WARNING: All associated payments will be deleted as well.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(c),
+            child: const Text('Cancel'),
+          ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () async {
@@ -440,10 +631,14 @@ class LoanDetailsScreen extends StatelessWidget {
                 if (context.mounted) {
                   Navigator.pop(c); // close dialog
                   Navigator.pop(context); // close screen
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Loan deleted successfully')));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Loan deleted successfully')),
+                  );
                 }
               } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text('Error: $e')));
               }
             },
             child: const Text('Delete'),
@@ -454,13 +649,25 @@ class LoanDetailsScreen extends StatelessWidget {
   }
 
   void _showEditLoanDialog(BuildContext context) {
-    final amountController = TextEditingController(text: loan.amount.toStringAsFixed(0));
-    final termController = TextEditingController(text: loan.durationMonths.toString());
-    final initFeeController = TextEditingController(text: loan.initiationFee?.toStringAsFixed(0) ?? '0');
-    final adminFeeController = TextEditingController(text: loan.monthlyAdminFee?.toStringAsFixed(0) ?? '0');
-    final penaltyController = TextEditingController(text: loan.penaltyFee?.toStringAsFixed(0) ?? '0');
-    final monthlyController = TextEditingController(text: loan.monthlyPayment.toStringAsFixed(0));
-    
+    final amountController = TextEditingController(
+      text: loan.amount.toStringAsFixed(0),
+    );
+    final termController = TextEditingController(
+      text: loan.durationMonths.toString(),
+    );
+    final initFeeController = TextEditingController(
+      text: loan.initiationFee?.toStringAsFixed(0) ?? '0',
+    );
+    final adminFeeController = TextEditingController(
+      text: loan.monthlyAdminFee?.toStringAsFixed(0) ?? '0',
+    );
+    final penaltyController = TextEditingController(
+      text: loan.penaltyFee?.toStringAsFixed(0) ?? '0',
+    );
+    final monthlyController = TextEditingController(
+      text: loan.monthlyPayment.toStringAsFixed(0),
+    );
+
     showDialog(
       context: context,
       builder: (c) => StatefulBuilder(
@@ -473,47 +680,77 @@ class LoanDetailsScreen extends StatelessWidget {
               children: [
                 TextField(
                   controller: amountController,
-                  decoration: const InputDecoration(labelText: 'Principal Amount (R)', labelStyle: TextStyle(color: Colors.grey)),
+                  decoration: const InputDecoration(
+                    labelText: 'Principal Amount (R)',
+                    labelStyle: TextStyle(color: Colors.grey),
+                  ),
                   keyboardType: TextInputType.number,
                 ),
                 TextField(
                   controller: termController,
-                  decoration: const InputDecoration(labelText: 'Term (Months)', labelStyle: TextStyle(color: Colors.grey)),
+                  decoration: const InputDecoration(
+                    labelText: 'Term (Months)',
+                    labelStyle: TextStyle(color: Colors.grey),
+                  ),
                   keyboardType: TextInputType.number,
                 ),
                 TextField(
                   controller: initFeeController,
-                  decoration: const InputDecoration(labelText: 'Initiation Fee (R)', labelStyle: TextStyle(color: Colors.grey)),
+                  decoration: const InputDecoration(
+                    labelText: 'Initiation Fee (R)',
+                    labelStyle: TextStyle(color: Colors.grey),
+                  ),
                   keyboardType: TextInputType.number,
                 ),
                 TextField(
                   controller: adminFeeController,
-                  decoration: const InputDecoration(labelText: 'Monthly Admin Fee (R)', labelStyle: TextStyle(color: Colors.grey)),
+                  decoration: const InputDecoration(
+                    labelText: 'Monthly Admin Fee (R)',
+                    labelStyle: TextStyle(color: Colors.grey),
+                  ),
                   keyboardType: TextInputType.number,
                 ),
                 TextField(
                   controller: penaltyController,
-                  decoration: const InputDecoration(labelText: 'Penalty Fee (R)', labelStyle: TextStyle(color: Colors.grey)),
+                  decoration: const InputDecoration(
+                    labelText: 'Penalty Fee (R)',
+                    labelStyle: TextStyle(color: Colors.grey),
+                  ),
                   keyboardType: TextInputType.number,
                 ),
                 TextField(
                   controller: monthlyController,
-                  decoration: const InputDecoration(labelText: 'Monthly Instalment (R)', labelStyle: TextStyle(color: Colors.grey)),
+                  decoration: const InputDecoration(
+                    labelText: 'Monthly Instalment (R)',
+                    labelStyle: TextStyle(color: Colors.grey),
+                  ),
                   keyboardType: TextInputType.number,
                 ),
               ],
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () => Navigator.pop(c),
+              child: const Text('Cancel'),
+            ),
             ElevatedButton(
               onPressed: () async {
-                final amount = double.tryParse(amountController.text) ?? loan.amount;
-                final term = int.tryParse(termController.text) ?? loan.durationMonths;
-                final initFee = double.tryParse(initFeeController.text) ?? loan.initiationFee;
-                final adminFee = double.tryParse(adminFeeController.text) ?? loan.monthlyAdminFee;
-                final penalty = double.tryParse(penaltyController.text) ?? loan.penaltyFee;
-                final monthly = double.tryParse(monthlyController.text) ?? loan.monthlyPayment;
+                final amount =
+                    double.tryParse(amountController.text) ?? loan.amount;
+                final term =
+                    int.tryParse(termController.text) ?? loan.durationMonths;
+                final initFee =
+                    double.tryParse(initFeeController.text) ??
+                    loan.initiationFee;
+                final adminFee =
+                    double.tryParse(adminFeeController.text) ??
+                    loan.monthlyAdminFee;
+                final penalty =
+                    double.tryParse(penaltyController.text) ?? loan.penaltyFee;
+                final monthly =
+                    double.tryParse(monthlyController.text) ??
+                    loan.monthlyPayment;
 
                 try {
                   await context.read<LoanProvider>().updateLoan(loan.id, {
@@ -526,10 +763,18 @@ class LoanDetailsScreen extends StatelessWidget {
                   });
                   if (context.mounted) {
                     Navigator.pop(c);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Loan updated successfully. Please close and re-open to see changes.')));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Loan updated successfully. Please close and re-open to see changes.',
+                        ),
+                      ),
+                    );
                   }
                 } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('Error: $e')));
                 }
               },
               child: const Text('Save'),
@@ -540,7 +785,14 @@ class LoanDetailsScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _generateLoanPDF(BuildContext context, GroupModel group, VendorModel? vendor, double totalPaid, double balance, List<PaymentModel> payments) async {
+  Future<void> _generateLoanPDF(
+    BuildContext context,
+    GroupModel group,
+    VendorModel? vendor,
+    double totalPaid,
+    double balance,
+    List<PaymentModel> payments,
+  ) async {
     final pdf = pw.Document();
     final logo = await PdfBranding.loadLogo();
 
@@ -558,16 +810,29 @@ class LoanDetailsScreen extends StatelessWidget {
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.end,
                   children: [
-                    pw.Text('LOAN STATEMENT', style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold, color: const PdfColor.fromInt(0xFFD4AF37))),
+                    pw.Text(
+                      'LOAN STATEMENT',
+                      style: pw.TextStyle(
+                        fontSize: 20,
+                        fontWeight: pw.FontWeight.bold,
+                        color: const PdfColor.fromInt(0xFFD4AF37),
+                      ),
+                    ),
                     pw.SizedBox(height: 4),
-                    pw.Text('Date: ${DateTime.now().toString().substring(0, 10)}', style: const pw.TextStyle(color: PdfColors.grey700)),
-                    pw.Text('Loan ID: L-${loan.id.substring(0, 8)}', style: const pw.TextStyle(color: PdfColors.grey700)),
+                    pw.Text(
+                      'Date: ${DateTime.now().toString().substring(0, 10)}',
+                      style: const pw.TextStyle(color: PdfColors.grey700),
+                    ),
+                    pw.Text(
+                      'Loan ID: L-${loan.id.substring(0, 8)}',
+                      style: const pw.TextStyle(color: PdfColors.grey700),
+                    ),
                   ],
                 ),
               ],
             ),
             pw.SizedBox(height: 30),
-            
+
             // Info Row
             pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -576,12 +841,18 @@ class LoanDetailsScreen extends StatelessWidget {
                   child: pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      pw.Text('Member Details', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: const PdfColor.fromInt(0xFFD4AF37))),
+                      pw.Text(
+                        'Member Details',
+                        style: pw.TextStyle(
+                          fontWeight: pw.FontWeight.bold,
+                          color: const PdfColor.fromInt(0xFFD4AF37),
+                        ),
+                      ),
                       pw.Divider(color: const PdfColor.fromInt(0xFFD4AF37)),
                       pw.Text('Name: ${vendor?.name ?? 'Unknown'}'),
                       pw.Text('ID Number: ${vendor?.idNumber ?? '-'}'),
                       pw.Text('Phone: ${vendor?.phone ?? '-'}'),
-                    ]
+                    ],
                   ),
                 ),
                 pw.SizedBox(width: 20),
@@ -589,11 +860,17 @@ class LoanDetailsScreen extends StatelessWidget {
                   child: pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      pw.Text('Group Details', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: const PdfColor.fromInt(0xFFD4AF37))),
+                      pw.Text(
+                        'Group Details',
+                        style: pw.TextStyle(
+                          fontWeight: pw.FontWeight.bold,
+                          color: const PdfColor.fromInt(0xFFD4AF37),
+                        ),
+                      ),
                       pw.Divider(color: const PdfColor.fromInt(0xFFD4AF37)),
                       pw.Text('Name: ${group.name}'),
                       pw.Text('Ref: ${group.referenceNumber}'),
-                    ]
+                    ],
                   ),
                 ),
               ],
@@ -601,7 +878,10 @@ class LoanDetailsScreen extends StatelessWidget {
             pw.SizedBox(height: 30),
 
             // Financial Summary
-            pw.Text('Financial Summary', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 16)),
+            pw.Text(
+              'Financial Summary',
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 16),
+            ),
             pw.SizedBox(height: 10),
             pw.Container(
               padding: const pw.EdgeInsets.all(12),
@@ -616,33 +896,56 @@ class LoanDetailsScreen extends StatelessWidget {
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
                       pw.Text('Principal: R ${loan.amount.toStringAsFixed(0)}'),
-                      pw.Text('Monthly: R ${loan.monthlyPayment.toStringAsFixed(0)}'),
-                    ]
+                      pw.Text(
+                        'Monthly: R ${loan.monthlyPayment.toStringAsFixed(0)}',
+                      ),
+                    ],
                   ),
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      pw.Text('Total Paid: R ${totalPaid.toStringAsFixed(0)}', style: const pw.TextStyle(color: PdfColors.green700)),
-                      pw.Text('Balance: R ${balance.toStringAsFixed(0)}', style: pw.TextStyle(color: PdfColors.orange700, fontWeight: pw.FontWeight.bold)),
-                    ]
+                      pw.Text(
+                        'Total Paid: R ${totalPaid.toStringAsFixed(0)}',
+                        style: const pw.TextStyle(color: PdfColors.green700),
+                      ),
+                      pw.Text(
+                        'Balance: R ${balance.toStringAsFixed(0)}',
+                        style: pw.TextStyle(
+                          color: PdfColors.orange700,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
-                ]
-              )
+                ],
+              ),
             ),
             pw.SizedBox(height: 30),
 
             // Payment History Table
-            pw.Text('Payment History', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 16)),
+            pw.Text(
+              'Payment History',
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 16),
+            ),
             pw.SizedBox(height: 10),
             pw.TableHelper.fromTextArray(
               headers: ['Date', 'Method', 'Amount'],
-              data: payments.map((p) => [
-                p.datePaid.toString().substring(0, 10),
-                p.paymentMethod ?? 'Unknown',
-                'R ${p.amountPaid.toStringAsFixed(2)}'
-              ]).toList(),
-              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-              headerDecoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFF2C2C2C)),
+              data: payments
+                  .map(
+                    (p) => [
+                      p.datePaid.toString().substring(0, 10),
+                      p.paymentMethod ?? 'Unknown',
+                      'R ${p.amountPaid.toStringAsFixed(2)}',
+                    ],
+                  )
+                  .toList(),
+              headerStyle: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.white,
+              ),
+              headerDecoration: const pw.BoxDecoration(
+                color: PdfColor.fromInt(0xFF2C2C2C),
+              ),
               cellPadding: const pw.EdgeInsets.all(6),
               border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
             ),
@@ -653,7 +956,8 @@ class LoanDetailsScreen extends StatelessWidget {
 
     await Printing.sharePdf(
       bytes: await pdf.save(),
-      filename: 'Loan_Statement_${vendor?.name.replaceAll(" ", "_") ?? "Unknown"}.pdf',
+      filename:
+          'Loan_Statement_${vendor?.name.replaceAll(" ", "_") ?? "Unknown"}.pdf',
     );
   }
 }

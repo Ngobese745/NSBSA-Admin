@@ -1567,7 +1567,9 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                           _fetchProfiles();
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text('Account created successfully! User notified via email.'),
+                              content: Text(
+                                'Account created successfully! User notified via email.',
+                              ),
                               backgroundColor: Colors.green,
                             ),
                           );

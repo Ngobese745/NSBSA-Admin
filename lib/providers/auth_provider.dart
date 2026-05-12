@@ -27,26 +27,26 @@ class AuthProvider with ChangeNotifier {
       final session = data.session;
 
       _isAuthenticated = session != null;
-      _needsPasswordSetup = session?.user.userMetadata?['must_change_password'] == true;
+      _needsPasswordSetup =
+          session?.user.userMetadata?['must_change_password'] == true;
 
       if (event == AuthChangeEvent.passwordRecovery) {
         _isPasswordRecovery = true;
-        if (session != null)
-          await _fetchUserProfile(session.user.id);
+        if (session != null) await _fetchUserProfile(session.user.id);
         notifyListeners();
         return;
       }
 
       if (event == AuthChangeEvent.signedIn) {
         final uri = Uri.base;
-        if (uri.toString().contains('type=recovery') || uri.toString().contains('type=invite')) {
+        if (uri.toString().contains('type=recovery') ||
+            uri.toString().contains('type=invite')) {
           _isPasswordRecovery = true;
         } else {
           _isPasswordRecovery = false;
         }
 
-        if (session != null)
-          await _fetchUserProfile(session.user.id);
+        if (session != null) await _fetchUserProfile(session.user.id);
         notifyListeners();
       } else if (event == AuthChangeEvent.signedOut) {
         _isAuthenticated = false;
@@ -116,7 +116,7 @@ class AuthProvider with ChangeNotifier {
       );
       if (res.session != null) {
         await _fetchUserProfile(res.session!.user.id);
-        
+
         if (_userProfile == null) {
           await _supabase.auth.signOut();
           return 'Your account exists, but your profile has not been set up. Please contact the Super Admin.';

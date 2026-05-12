@@ -21,7 +21,9 @@ class CommentProvider with ChangeNotifier {
           .eq('group_id', groupId)
           .order('created_at', ascending: false);
 
-      _comments = (response as List).map((e) => CommentModel.fromJson(e)).toList();
+      _comments = (response as List)
+          .map((e) => CommentModel.fromJson(e))
+          .toList();
     } catch (e) {
       debugPrint('Error fetching group comments: $e');
     } finally {
@@ -42,7 +44,9 @@ class CommentProvider with ChangeNotifier {
           .or('vendor_id.eq.$vendorId,mentioned_vendor_ids.cs.{"$vendorId"}')
           .order('created_at', ascending: false);
 
-      _comments = (response as List).map((e) => CommentModel.fromJson(e)).toList();
+      _comments = (response as List)
+          .map((e) => CommentModel.fromJson(e))
+          .toList();
     } catch (e) {
       debugPrint('Error fetching vendor comments: $e');
     } finally {
@@ -53,7 +57,11 @@ class CommentProvider with ChangeNotifier {
 
   Future<void> addComment(CommentModel comment) async {
     try {
-      final response = await _supabase.from('comments').insert(comment.toJson()).select().single();
+      final response = await _supabase
+          .from('comments')
+          .insert(comment.toJson())
+          .select()
+          .single();
       final newComment = CommentModel.fromJson(response);
       _comments.insert(0, newComment);
       notifyListeners();
@@ -71,7 +79,7 @@ class CommentProvider with ChangeNotifier {
           .eq('id', id)
           .select()
           .single();
-      
+
       final updatedComment = CommentModel.fromJson(response);
       final index = _comments.indexWhere((c) => c.id == id);
       if (index != -1) {

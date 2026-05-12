@@ -39,11 +39,13 @@ List<GroupLoanRiskSummary> computeGroupLoanRiskSummaries({
   for (final group in groups) {
     final groupLoans = loans.where((l) => l.groupId == group.id).toList();
     if (groupLoans.isEmpty) {
-      risks.add(GroupLoanRiskSummary(
-        groupName: group.name,
-        overdueRatio: 0,
-        trustScore: 100,
-      ));
+      risks.add(
+        GroupLoanRiskSummary(
+          groupName: group.name,
+          overdueRatio: 0,
+          trustScore: 100,
+        ),
+      );
       continue;
     }
 
@@ -64,11 +66,13 @@ List<GroupLoanRiskSummary> computeGroupLoanRiskSummaries({
 
     final ratio = overdueCount / groupLoans.length;
     final score = (totalPoints / groupLoans.length).round();
-    risks.add(GroupLoanRiskSummary(
-      groupName: group.name,
-      overdueRatio: ratio,
-      trustScore: score,
-    ));
+    risks.add(
+      GroupLoanRiskSummary(
+        groupName: group.name,
+        overdueRatio: ratio,
+        trustScore: score,
+      ),
+    );
   }
 
   risks.sort((a, b) => b.trustScore.compareTo(a.trustScore));

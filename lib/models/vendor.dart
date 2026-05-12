@@ -52,9 +52,13 @@ class VendorModel {
       address: json['address'],
       role: json['role'],
       referenceNumber: json['reference_number'],
-      savingsAmount: json['savings_amount'] != null ? (json['savings_amount'] as num).toDouble() : null,
+      savingsAmount: json['savings_amount'] != null
+          ? (json['savings_amount'] as num).toDouble()
+          : null,
       savingsFrequency: json['savings_frequency'],
-      savingsStartDate: json['savings_start_date'] != null ? DateTime.parse(json['savings_start_date']) : null,
+      savingsStartDate: json['savings_start_date'] != null
+          ? DateTime.parse(json['savings_start_date'])
+          : null,
       createdAt: DateTime.parse(json['created_at']),
     );
   }

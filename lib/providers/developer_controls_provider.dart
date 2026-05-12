@@ -4,7 +4,6 @@ import '../models/developer_controls.dart';
 import '../services/developer_controls_service.dart';
 import '../services/system_audit_service.dart';
 
-
 /// Loads system banners, feature flags, and developer audit entries from Supabase.
 class DeveloperControlsProvider extends ChangeNotifier {
   List<SystemBannerModel> _banners = [];
@@ -94,7 +93,11 @@ class DeveloperControlsProvider extends ChangeNotifier {
     required String developerId,
     required String? developerEmail,
   }) async {
-    await DeveloperControlsService.setFeatureEnabled(featureKey, enabled, developerId);
+    await DeveloperControlsService.setFeatureEnabled(
+      featureKey,
+      enabled,
+      developerId,
+    );
     await DeveloperControlsService.logAction(
       developerId: developerId,
       developerEmail: developerEmail,
@@ -111,7 +114,11 @@ class DeveloperControlsProvider extends ChangeNotifier {
     await refresh();
   }
 
-  Future<void> saveBanner(SystemBannerModel banner, {required String developerId, required String? developerEmail}) async {
+  Future<void> saveBanner(
+    SystemBannerModel banner, {
+    required String developerId,
+    required String? developerEmail,
+  }) async {
     await DeveloperControlsService.updateBanner(banner);
     if (banner.isEnabled) {
       await DeveloperControlsService.setBannerEnabledExclusive(banner.id, true);
@@ -153,7 +160,10 @@ class DeveloperControlsProvider extends ChangeNotifier {
       endsAt: endsAt,
     );
     if (isEnabled) {
-      await DeveloperControlsService.setBannerEnabledExclusive(created.id, true);
+      await DeveloperControlsService.setBannerEnabledExclusive(
+        created.id,
+        true,
+      );
     }
     await DeveloperControlsService.logAction(
       developerId: developerId,

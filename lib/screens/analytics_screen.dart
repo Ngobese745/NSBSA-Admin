@@ -81,7 +81,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           children: [
             _buildHeader(theme, analyticsProvider),
             const SizedBox(height: 32),
-            
+
             // Top Section (Summary, Pie, Top Groups)
             if (isDesktop)
               Row(
@@ -123,10 +123,22 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   const SizedBox(height: 16),
                   Row(
                     children: [
-                      Expanded(child: _buildFinancialMixPie(analyticsProvider, theme, height: 250)),
+                      Expanded(
+                        child: _buildFinancialMixPie(
+                          analyticsProvider,
+                          theme,
+                          height: 250,
+                        ),
+                      ),
                       if (isTablet) ...[
                         const SizedBox(width: 16),
-                        Expanded(child: _buildTopGroupsChart(analyticsProvider, theme, height: 250)),
+                        Expanded(
+                          child: _buildTopGroupsChart(
+                            analyticsProvider,
+                            theme,
+                            height: 250,
+                          ),
+                        ),
                       ],
                     ],
                   ),
@@ -136,9 +148,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   ],
                 ],
               ),
-            
+
             const SizedBox(height: 24),
-            
+
             // Bottom Section (Trend Chart, Risk Map)
             if (isDesktop)
               Row(
@@ -151,7 +163,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   const SizedBox(width: 24),
                   Expanded(
                     flex: 2,
-                    child: _buildRiskGrid(analyticsProvider, groupProvider.groups, theme),
+                    child: _buildRiskGrid(
+                      analyticsProvider,
+                      groupProvider.groups,
+                      theme,
+                    ),
                   ),
                 ],
               )
@@ -160,7 +176,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 children: [
                   _buildSmoothTrendChart(analyticsProvider, theme),
                   const SizedBox(height: 16),
-                  _buildRiskGrid(analyticsProvider, groupProvider.groups, theme),
+                  _buildRiskGrid(
+                    analyticsProvider,
+                    groupProvider.groups,
+                    theme,
+                  ),
                 ],
               ),
           ],
@@ -193,7 +213,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 const SizedBox(height: 4),
                 Text(
                   'Real-time operational and financial health metrics',
-                  style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: Colors.grey,
+                  ),
                 ),
               ],
             ),
@@ -204,8 +226,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: theme.colorScheme.primary,
                 foregroundColor: Colors.black,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 16,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
             ),
           ],
@@ -272,7 +299,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  Widget _buildFinancialMixPie(AnalyticsProvider provider, ThemeData theme, {double height = 220}) {
+  Widget _buildFinancialMixPie(
+    AnalyticsProvider provider,
+    ThemeData theme, {
+    double height = 220,
+  }) {
     return Container(
       height: height,
       padding: const EdgeInsets.all(24),
@@ -288,11 +319,17 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Portfolio Status', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                const Text(
+                  'Portfolio Status',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                ),
                 const Spacer(),
                 _buildPieLegend('Collected', theme.colorScheme.primary),
                 const SizedBox(height: 8),
-                _buildPieLegend('Outstanding', theme.colorScheme.primary.withOpacity(0.2)),
+                _buildPieLegend(
+                  'Outstanding',
+                  theme.colorScheme.primary.withOpacity(0.2),
+                ),
               ],
             ),
           ),
@@ -309,7 +346,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     radius: 25,
                     showTitle: true,
                     title: '68%',
-                    titleStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.black),
+                    titleStyle: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      color: Colors.black,
+                    ),
                   ),
                   PieChartSectionData(
                     value: 32,
@@ -317,7 +358,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     radius: 25,
                     showTitle: true,
                     title: '32%',
-                    titleStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white),
+                    titleStyle: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      color: Colors.white,
+                    ),
                   ),
                 ],
               ),
@@ -331,14 +376,25 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   Widget _buildPieLegend(String label, Color color) {
     return Row(
       children: [
-        Container(width: 12, height: 12, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
         const SizedBox(width: 8),
         Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
       ],
     );
   }
 
-  Widget _buildTopGroupsChart(AnalyticsProvider provider, ThemeData theme, {double height = 220}) {
+  Widget _buildTopGroupsChart(
+    AnalyticsProvider provider,
+    ThemeData theme, {
+    double height = 220,
+  }) {
     final topGroups = provider.topGroups;
     return Container(
       height: height,
@@ -351,7 +407,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Top Performing Groups', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+          const Text(
+            'Top Performing Groups',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+          ),
           const SizedBox(height: 16),
           Expanded(
             child: ListView.builder(
@@ -368,17 +427,42 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(group.name, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                          Text('R ${(group.collected / 1000).toStringAsFixed(1)}k', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          Text(
+                            group.name,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey,
+                            ),
+                          ),
+                          Text(
+                            'R ${(group.collected / 1000).toStringAsFixed(1)}k',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 4),
                       Stack(
                         children: [
-                          Container(height: 6, width: double.infinity, decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(3))),
+                          Container(
+                            height: 6,
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.05),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                          ),
                           FractionallySizedBox(
                             widthFactor: percentage,
-                            child: Container(height: 6, decoration: BoxDecoration(color: theme.colorScheme.primary, borderRadius: BorderRadius.circular(3))),
+                            child: Container(
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.primary,
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -407,8 +491,17 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Collection Velocity vs Profit', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18)),
-              Text('Last 6 months', style: TextStyle(color: Colors.grey.withOpacity(0.5), fontSize: 12)),
+              const Text(
+                'Collection Velocity vs Profit',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
+              ),
+              Text(
+                'Last 6 months',
+                style: TextStyle(
+                  color: Colors.grey.withOpacity(0.5),
+                  fontSize: 12,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 40),
@@ -420,12 +513,19 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   show: true,
                   drawVerticalLine: false,
                   horizontalInterval: 10000,
-                  getDrawingHorizontalLine: (value) => FlLine(color: Colors.white.withOpacity(0.05), strokeWidth: 1),
+                  getDrawingHorizontalLine: (value) => FlLine(
+                    color: Colors.white.withOpacity(0.05),
+                    strokeWidth: 1,
+                  ),
                 ),
                 titlesData: FlTitlesData(
                   show: true,
-                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
@@ -435,7 +535,15 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                         if (value.toInt() < provider.collectionTrend.length) {
                           return Padding(
                             padding: const EdgeInsets.only(top: 8.0),
-                            child: Text(provider.collectionTrend[value.toInt()].month.split('-').last, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                            child: Text(
+                              provider.collectionTrend[value.toInt()].month
+                                  .split('-')
+                                  .last,
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 12,
+                              ),
+                            ),
                           );
                         }
                         return const SizedBox();
@@ -447,14 +555,24 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       showTitles: true,
                       interval: 10000,
                       reservedSize: 42,
-                      getTitlesWidget: (value, meta) => Text('${(value / 1000).toInt()}k', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                      getTitlesWidget: (value, meta) => Text(
+                        '${(value / 1000).toInt()}k',
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 12,
+                        ),
+                      ),
                     ),
                   ),
                 ),
                 borderData: FlBorderData(show: false),
                 lineBarsData: [
                   LineChartBarData(
-                    spots: provider.collectionTrend.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value.amount)).toList(),
+                    spots: provider.collectionTrend
+                        .asMap()
+                        .entries
+                        .map((e) => FlSpot(e.key.toDouble(), e.value.amount))
+                        .toList(),
                     isCurved: true,
                     color: theme.colorScheme.primary,
                     barWidth: 3,
@@ -463,7 +581,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     belowBarData: BarAreaData(
                       show: true,
                       gradient: LinearGradient(
-                        colors: [theme.colorScheme.primary.withOpacity(0.2), theme.colorScheme.primary.withOpacity(0.0)],
+                        colors: [
+                          theme.colorScheme.primary.withOpacity(0.2),
+                          theme.colorScheme.primary.withOpacity(0.0),
+                        ],
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                       ),
@@ -478,7 +599,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  Widget _buildRiskGrid(AnalyticsProvider provider, List<GroupModel> groups, ThemeData theme) {
+  Widget _buildRiskGrid(
+    AnalyticsProvider provider,
+    List<GroupModel> groups,
+    ThemeData theme,
+  ) {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -489,7 +614,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Risk Heat Map', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18)),
+          const Text(
+            'Risk Heat Map',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
+          ),
           const SizedBox(height: 24),
           GridView.builder(
             shrinkWrap: true,
@@ -504,7 +632,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             itemBuilder: (context, index) {
               final group = groups[index];
               final score = provider.groupRiskScores[group.id] ?? 100.0;
-              Color riskColor = score > 85 ? Colors.green : (score > 60 ? Colors.orange : Colors.red);
+              Color riskColor = score > 85
+                  ? Colors.green
+                  : (score > 60 ? Colors.orange : Colors.red);
               return Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
@@ -516,7 +646,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   child: Text(
                     group.name,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: riskColor),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: riskColor,
+                    ),
                   ),
                 ),
               );
@@ -544,9 +678,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.end,
               children: [
-                pw.Text('Advanced Analytics Report',
-                    style: pw.TextStyle(
-                        fontSize: 18, fontWeight: pw.FontWeight.bold)),
+                pw.Text(
+                  'Advanced Analytics Report',
+                  style: pw.TextStyle(
+                    fontSize: 18,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
                 pw.Text('Date: ${DateTime.now().toString().substring(0, 10)}'),
               ],
             ),
@@ -554,33 +692,49 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         ),
         build: (pw.Context context) => [
           pw.SizedBox(height: 20),
-          pw.Text('Key Performance Indicators',
-              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+          pw.Text(
+            'Key Performance Indicators',
+            style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+          ),
           pw.Divider(),
           pw.SizedBox(height: 10),
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              pw.Column(children: [
-                pw.Text('Avg Repayment Rate'),
-                pw.Text('94.2%',
-                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-              ]),
-              pw.Column(children: [
-                pw.Text('Default Ratio'),
-                pw.Text('2.8%',
-                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-              ]),
-              pw.Column(children: [
-                pw.Text('Savings Growth'),
-                pw.Text('+12.4%',
-                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-              ]),
+              pw.Column(
+                children: [
+                  pw.Text('Avg Repayment Rate'),
+                  pw.Text(
+                    '94.2%',
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                  ),
+                ],
+              ),
+              pw.Column(
+                children: [
+                  pw.Text('Default Ratio'),
+                  pw.Text(
+                    '2.8%',
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                  ),
+                ],
+              ),
+              pw.Column(
+                children: [
+                  pw.Text('Savings Growth'),
+                  pw.Text(
+                    '+12.4%',
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                  ),
+                ],
+              ),
             ],
           ),
           pw.SizedBox(height: 32),
-          pw.Text('Group Risk Assessment',
-              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+          pw.Text(
+            'Group Risk Assessment',
+            style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+          ),
           pw.Divider(),
           pw.SizedBox(height: 10),
           pw.Table(
@@ -590,17 +744,26 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 decoration: const pw.BoxDecoration(color: PdfColors.grey100),
                 children: [
                   pw.Padding(
-                      padding: const pw.EdgeInsets.all(6),
-                      child: pw.Text('Group Name',
-                          style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
+                    padding: const pw.EdgeInsets.all(6),
+                    child: pw.Text(
+                      'Group Name',
+                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                    ),
+                  ),
                   pw.Padding(
-                      padding: const pw.EdgeInsets.all(6),
-                      child: pw.Text('Risk Score',
-                          style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
+                    padding: const pw.EdgeInsets.all(6),
+                    child: pw.Text(
+                      'Risk Score',
+                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                    ),
+                  ),
                   pw.Padding(
-                      padding: const pw.EdgeInsets.all(6),
-                      child: pw.Text('Status',
-                          style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
+                    padding: const pw.EdgeInsets.all(6),
+                    child: pw.Text(
+                      'Status',
+                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                    ),
+                  ),
                 ],
               ),
               ...groups.map((group) {
@@ -611,14 +774,17 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 return pw.TableRow(
                   children: [
                     pw.Padding(
-                        padding: const pw.EdgeInsets.all(6),
-                        child: pw.Text(group.name)),
+                      padding: const pw.EdgeInsets.all(6),
+                      child: pw.Text(group.name),
+                    ),
                     pw.Padding(
-                        padding: const pw.EdgeInsets.all(6),
-                        child: pw.Text('${score.toStringAsFixed(1)}%')),
+                      padding: const pw.EdgeInsets.all(6),
+                      child: pw.Text('${score.toStringAsFixed(1)}%'),
+                    ),
                     pw.Padding(
-                        padding: const pw.EdgeInsets.all(6),
-                        child: pw.Text(status)),
+                      padding: const pw.EdgeInsets.all(6),
+                      child: pw.Text(status),
+                    ),
                   ],
                 );
               }).toList(),
@@ -629,7 +795,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
 
     await Printing.layoutPdf(
-        onLayout: (PdfPageFormat format) async => pdf.save(),
-        name: 'NSBSA_Analytics_Report');
+      onLayout: (PdfPageFormat format) async => pdf.save(),
+      name: 'NSBSA_Analytics_Report',
+    );
   }
 }

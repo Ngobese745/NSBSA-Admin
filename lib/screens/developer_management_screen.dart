@@ -5,7 +5,6 @@ import 'package:printing/printing.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
-
 import '../models/system_audit_log_model.dart';
 import '../services/system_audit_service.dart';
 import '../services/audit_pdf_service.dart';
@@ -138,7 +137,10 @@ class _DeveloperManagementScreenState extends State<DeveloperManagementScreen>
                   icon: Icon(Icons.toggle_on, size: 18),
                 ),
                 Tab(text: 'Activity log', icon: Icon(Icons.history, size: 18)),
-                Tab(text: 'System Audit Log', icon: Icon(Icons.security, size: 18)),
+                Tab(
+                  text: 'System Audit Log',
+                  icon: Icon(Icons.security, size: 18),
+                ),
               ],
             ),
           ),
@@ -1135,16 +1137,19 @@ class _SystemAuditLogPanelState extends State<_SystemAuditLogPanel> {
     try {
       final auth = context.read<AuthProvider>();
       final currentUserEmail = auth.userProfile?.email ?? 'Developer';
-      
+
       SystemAuditService.logAction(
         actionType: 'EXPORT_AUDIT_LOG',
         affectedEntity: 'System Audit Log',
-        description: 'Exported ${filteredLogs.length} audit log entries to PDF.',
+        description:
+            'Exported ${filteredLogs.length} audit log entries to PDF.',
       );
 
-      final pdfBytes = await AuditPdfService.generateAuditLogReport(filteredLogs);
+      final pdfBytes = await AuditPdfService.generateAuditLogReport(
+        filteredLogs,
+      );
       final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      
+
       await Printing.sharePdf(
         bytes: pdfBytes,
         filename: 'nsbsa_system_audit_log_$timestamp.pdf',
@@ -1152,7 +1157,10 @@ class _SystemAuditLogPanelState extends State<_SystemAuditLogPanel> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to generate PDF: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Failed to generate PDF: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -1242,7 +1250,10 @@ class _SystemAuditLogPanelState extends State<_SystemAuditLogPanel> {
                 ),
               ),
               TextButton.icon(
-                onPressed: (_userFilter != null || _actionFilter != null || _dateRangeFilter != null)
+                onPressed:
+                    (_userFilter != null ||
+                        _actionFilter != null ||
+                        _dateRangeFilter != null)
                     ? () {
                         setState(() {
                           _userFilter = null;
@@ -1282,7 +1293,9 @@ class _SystemAuditLogPanelState extends State<_SystemAuditLogPanel> {
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: DataTable(
-                headingRowColor: WidgetStateProperty.all(Theme.of(context).cardColor),
+                headingRowColor: WidgetStateProperty.all(
+                  Theme.of(context).cardColor,
+                ),
                 columns: const [
                   DataColumn(label: Text('Timestamp')),
                   DataColumn(label: Text('Action Type')),
@@ -1293,17 +1306,31 @@ class _SystemAuditLogPanelState extends State<_SystemAuditLogPanel> {
                 rows: filteredLogs.map((log) {
                   return DataRow(
                     cells: [
-                      DataCell(Text(DateFormat('yyyy-MM-dd HH:mm:ss').format(log.timestamp))),
+                      DataCell(
+                        Text(
+                          DateFormat(
+                            'yyyy-MM-dd HH:mm:ss',
+                          ).format(log.timestamp),
+                        ),
+                      ),
                       DataCell(
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
-                            color: Theme.of(context).primaryColor.withOpacity(0.1),
+                            color: Theme.of(
+                              context,
+                            ).primaryColor.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
                             log.actionType,
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ),

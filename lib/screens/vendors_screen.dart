@@ -7,6 +7,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../providers/vendor_provider.dart';
 import '../providers/group_provider.dart';
+import '../providers/center_provider.dart';
 import '../models/vendor.dart';
 import '../models/group.dart';
 import 'vendor_profile_screen.dart';
@@ -31,7 +32,7 @@ class _VendorsScreenState extends State<VendorsScreen> {
     final provider = context.read<VendorProvider>();
     final groupProvider = context.read<GroupProvider>();
     final pdf = pw.Document();
-    
+
     final logo = await PdfBranding.loadLogo();
 
     pdf.addPage(
@@ -46,8 +47,16 @@ class _VendorsScreenState extends State<VendorsScreen> {
               pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.end,
                 children: [
-                  pw.Text('NSBSA Member Directory', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
-                  pw.Text('Export Date: ${DateTime.now().toString().substring(0, 10)}'),
+                  pw.Text(
+                    'NSBSA Member Directory',
+                    style: pw.TextStyle(
+                      fontSize: 18,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.Text(
+                    'Export Date: ${DateTime.now().toString().substring(0, 10)}',
+                  ),
                 ],
               ),
             ],
@@ -71,7 +80,9 @@ class _VendorsScreenState extends State<VendorsScreen> {
                   ],
                 ),
                 ...provider.vendors.map((vendor) {
-                  final group = groupProvider.groups.where((g) => g.id == vendor.groupId).firstOrNull;
+                  final group = groupProvider.groups
+                      .where((g) => g.id == vendor.groupId)
+                      .firstOrNull;
                   return pw.TableRow(
                     children: [
                       _pdfCell(vendor.name),
@@ -91,7 +102,10 @@ class _VendorsScreenState extends State<VendorsScreen> {
           return pw.Container(
             alignment: pw.Alignment.centerRight,
             margin: const pw.EdgeInsets.only(top: 10),
-            child: pw.Text('Page ${context.pageNumber} of ${context.pagesCount}', style: const pw.TextStyle(fontSize: 9)),
+            child: pw.Text(
+              'Page ${context.pageNumber} of ${context.pagesCount}',
+              style: const pw.TextStyle(fontSize: 9),
+            ),
           );
         },
       ),
@@ -99,7 +113,8 @@ class _VendorsScreenState extends State<VendorsScreen> {
 
     await Printing.layoutPdf(
       onLayout: (PdfPageFormat format) async => pdf.save(),
-      name: 'NSBSA_Member_Directory_${DateTime.now().toString().substring(0, 10)}',
+      name:
+          'NSBSA_Member_Directory_${DateTime.now().toString().substring(0, 10)}',
     );
   }
 
@@ -107,11 +122,11 @@ class _VendorsScreenState extends State<VendorsScreen> {
     return pw.Padding(
       padding: const pw.EdgeInsets.all(6),
       child: pw.Text(
-        text, 
+        text,
         style: pw.TextStyle(
-          fontSize: 9, 
-          fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal
-        )
+          fontSize: 9,
+          fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
+        ),
       ),
     );
   }
@@ -119,7 +134,7 @@ class _VendorsScreenState extends State<VendorsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -128,7 +143,12 @@ class _VendorsScreenState extends State<VendorsScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Vendors / Members', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+              Text(
+                'Vendors / Members',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               Row(
                 children: [
                   OutlinedButton.icon(
@@ -136,7 +156,10 @@ class _VendorsScreenState extends State<VendorsScreen> {
                     icon: const Icon(Icons.download, size: 16),
                     label: const Text('Export PDF'),
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       textStyle: const TextStyle(fontSize: 11),
                     ),
                   ),
@@ -158,15 +181,21 @@ class _VendorsScreenState extends State<VendorsScreen> {
                   if (provider.isLoading) {
                     return const Center(child: CircularProgressIndicator());
                   }
- 
+
                   if (provider.vendors.isEmpty) {
-                    return const Center(child: Text('No members found.', style: TextStyle(fontSize: 12, color: Colors.grey)));
+                    return const Center(
+                      child: Text(
+                        'No members found.',
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    );
                   }
- 
+
                   return ListView.separated(
                     padding: EdgeInsets.zero,
                     itemCount: provider.vendors.length,
-                    separatorBuilder: (context, index) => const Divider(height: 1, color: Colors.white10),
+                    separatorBuilder: (context, index) =>
+                        const Divider(height: 1, color: Colors.white10),
                     itemBuilder: (context, index) {
                       final vendor = provider.vendors[index];
                       return ListTile(
@@ -175,16 +204,35 @@ class _VendorsScreenState extends State<VendorsScreen> {
                         leading: CircleAvatar(
                           radius: 14,
                           backgroundColor: theme.primaryColor.withOpacity(0.1),
-                          child: Icon(Icons.person, color: theme.primaryColor, size: 14),
+                          child: Icon(
+                            Icons.person,
+                            color: theme.primaryColor,
+                            size: 14,
+                          ),
                         ),
-                        title: Text(vendor.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                        subtitle: Text('Ref: ${vendor.referenceNumber ?? 'N/A'} • ${vendor.phone ?? 'No Phone'}', 
-                          style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                        title: Text(
+                          vendor.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                        subtitle: Text(
+                          'Ref: ${vendor.referenceNumber ?? 'N/A'} • ${vendor.phone ?? 'No Phone'}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey,
+                          ),
+                        ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             IconButton(
-                              icon: const Icon(Icons.message, color: Colors.green, size: 16),
+                              icon: const Icon(
+                                Icons.message,
+                                color: Colors.green,
+                                size: 16,
+                              ),
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
                               onPressed: () {
@@ -192,14 +240,19 @@ class _VendorsScreenState extends State<VendorsScreen> {
                               },
                             ),
                             const SizedBox(width: 12),
-                            Icon(Icons.chevron_right, size: 16, color: Colors.grey[700]),
+                            Icon(
+                              Icons.chevron_right,
+                              size: 16,
+                              color: Colors.grey[700],
+                            ),
                           ],
                         ),
                         onTap: () {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => VendorProfileScreen(vendor: vendor),
+                              builder: (context) =>
+                                  VendorProfileScreen(vendor: vendor),
                             ),
                           );
                         },
@@ -209,7 +262,7 @@ class _VendorsScreenState extends State<VendorsScreen> {
                 },
               ),
             ),
-          )
+          ),
         ],
       ),
     );
@@ -217,7 +270,7 @@ class _VendorsScreenState extends State<VendorsScreen> {
 
   void _showAddMemberDialog(BuildContext context) {
     final groupProvider = context.read<GroupProvider>();
-    
+
     final nameController = TextEditingController();
     final idNumberController = TextEditingController();
     final phoneController = TextEditingController();
@@ -225,8 +278,9 @@ class _VendorsScreenState extends State<VendorsScreen> {
     final businessController = TextEditingController();
     final addressController = TextEditingController();
     final newGroupNameController = TextEditingController();
-    
+
     String? selectedGroupId;
+    String? selectedCenterId;
     String selectedGender = 'F';
     String selectedRole = 'Member';
     bool isNewGroup = false;
@@ -237,7 +291,7 @@ class _VendorsScreenState extends State<VendorsScreen> {
         return StatefulBuilder(
           builder: (context, setState) {
             final theme = Theme.of(context);
-            
+
             return AlertDialog(
               title: const Text('Add New Member'),
               content: SizedBox(
@@ -247,40 +301,90 @@ class _VendorsScreenState extends State<VendorsScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Group Selection', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+                      const Text(
+                        'Group Selection',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                      ),
                       const SizedBox(height: 8),
                       Row(
                         children: [
                           Expanded(
-                            child: isNewGroup 
-                              ? TextField(
-                                  controller: newGroupNameController,
-                                  decoration: const InputDecoration(
-                                    labelText: 'New Group Name',
-                                    hintText: 'Enter group name',
+                            child: isNewGroup
+                                ? TextField(
+                                    controller: newGroupNameController,
+                                    decoration: const InputDecoration(
+                                      labelText: 'New Group Name',
+                                      hintText: 'Enter group name',
+                                    ),
+                                  )
+                                : DropdownButtonFormField<String>(
+                                    value: selectedGroupId,
+                                    isExpanded: true,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Select Existing Group',
+                                    ),
+                                    items: groupProvider.groups
+                                        .map(
+                                          (g) => DropdownMenuItem(
+                                            value: g.id,
+                                            child: Text(g.name),
+                                          ),
+                                        )
+                                        .toList(),
+                                    onChanged: (val) =>
+                                        setState(() => selectedGroupId = val),
                                   ),
-                                )
-                              : DropdownButtonFormField<String>(
-                                  value: selectedGroupId,
-                                  isExpanded: true,
-                                  decoration: const InputDecoration(labelText: 'Select Existing Group'),
-                                  items: groupProvider.groups.map((g) => DropdownMenuItem(
-                                    value: g.id,
-                                    child: Text(g.name),
-                                  )).toList(),
-                                  onChanged: (val) => setState(() => selectedGroupId = val),
-                                ),
                           ),
                           const SizedBox(width: 12),
                           TextButton.icon(
-                            onPressed: () => setState(() => isNewGroup = !isNewGroup),
-                            icon: Icon(isNewGroup ? Icons.list : Icons.add_circle_outline),
-                            label: Text(isNewGroup ? 'Existing Group' : 'New Group'),
+                            onPressed: () =>
+                                setState(() => isNewGroup = !isNewGroup),
+                            icon: Icon(
+                              isNewGroup
+                                  ? Icons.list
+                                  : Icons.add_circle_outline,
+                            ),
+                            label: Text(
+                              isNewGroup ? 'Existing Group' : 'New Group',
+                            ),
                           ),
                         ],
                       ),
+                      if (isNewGroup) ...[
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          value: selectedCenterId,
+                          hint: const Text('Assign to Center'),
+                          items: context
+                              .read<CenterProvider>()
+                              .centers
+                              .map(
+                                (c) => DropdownMenuItem(
+                                  value: c.id,
+                                  child: Text(c.name),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (val) =>
+                              setState(() => selectedCenterId = val),
+                          decoration: const InputDecoration(
+                            labelText: 'Assigned Center',
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 24),
-                      const Text('Member Information', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+                      const Text(
+                        'Member Information',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                      ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
@@ -288,14 +392,18 @@ class _VendorsScreenState extends State<VendorsScreen> {
                             flex: 2,
                             child: TextField(
                               controller: nameController,
-                              decoration: const InputDecoration(labelText: 'Full Name'),
+                              decoration: const InputDecoration(
+                                labelText: 'Full Name',
+                              ),
                             ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: TextField(
                               controller: idNumberController,
-                              decoration: const InputDecoration(labelText: 'ID Number'),
+                              decoration: const InputDecoration(
+                                labelText: 'ID Number',
+                              ),
                             ),
                           ),
                         ],
@@ -306,14 +414,29 @@ class _VendorsScreenState extends State<VendorsScreen> {
                           Expanded(
                             child: DropdownButtonFormField<String>(
                               value: selectedRole,
-                              decoration: const InputDecoration(labelText: 'Role'),
+                              decoration: const InputDecoration(
+                                labelText: 'Role',
+                              ),
                               items: const [
-                                DropdownMenuItem(value: 'Member', child: Text('Member')),
-                                DropdownMenuItem(value: 'Chairperson', child: Text('Chairperson')),
-                                DropdownMenuItem(value: 'Secretary', child: Text('Secretary')),
-                                DropdownMenuItem(value: 'Treasurer', child: Text('Treasurer')),
+                                DropdownMenuItem(
+                                  value: 'Member',
+                                  child: Text('Member'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Chairperson',
+                                  child: Text('Chairperson'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Secretary',
+                                  child: Text('Secretary'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Treasurer',
+                                  child: Text('Treasurer'),
+                                ),
                               ],
-                              onChanged: (val) => setState(() => selectedRole = val!),
+                              onChanged: (val) =>
+                                  setState(() => selectedRole = val!),
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -321,12 +444,15 @@ class _VendorsScreenState extends State<VendorsScreen> {
                             width: 100,
                             child: DropdownButtonFormField<String>(
                               value: selectedGender,
-                              decoration: const InputDecoration(labelText: 'Gender'),
+                              decoration: const InputDecoration(
+                                labelText: 'Gender',
+                              ),
                               items: const [
                                 DropdownMenuItem(value: 'M', child: Text('M')),
                                 DropdownMenuItem(value: 'F', child: Text('F')),
                               ],
-                              onChanged: (val) => setState(() => selectedGender = val!),
+                              onChanged: (val) =>
+                                  setState(() => selectedGender = val!),
                             ),
                           ),
                         ],
@@ -337,7 +463,9 @@ class _VendorsScreenState extends State<VendorsScreen> {
                           Expanded(
                             child: TextField(
                               controller: phoneController,
-                              decoration: const InputDecoration(labelText: 'Phone Number'),
+                              decoration: const InputDecoration(
+                                labelText: 'Phone Number',
+                              ),
                               onChanged: (val) {
                                 if (whatsappController.text.isEmpty) {
                                   whatsappController.text = val;
@@ -349,7 +477,9 @@ class _VendorsScreenState extends State<VendorsScreen> {
                           Expanded(
                             child: TextField(
                               controller: whatsappController,
-                              decoration: const InputDecoration(labelText: 'WhatsApp Number'),
+                              decoration: const InputDecoration(
+                                labelText: 'WhatsApp Number',
+                              ),
                             ),
                           ),
                         ],
@@ -357,21 +487,31 @@ class _VendorsScreenState extends State<VendorsScreen> {
                       const SizedBox(height: 16),
                       TextField(
                         controller: businessController,
-                        decoration: const InputDecoration(labelText: 'Business Type'),
+                        decoration: const InputDecoration(
+                          labelText: 'Business Type',
+                        ),
                       ),
                       const SizedBox(height: 16),
                       TextField(
                         controller: addressController,
-                        decoration: const InputDecoration(labelText: 'Home Address'),
+                        decoration: const InputDecoration(
+                          labelText: 'Home Address',
+                        ),
                       ),
                     ],
                   ),
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: theme.primaryColor, foregroundColor: Colors.black),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: theme.primaryColor,
+                    foregroundColor: Colors.black,
+                  ),
                   onPressed: () async {
                     // Validation
                     if (isNewGroup && newGroupNameController.text.isEmpty) {
@@ -389,15 +529,19 @@ class _VendorsScreenState extends State<VendorsScreen> {
 
                     try {
                       final vendorProvider = context.read<VendorProvider>();
-                      
+
                       // Check for duplicates
-                      final duplicate = await vendorProvider.checkDuplicateVendor(
-                        idNumber: idNumberController.text,
-                        phone: phoneController.text,
-                      );
+                      final duplicate = await vendorProvider
+                          .checkDuplicateVendor(
+                            idNumber: idNumberController.text,
+                            phone: phoneController.text,
+                          );
 
                       if (duplicate != null && context.mounted) {
-                        _showError(context, 'A member with this ID or Phone already exists: ${duplicate.name}');
+                        _showError(
+                          context,
+                          'A member with this ID or Phone already exists: ${duplicate.name}',
+                        );
                         return;
                       }
 
@@ -405,12 +549,28 @@ class _VendorsScreenState extends State<VendorsScreen> {
                       String ref = '';
 
                       if (isNewGroup) {
-                        final newRef = 'GRP-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
-                        final newGroup = await groupProvider.addGroupWithMembers(newGroupNameController.text, newRef, []);
+                        if (selectedCenterId == null) {
+                          _showError(
+                            context,
+                            'Please select a Center for the new group',
+                          );
+                          return;
+                        }
+                        final newRef =
+                            'GRP-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+                        final newGroup = await groupProvider
+                            .addGroupWithMembers(
+                              newGroupNameController.text,
+                              newRef,
+                              selectedCenterId!,
+                              [],
+                            );
                         groupId = newGroup.id;
                         ref = newRef;
                       } else {
-                        final group = groupProvider.groups.firstWhere((g) => g.id == groupId);
+                        final group = groupProvider.groups.firstWhere(
+                          (g) => g.id == groupId,
+                        );
                         ref = group.referenceNumber;
                       }
 
@@ -430,15 +590,19 @@ class _VendorsScreenState extends State<VendorsScreen> {
                       );
 
                       await vendorProvider.addVendor(newVendor);
-                      
+
                       if (context.mounted) {
                         Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Member added successfully'), backgroundColor: Colors.green),
+                          const SnackBar(
+                            content: Text('Member added successfully'),
+                            backgroundColor: Colors.green,
+                          ),
                         );
                       }
                     } catch (e) {
-                      if (context.mounted) _showError(context, 'Error adding member: $e');
+                      if (context.mounted)
+                        _showError(context, 'Error adding member: $e');
                     }
                   },
                   child: const Text('Save Member'),

@@ -34,24 +34,26 @@ class SystemBannerModel {
       severity: json['severity'] as String? ?? 'warning',
       isEnabled: json['is_enabled'] as bool? ?? false,
       startsAt: DateTime.parse(json['starts_at'] as String),
-      endsAt: json['ends_at'] != null ? DateTime.parse(json['ends_at'] as String) : null,
+      endsAt: json['ends_at'] != null
+          ? DateTime.parse(json['ends_at'] as String)
+          : null,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'banner_type': bannerType,
-        'title': title,
-        'message': message,
-        'severity': severity,
-        'is_enabled': isEnabled,
-        'starts_at': startsAt.toIso8601String(),
-        'ends_at': endsAt?.toIso8601String(),
-        'created_at': createdAt.toIso8601String(),
-        'updated_at': updatedAt.toIso8601String(),
-      };
+    'id': id,
+    'banner_type': bannerType,
+    'title': title,
+    'message': message,
+    'severity': severity,
+    'is_enabled': isEnabled,
+    'starts_at': startsAt.toIso8601String(),
+    'ends_at': endsAt?.toIso8601String(),
+    'created_at': createdAt.toIso8601String(),
+    'updated_at': updatedAt.toIso8601String(),
+  };
 
   /// Active for display: enabled and within [startsAt, endsAt] window.
   bool isActiveNow(DateTime now) {

@@ -46,24 +46,31 @@ class AnalyticsProvider with ChangeNotifier {
   List<MonthlyData> _calculateCollectionTrend(List<PaymentModel> payments) {
     final now = DateTime.now();
     final Map<String, double> monthlyTotals = {};
-    
+
     for (int i = 5; i >= 0; i--) {
       final monthDate = DateTime(now.year, now.month - i, 1);
-      final key = '${monthDate.year}-${monthDate.month.toString().padLeft(2, '0')}';
+      final key =
+          '${monthDate.year}-${monthDate.month.toString().padLeft(2, '0')}';
       monthlyTotals[key] = 0;
     }
 
     for (var p in payments) {
-      final key = '${p.datePaid.year}-${p.datePaid.month.toString().padLeft(2, '0')}';
+      final key =
+          '${p.datePaid.year}-${p.datePaid.month.toString().padLeft(2, '0')}';
       if (monthlyTotals.containsKey(key)) {
         monthlyTotals[key] = monthlyTotals[key]! + p.amountPaid;
       }
     }
 
-    return monthlyTotals.entries.map((e) => MonthlyData(e.key, e.value)).toList();
+    return monthlyTotals.entries
+        .map((e) => MonthlyData(e.key, e.value))
+        .toList();
   }
 
-  void _calculateTopGroups(List<GroupModel> groups, List<PaymentModel> payments) {
+  void _calculateTopGroups(
+    List<GroupModel> groups,
+    List<PaymentModel> payments,
+  ) {
     final Map<String, double> groupCollections = {};
     for (var g in groups) {
       groupCollections[g.name] = 0;
@@ -74,16 +81,16 @@ class AnalyticsProvider with ChangeNotifier {
       // This is expensive but okay for analytics calculation
       // Alternatively, we can use the provider data passed in
     }
-    
+
     // Simpler: assume we have a way to link payment to group name
     // For now, let's use a mock-ready structure that calculates from available data
-    
+
     _topGroups = groups.map((g) {
       // Mocking or calculating based on real data if possible
       // Since payments don't have group_id directly, we'd need more complex joining
-      return GroupPerformance(g.name, 50000.0 + (g.name.length * 1000)); 
+      return GroupPerformance(g.name, 50000.0 + (g.name.length * 1000));
     }).toList();
-    
+
     _topGroups.sort((a, b) => b.collected.compareTo(a.collected));
     if (_topGroups.length > 10) _topGroups = _topGroups.sublist(0, 10);
   }
@@ -109,24 +116,29 @@ class AnalyticsProvider with ChangeNotifier {
       int overdueCount = 0;
 
       for (var loan in vendorLoans) {
-        final loanPayments = payments.where((p) => p.loanId == loan.id).toList();
-        final expected = loan.amount + 
-                         (loan.initiationFee ?? 0) + 
-                         ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) + 
-                         LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
-        
+        final loanPayments = payments
+            .where((p) => p.loanId == loan.id)
+            .toList();
+        final expected =
+            loan.amount +
+            (loan.initiationFee ?? 0) +
+            ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) +
+            LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
+
         final paid = loanPayments.fold(0.0, (sum, p) => sum + p.amountPaid);
-        
+
         totalExpected += expected;
         totalPaid += paid;
 
         // Simple overdue check: if balance > 0 and loan is old
         if (expected - paid > 10) {
-           overdueCount++;
+          overdueCount++;
         }
       }
 
-      double repaymentRate = totalExpected > 0 ? (totalPaid / totalExpected) : 1.0;
+      double repaymentRate = totalExpected > 0
+          ? (totalPaid / totalExpected)
+          : 1.0;
       double score = (repaymentRate * 80) + (overdueCount > 0 ? 0 : 20);
       _vendorCreditScores[vendor.id] = score.clamp(0, 100);
     }
