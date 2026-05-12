@@ -18,6 +18,7 @@ echo "SUPABASE_URL=$SUPABASE_URL" > .env
 echo "SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY" >> .env
 echo "MAILERSEND_API_KEY=$MAILERSEND_API_KEY" >> .env
 echo "WESENDER_API_KEY=$WESENDER_API_KEY" >> .env
+echo "SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY" >> .env
 
 echo "--- Flutter Version ---"
 flutter --version
