@@ -310,4 +310,51 @@ class ImportService {
     await _supabase.from('vendors').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await _supabase.from('groups').delete().neq('id', '00000000-0000-0000-0000-000000000000');
   }
+
+  /// Generates a full system backup as a JSON string
+  Future<Map<String, dynamic>> generateBackup() async {
+    final groups = await _supabase.from('groups').select();
+    final vendors = await _supabase.from('vendors').select();
+    final loans = await _supabase.from('loans').select();
+    final payments = await _supabase.from('payments').select();
+    final profiles = await _supabase.from('profiles').select();
+    final settings = await _supabase.from('system_settings').select();
+
+    return {
+      'version': '1.0.0',
+      'timestamp': DateTime.now().toIso8601String(),
+      'data': {
+        'groups': groups,
+        'vendors': vendors,
+        'loans': loans,
+        'payments': payments,
+        'profiles': profiles,
+        'system_settings': settings,
+      }
+    };
+  }
+
+  /// Restores the system from a backup map
+  Future<void> restoreBackup(Map<String, dynamic> backup) async {
+    final data = backup['data'] as Map<String, dynamic>;
+    
+    // 1. Wipe existing data (except the current user's profile to prevent logout)
+    await clearAllData();
+    
+    // 2. Restore in order of dependencies
+    if (data['groups'] != null) await _supabase.from('groups').insert(data['groups']);
+    if (data['vendors'] != null) await _supabase.from('vendors').insert(data['vendors']);
+    if (data['loans'] != null) await _supabase.from('loans').insert(data['loans']);
+    if (data['payments'] != null) await _supabase.from('payments').insert(data['payments']);
+    
+    // 3. Restore settings
+    if (data['system_settings'] != null) {
+      await _supabase.from('system_settings').upsert(data['system_settings']);
+    }
+
+    // 4. Restore profiles (using upsert to avoid conflicts with the current active Super Admin)
+    if (data['profiles'] != null) {
+      await _supabase.from('profiles').upsert(data['profiles']);
+    }
+  }
 }
