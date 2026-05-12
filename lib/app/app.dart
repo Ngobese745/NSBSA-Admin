@@ -79,7 +79,7 @@ class NsbsaAdminApp extends StatelessWidget {
     if (!auth.isAuthenticated) return const LoginScreen();
 
     // 4. Fallback for the recovery flag in the provider (triggered by onAuthStateChange)
-    if (auth.isPasswordRecovery) return const PasswordSetupScreen();
+    if (auth.isPasswordRecovery || auth.needsPasswordSetup) return const PasswordSetupScreen();
 
     return const MainShell();
   }

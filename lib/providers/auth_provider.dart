@@ -6,6 +6,7 @@ import '../services/account_management_service.dart';
 class AuthProvider with ChangeNotifier {
   bool _isAuthenticated = false;
   bool _isPasswordRecovery = false;
+  bool _needsPasswordSetup = false;
   ProfileModel? _userProfile;
   final _supabase = Supabase.instance.client;
 
@@ -23,21 +24,20 @@ class AuthProvider with ChangeNotifier {
 
     _supabase.auth.onAuthStateChange.listen((data) async {
       final AuthChangeEvent event = data.event;
+      final session = data.session;
+
+      _isAuthenticated = session != null;
+      _needsPasswordSetup = session?.user.userMetadata?['must_change_password'] == true;
 
       if (event == AuthChangeEvent.passwordRecovery) {
-        // User clicked an invite or reset link — show password setup screen
         _isPasswordRecovery = true;
-        _isAuthenticated = true;
-        if (data.session != null)
-          await _fetchUserProfile(data.session!.user.id);
+        if (session != null)
+          await _fetchUserProfile(session.user.id);
         notifyListeners();
         return;
       }
 
       if (event == AuthChangeEvent.signedIn) {
-        _isAuthenticated = true;
-        
-        // Check if this sign-in was triggered by a recovery/invite link
         final uri = Uri.base;
         if (uri.toString().contains('type=recovery') || uri.toString().contains('type=invite')) {
           _isPasswordRecovery = true;
@@ -45,12 +45,13 @@ class AuthProvider with ChangeNotifier {
           _isPasswordRecovery = false;
         }
 
-        if (data.session != null)
-          await _fetchUserProfile(data.session!.user.id);
+        if (session != null)
+          await _fetchUserProfile(session.user.id);
         notifyListeners();
       } else if (event == AuthChangeEvent.signedOut) {
         _isAuthenticated = false;
         _isPasswordRecovery = false;
+        _needsPasswordSetup = false;
         _userProfile = null;
         notifyListeners();
       } else if (event == AuthChangeEvent.userUpdated) {
@@ -102,6 +103,7 @@ class AuthProvider with ChangeNotifier {
 
   bool get isAuthenticated => _isAuthenticated;
   bool get isPasswordRecovery => _isPasswordRecovery;
+  bool get needsPasswordSetup => _needsPasswordSetup;
   User? get currentUser => _supabase.auth.currentUser;
   ProfileModel? get userProfile => _userProfile;
   String get userRole => _userProfile?.role ?? 'Development Facilitator';

@@ -54,39 +54,35 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
     super.dispose();
   }
 
-  /// Extracts the session from the URL (handles hash and query params)
+  /// Extracts the session from the URL or checks the current logged-in user
   Future<void> _initializeRecoveryFlow() async {
     try {
       final auth = Supabase.instance.client.auth;
+      
+      // CASE 1: Standard URL-based recovery link (for password resets)
       final uri = Uri.base;
       final fullUrl = uri.toString();
+      final hasUrlToken = fullUrl.contains('access_token=') || 
+                          fullUrl.contains('code=') || 
+                          fullUrl.contains('type=recovery') || 
+                          fullUrl.contains('type=invite');
 
-      // Check if there is actually a token or code in the URL
-      final hasToken = fullUrl.contains('access_token=') || 
-                        fullUrl.contains('code=') || 
-                        fullUrl.contains('type=recovery') || 
-                        fullUrl.contains('type=invite');
-
-      if (hasToken) {
-        // AGGRESSIVE FIX: If we are logged in as the Super Admin, we MUST clear the session
-        // and reload the page to ensure the link can be exchanged freshly.
+      if (hasUrlToken) {
+        // Force switch logic if Admin is logged in
         if (auth.currentUser?.email == 'colane@mwelasefin.co.za') {
-          debugPrint('PasswordSetupScreen: Admin session detected during link flow. Force reloading page.');
+          debugPrint('PasswordSetupScreen: Admin session detected during link flow. Force reloading.');
           await auth.signOut();
-          // Force a reload to ensure the auto-exchange happens on a clean slate
           html.window.location.reload();
           return;
         }
 
-        // Wait a bit for auto-exchange
+        // Wait for auto-exchange
         if (auth.currentSession == null) {
-          debugPrint('PasswordSetupScreen: Waiting for auto-exchange...');
           await Future.delayed(const Duration(milliseconds: 1500));
         }
 
-        // Try manual exchange
+        // Manual exchange if needed
         if (auth.currentSession == null) {
-          debugPrint('PasswordSetupScreen: Attempting manual exchange.');
           try {
             await auth.getSessionFromUrl(uri);
           } catch (e) {
@@ -95,18 +91,27 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
         }
       }
 
+      // CASE 2: Logged-in user who was forced here (Direct Credentials flow)
+      // This is the new, robust way that bypasses URL token issues.
+      final mustChangePassword = auth.currentUser?.userMetadata?['must_change_password'] == true;
+
       setState(() {
         _hasValidSession = auth.currentSession != null;
         _isValidatingToken = false;
+        
         if (!_hasValidSession) {
-          _error = 'Invalid or expired recovery link. Please request a new one.';
+          _error = 'Session expired. Please log in with your temporary credentials again.';
+        } else if (!hasUrlToken && !mustChangePassword) {
+          // If we are here without a link AND without a "must change" flag, something is wrong
+          _error = 'Unauthorized access to password setup.';
+          _hasValidSession = false;
         }
       });
     } catch (e) {
       setState(() {
         _hasValidSession = false;
         _isValidatingToken = false;
-        _error = 'Failed to validate link: ${e.toString()}';
+        _error = 'Failed to validate session: ${e.toString()}';
       });
     }
   }
@@ -133,14 +138,22 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
     });
 
     try {
-      // Update the user's password in Supabase
-      final response = await Supabase.instance.client.auth.updateUser(
-        UserAttributes(password: password),
-      );
-
-      if (response.user == null) {
-        throw Exception('Supabase failed to update user attributes.');
+      // Use the service to complete the setup (updates password and clears flag)
+      await AccountManagementService.completeForcePasswordSetup(password);
+      
+      if (!mounted) return;
+      
+      // Update the local provider state if possible
+      try {
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        await authProvider.refreshProfile();
+      } catch (e) {
+        debugPrint('Provider sync failed: $e');
       }
+
+      setState(() {
+        _isSaving = false;
+      });
 
       // Log the event for security audit
       final email = Supabase.instance.client.auth.currentUser?.email ?? 'Unknown';

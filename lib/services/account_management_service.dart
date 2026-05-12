@@ -1,6 +1,8 @@
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'communication_service.dart';
 import 'system_audit_service.dart';
 
 
@@ -70,32 +72,36 @@ class AccountManagementService {
     return error.toString();
   }
 
-  /// Creates a new staff account and sends an invite email.
+  /// Creates a new staff account with a temporary password.
   /// Only call this from Super Admin context.
   static Future<void> createStaffAccount({
     required String email,
     required String fullName,
     required String role,
     required String operatorEmail,
-    String? redirectTo,
   }) async {
-    // 1. Invite the user via Supabase Auth (creates auth.users row + email).
-    // Use the provided redirectTo or fallback to the production URL.
-    final targetRedirect = redirectTo ?? 'https://nsbsa-admin.vercel.app/auth/setup-password';
-    
-    final inviteResponse = await _admin.auth.admin.inviteUserByEmail(
-      email,
-      redirectTo: targetRedirect,
-      data: {'full_name': fullName},
+    // 1. Generate a temporary password
+    final tempPassword = _generateTempPassword();
+
+    // 2. Create the user directly via Admin API (bypassing invitation links)
+    final response = await _admin.auth.admin.createUser(
+      AdminUserAttributes(
+        email: email,
+        password: tempPassword,
+        emailConfirm: true, // Confirm immediately so they can log in
+        userMetadata: {
+          'full_name': fullName,
+          'must_change_password': true,
+        },
+      ),
     );
-    final newUser = inviteResponse.user;
+
+    final newUser = response.user;
     if (newUser == null) {
-      throw Exception(
-        'Invite did not return a user record; cannot create profile.',
-      );
+      throw Exception('Failed to create auth user.');
     }
 
-    // 2. profiles.id is the primary key and must match auth.users(id).
+    // 3. Create the profile
     await _admin.from('profiles').upsert({
       'id': newUser.id,
       'email': email,
@@ -104,18 +110,56 @@ class AccountManagementService {
       'status': 'Active',
     }, onConflict: 'id');
 
-    // 3. Log the event
+    // 4. Send the credentials via CommunicationService
+    try {
+      final comms = CommunicationService();
+      await comms.sendStaffCredentials(
+        toEmail: email,
+        fullName: fullName,
+        tempPassword: tempPassword,
+      );
+    } catch (e) {
+      debugPrint('Failed to send credentials email: $e');
+      // We don't throw here because the account was already created
+    }
+
+    // 5. Log the event
     await logEvent(
       eventType: 'account_created',
       targetEmail: email,
       operatorEmail: operatorEmail,
-      metadata: {'role': role, 'full_name': fullName},
+      metadata: {'role': role, 'full_name': fullName, 'flow': 'direct_credentials'},
     );
 
     SystemAuditService.logAction(
       actionType: 'CREATE_USER',
       affectedEntity: 'User: $email',
-      description: 'Created staff account with role: $role.',
+      description: 'Created staff account (Direct Credentials) with role: $role.',
+    );
+  }
+
+  /// Generates a random 10-character temporary password.
+  static String _generateTempPassword() {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#%^*';
+    final rand = Random();
+    return List.generate(10, (index) => chars[rand.nextInt(chars.length)]).join();
+  }
+
+  /// Finalizes the password setup for a user forced to change it.
+  static Future<void> completeForcePasswordSetup(String newPassword) async {
+    final auth = Supabase.instance.client.auth;
+    
+    // Update the password
+    await auth.updateUser(
+      UserAttributes(
+        password: newPassword,
+        data: {'must_change_password': false},
+      ),
+    );
+
+    await logEvent(
+      eventType: 'password_setup_completed',
+      targetEmail: auth.currentUser?.email ?? 'unknown',
     );
   }
 
