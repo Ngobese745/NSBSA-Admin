@@ -2,6 +2,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
 
 import '../core/app_assets.dart';
 import '../providers/auth_provider.dart';
@@ -66,23 +68,23 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
                         fullUrl.contains('type=invite');
 
       if (hasToken) {
-        // FORCE SWITCH LOGIC:
-        // If we have a session ALREADY (at the very start), it's a pre-existing session
-        // (like the Super Admin). We MUST clear it to allow the link to exchange.
-        if (auth.currentSession != null) {
-          debugPrint('PasswordSetupScreen: Stale session detected. Force signing out to clear path for link.');
+        // AGGRESSIVE FIX: If we are logged in as the Super Admin, we MUST clear the session
+        // and reload the page to ensure the link can be exchanged freshly.
+        if (auth.currentUser?.email == 'colane@mwelasefin.co.za') {
+          debugPrint('PasswordSetupScreen: Admin session detected during link flow. Force reloading page.');
           await auth.signOut();
-          // Small delay to ensure sign-out is processed by the client
-          await Future.delayed(const Duration(milliseconds: 300));
+          // Force a reload to ensure the auto-exchange happens on a clean slate
+          html.window.location.reload();
+          return;
         }
 
-        // Now wait for the auto-exchange to happen (or manual)
+        // Wait a bit for auto-exchange
         if (auth.currentSession == null) {
           debugPrint('PasswordSetupScreen: Waiting for auto-exchange...');
-          await Future.delayed(const Duration(milliseconds: 1000));
+          await Future.delayed(const Duration(milliseconds: 1500));
         }
 
-        // Try manual exchange if auto-exchange didn't happen or was missed
+        // Try manual exchange
         if (auth.currentSession == null) {
           debugPrint('PasswordSetupScreen: Attempting manual exchange.');
           try {
