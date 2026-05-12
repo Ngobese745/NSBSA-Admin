@@ -40,13 +40,25 @@ class NsbsaAdminApp extends StatelessWidget {
   }
 
   Widget _resolveHome(AuthProvider auth) {
-    final path = Uri.base.path;
-    if (path == '/auth/login') return const LoginScreen();
-    if (path == '/auth/setup-password') return const PasswordSetupScreen();
+    final uri = Uri.base;
+    final path = uri.path;
+    final fragment = uri.fragment;
 
+    // 1. Explicit path check
+    if (path == '/auth/login') return const LoginScreen();
+    if (path.contains('/auth/setup-password')) return const PasswordSetupScreen();
+
+    // 2. Detection of Supabase tokens in the hash (#access_token=...&type=recovery)
+    // This is critical because Supabase often redirects to the Site URL with the token in the hash.
+    if (fragment.contains('access_token=') && 
+        (fragment.contains('type=recovery') || fragment.contains('type=invite') || fragment.contains('type=signup'))) {
+      return const PasswordSetupScreen();
+    }
+
+    // 3. Fallback for authenticated state
     if (!auth.isAuthenticated) return const LoginScreen();
 
-    // Staff clicked an invite or reset link and must set a password first.
+    // 4. Fallback for the recovery flag in the provider
     if (auth.isPasswordRecovery) return const PasswordSetupScreen();
 
     return const MainShell();
