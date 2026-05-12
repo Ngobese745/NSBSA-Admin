@@ -57,10 +57,25 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
     try {
       final auth = Supabase.instance.client.auth;
       final uri = Uri.base;
+      final fullUrl = uri.toString();
 
-      // Supabase's getSessionFromUrl handles parsing the token from the URL
-      // whether it's in the hash (#access_token=...) or query (?code=...)
-      if (auth.currentSession == null) {
+      // Check if there is actually a token or code in the URL
+      final hasToken = fullUrl.contains('access_token=') || 
+                        fullUrl.contains('code=') || 
+                        fullUrl.contains('type=recovery') || 
+                        fullUrl.contains('type=invite');
+
+      if (hasToken) {
+        // CRITICAL FIX: If we have a token/code in the URL, we MUST process it
+        // even if auth.currentSession is already non-null (e.g. an admin is logged in).
+        // To be safe, we sign out any current user to ensure a clean slate for the new session.
+        if (auth.currentSession != null) {
+          debugPrint('PasswordSetupScreen: Existing session found, signing out to process new link.');
+          await auth.signOut();
+        }
+        
+        // Supabase's getSessionFromUrl handles parsing the token from the URL
+        // whether it's in the hash (#access_token=...) or query (?code=...)
         await auth.getSessionFromUrl(uri);
       }
 
