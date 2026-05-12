@@ -66,13 +66,23 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
                         fullUrl.contains('type=invite');
 
       if (hasToken) {
-        // Wait a brief moment for Supabase auto-exchange to happen
-        if (auth.currentSession == null) {
-          debugPrint('PasswordSetupScreen: Waiting for auto-exchange...');
-          await Future.delayed(const Duration(milliseconds: 800));
+        // FORCE SWITCH LOGIC:
+        // If we have a session ALREADY (at the very start), it's a pre-existing session
+        // (like the Super Admin). We MUST clear it to allow the link to exchange.
+        if (auth.currentSession != null) {
+          debugPrint('PasswordSetupScreen: Stale session detected. Force signing out to clear path for link.');
+          await auth.signOut();
+          // Small delay to ensure sign-out is processed by the client
+          await Future.delayed(const Duration(milliseconds: 300));
         }
 
-        // Try manual exchange ONLY if still null
+        // Now wait for the auto-exchange to happen (or manual)
+        if (auth.currentSession == null) {
+          debugPrint('PasswordSetupScreen: Waiting for auto-exchange...');
+          await Future.delayed(const Duration(milliseconds: 1000));
+        }
+
+        // Try manual exchange if auto-exchange didn't happen or was missed
         if (auth.currentSession == null) {
           debugPrint('PasswordSetupScreen: Attempting manual exchange.');
           try {
