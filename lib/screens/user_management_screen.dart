@@ -1561,14 +1561,13 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                           operatorEmail:
                               context.read<AuthProvider>().currentUser?.email ??
                               'Unknown',
-                          redirectTo: '${Uri.base.origin}/auth/setup-password',
                         );
                         if (mounted) {
                           Navigator.pop(dialogCtx);
                           _fetchProfiles();
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text('Invite sent!'),
+                              content: Text('Account created successfully! User notified via email.'),
                               backgroundColor: Colors.green,
                             ),
                           );
