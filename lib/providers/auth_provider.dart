@@ -106,6 +106,12 @@ class AuthProvider with ChangeNotifier {
       );
       if (res.session != null) {
         await _fetchUserProfile(res.session!.user.id);
+        
+        if (_userProfile == null) {
+          await _supabase.auth.signOut();
+          return 'Your account exists, but your profile has not been set up. Please contact the Super Admin.';
+        }
+
         if (_userProfile?.isBlocked == true ||
             _supabase.auth.currentSession == null) {
           return 'This account has been blocked. Please contact the Super Admin.';
