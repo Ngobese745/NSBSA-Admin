@@ -164,7 +164,7 @@ class _ImportScreenState extends State<ImportScreen> {
                     _buildActionCard(
                       title: 'Import Excel',
                       description: 'Import groups, vendors and loans from "VES Loan Book".',
-                      icon: Icons.add_table,
+                      icon: Icons.table_view,
                       buttonLabel: 'Select Excel File',
                       onPressed: _pickAndImportFile,
                       isLoading: _isLoading,
