@@ -6,6 +6,8 @@ import '../core/group_loan_risk.dart';
 import '../providers/group_provider.dart';
 import '../providers/loan_provider.dart';
 import '../providers/payment_provider.dart';
+import '../providers/vendor_provider.dart';
+import '../providers/analytics_provider.dart';
 import '../theme/app_theme.dart';
 import 'loan_details_screen.dart';
 
@@ -24,6 +26,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       context.read<GroupProvider>().fetchGroups();
       context.read<LoanProvider>().fetchLoans();
       context.read<PaymentProvider>().fetchPayments();
+      context.read<VendorProvider>().fetchVendors();
     });
   }
 
@@ -33,6 +36,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final groupProvider = context.watch<GroupProvider>();
     final loanProvider = context.watch<LoanProvider>();
     final paymentProvider = context.watch<PaymentProvider>();
+    final vendorProvider = context.watch<VendorProvider>();
+    final analyticsProvider = context.watch<AnalyticsProvider>();
+
+    // Trigger calculation if data is ready
+    if (!groupProvider.isLoading &&
+        !loanProvider.isLoading &&
+        !paymentProvider.isLoading &&
+        !vendorProvider.isLoading) {
+      analyticsProvider.calculateAnalytics(
+        groups: groupProvider.groups,
+        vendors: vendorProvider.vendors,
+        loans: loanProvider.loans,
+        payments: paymentProvider.payments,
+      );
+    }
 
     final totalGroups = groupProvider.groups.length;
     final totalDisbursed = loanProvider.loans.fold(
@@ -147,7 +165,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               _buildChartCard(
                 theme,
                 'Collection Performance',
-                _buildLineChart(totalDisbursed, totalCollected),
+                _buildLineChart(analyticsProvider.monthlyTrend, totalDisbursed),
               ),
               _buildRecentActivityCard(theme, loanProvider),
               _buildRiskHeatmapCard(theme, groupRisks),
@@ -245,47 +263,224 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildLineChart(double disbursed, double collected) {
-    return LineChart(
-      LineChartData(
-        gridData: const FlGridData(show: false),
-        titlesData: const FlTitlesData(show: false),
-        borderData: FlBorderData(show: false),
-        lineBarsData: [
-          LineChartBarData(
-            spots: [
-              const FlSpot(0, 0),
-              FlSpot(1, disbursed * 0.4),
-              FlSpot(2, disbursed * 0.7),
-              FlSpot(3, disbursed),
+  Widget _buildLineChart(List<MonthlyTrend> trend, double maxDisbursed) {
+    const red = Color(0xFFE35D5B);
+    const green = Color(0xFF38EF7D);
+    const gold = Color(0xFFD4AF37);
+
+    if (trend.isEmpty) {
+      return const Center(child: Text('No trend data available'));
+    }
+
+    final totalDisbursedYTD = trend.fold(0.0, (sum, t) => sum + t.disbursed);
+    final totalCollectedYTD = trend.fold(0.0, (sum, t) => sum + t.collected);
+
+    return Column(
+      children: [
+        // Summary Header
+        Padding(
+          padding: const EdgeInsets.only(bottom: 24.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildChartSummary('Disbursed YTD', 'R ${totalDisbursedYTD.toStringAsFixed(0)}', red),
+              _buildChartSummary('Collected YTD', 'R ${totalCollectedYTD.toStringAsFixed(0)}', green),
             ],
-            isCurved: true,
-            color: const Color(0xFFE35D5B),
-            barWidth: 3,
-            dotData: const FlDotData(show: false),
-            belowBarData: BarAreaData(
-              show: true,
-              color: const Color(0xFFE35D5B).withOpacity(0.1),
+          ),
+        ),
+        // Legend
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildLegendItem('Disbursed Capital', red),
+            const SizedBox(width: 24),
+            _buildLegendItem('Payments Received', green),
+          ],
+        ),
+        const SizedBox(height: 24),
+        Expanded(
+          child: LineChart(
+            LineChartData(
+              minY: 0,
+              gridData: FlGridData(
+                show: true,
+                drawVerticalLine: false,
+                getDrawingHorizontalLine: (value) => FlLine(
+                  color: Colors.white.withOpacity(0.03),
+                  strokeWidth: 1,
+                ),
+              ),
+              titlesData: FlTitlesData(
+                show: true,
+                rightTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                topTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 30,
+                    interval: 1,
+                    getTitlesWidget: (value, meta) {
+                      final index = value.toInt();
+                      if (index < 0 || index >= trend.length) {
+                        return const SizedBox.shrink();
+                      }
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: Text(
+                          trend[index].month,
+                          style: TextStyle(
+                            color: Colors.grey.withOpacity(0.7),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    interval: maxDisbursed > 0 ? maxDisbursed / 4 : 10000,
+                    reservedSize: 42,
+                    getTitlesWidget: (value, meta) => Text(
+                      'R ${(value / 1000).toStringAsFixed(0)}k',
+                      style: TextStyle(
+                        color: Colors.grey.withOpacity(0.7),
+                        fontSize: 10,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              borderData: FlBorderData(show: false),
+              lineTouchData: LineTouchData(
+                touchTooltipData: LineTouchTooltipData(
+                  getTooltipColor: (spot) => const Color(0xFF1A1A1A),
+                  getTooltipItems: (List<LineBarSpot> touchedSpots) {
+                    return touchedSpots.map((spot) {
+                      return LineTooltipItem(
+                        'R ${spot.y.toStringAsFixed(0)}',
+                        TextStyle(
+                          color: spot.bar.color ?? Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      );
+                    }).toList();
+                  },
+                ),
+              ),
+              lineBarsData: [
+                LineChartBarData(
+                  spots: trend.asMap().entries.map((e) {
+                    return FlSpot(e.key.toDouble(), e.value.disbursed);
+                  }).toList(),
+                  isCurved: true,
+                  curveSmoothness: 0.3, // Lower smoothness to prevent dips
+                  color: red,
+                  barWidth: 3,
+                  dotData: FlDotData(
+                    show: true,
+                    getDotPainter: (spot, percent, barData, index) =>
+                        FlDotCirclePainter(
+                      radius: 3,
+                      color: red,
+                      strokeWidth: 1,
+                      strokeColor: Colors.black,
+                    ),
+                  ),
+                  belowBarData: BarAreaData(
+                    show: true,
+                    gradient: LinearGradient(
+                      colors: [
+                        red.withOpacity(0.15),
+                        red.withOpacity(0.0),
+                      ],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                  ),
+                ),
+                LineChartBarData(
+                  spots: trend.asMap().entries.map((e) {
+                    return FlSpot(e.key.toDouble(), e.value.collected);
+                  }).toList(),
+                  isCurved: true,
+                  curveSmoothness: 0.3,
+                  color: green,
+                  barWidth: 3,
+                  dotData: FlDotData(
+                    show: true,
+                    getDotPainter: (spot, percent, barData, index) =>
+                        FlDotCirclePainter(
+                      radius: 3,
+                      color: green,
+                      strokeWidth: 1,
+                      strokeColor: Colors.black,
+                    ),
+                  ),
+                  belowBarData: BarAreaData(
+                    show: true,
+                    gradient: LinearGradient(
+                      colors: [
+                        green.withOpacity(0.15),
+                        green.withOpacity(0.0),
+                      ],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          LineChartBarData(
-            spots: [
-              const FlSpot(0, 0),
-              FlSpot(1, collected * 0.3),
-              FlSpot(2, collected * 0.6),
-              FlSpot(3, collected),
-            ],
-            isCurved: true,
-            color: const Color(0xFF38EF7D),
-            barWidth: 3,
-            dotData: const FlDotData(show: false),
-            belowBarData: BarAreaData(
-              show: true,
-              color: const Color(0xFF38EF7D).withOpacity(0.1),
-            ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildChartSummary(String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: const TextStyle(color: Colors.grey, fontSize: 10),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            color: color,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
           ),
-        ],
-      ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLegendItem(String label, Color color) {
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: const TextStyle(color: Colors.grey, fontSize: 11),
+        ),
+      ],
     );
   }
 
@@ -334,9 +529,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               fontWeight: FontWeight.w600,
                             ),
                           ),
-                          subtitle: Text(
-                            loan.createdAt.toString().substring(0, 10),
-                            style: theme.textTheme.bodySmall,
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                loan.vendorName ?? 'Unknown Vendor',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: AppTheme.primaryGold.withOpacity(0.8),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              Text(
+                                loan.createdAt.toString().substring(0, 10),
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            ],
                           ),
                           trailing: Icon(
                             Icons.chevron_right,

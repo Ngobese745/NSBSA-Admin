@@ -11,6 +11,7 @@ import '../providers/center_provider.dart';
 import '../models/vendor.dart';
 import '../models/group.dart';
 import 'vendor_profile_screen.dart';
+import '../widgets/communication/communication_dialog.dart';
 
 class VendorsScreen extends StatefulWidget {
   const VendorsScreen({super.key});
@@ -236,7 +237,10 @@ class _VendorsScreenState extends State<VendorsScreen> {
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
                               onPressed: () {
-                                // WhatsApp Message logic
+                                showDialog(
+                                  context: context,
+                                  builder: (context) => CommunicationDialog(vendor: vendor),
+                                );
                               },
                             ),
                             const SizedBox(width: 12),
@@ -275,6 +279,7 @@ class _VendorsScreenState extends State<VendorsScreen> {
     final idNumberController = TextEditingController();
     final phoneController = TextEditingController();
     final whatsappController = TextEditingController();
+    final emailController = TextEditingController();
     final businessController = TextEditingController();
     final addressController = TextEditingController();
     final newGroupNameController = TextEditingController();
@@ -486,6 +491,13 @@ class _VendorsScreenState extends State<VendorsScreen> {
                       ),
                       const SizedBox(height: 16),
                       TextField(
+                        controller: emailController,
+                        decoration: const InputDecoration(
+                          labelText: 'Email Address',
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
                         controller: businessController,
                         decoration: const InputDecoration(
                           labelText: 'Business Type',
@@ -581,6 +593,7 @@ class _VendorsScreenState extends State<VendorsScreen> {
                         idNumber: idNumberController.text,
                         phone: phoneController.text,
                         whatsappNumber: whatsappController.text,
+                        email: emailController.text,
                         gender: selectedGender,
                         businessType: businessController.text,
                         address: addressController.text,

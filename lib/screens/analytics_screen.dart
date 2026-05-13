@@ -560,13 +560,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       reservedSize: 30,
                       interval: 1,
                       getTitlesWidget: (value, meta) {
-                        if (value.toInt() < provider.collectionTrend.length) {
+                        final index = value.toInt();
+                        if (index >= 0 && index < provider.monthlyTrend.length) {
                           return Padding(
                             padding: const EdgeInsets.only(top: 8.0),
                             child: Text(
-                              provider.collectionTrend[value.toInt()].month
-                                  .split('-')
-                                  .last,
+                              provider.monthlyTrend[index].month,
                               style: const TextStyle(
                                 color: Colors.grey,
                                 fontSize: 12,
@@ -596,10 +595,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 borderData: FlBorderData(show: false),
                 lineBarsData: [
                   LineChartBarData(
-                    spots: provider.collectionTrend
+                    spots: provider.monthlyTrend
                         .asMap()
                         .entries
-                        .map((e) => FlSpot(e.key.toDouble(), e.value.amount))
+                        .map((e) => FlSpot(e.key.toDouble(), e.value.collected))
                         .toList(),
                     isCurved: true,
                     color: theme.colorScheme.primary,

@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:universal_html/html.dart' as html;
 import '../services/import_service.dart';
 import '../services/system_audit_service.dart';
-import '../providers/auth_provider.dart';
+import '../providers/providers.dart';
 
 class ImportScreen extends StatefulWidget {
   const ImportScreen({super.key});
@@ -16,15 +16,11 @@ class ImportScreen extends StatefulWidget {
 }
 
 class _ImportScreenState extends State<ImportScreen> {
-  final _importService = ImportService();
-  bool _isLoading = false;
-  String? _statusMessage;
+  final _importService = ImportService(); // Still used for file picking/downloading directly
 
   Future<void> _pickAndImportFile() async {
-    setState(() {
-      _isLoading = true;
-      _statusMessage = 'Selecting file...';
-    });
+    final provider = context.read<ImportProvider>();
+    if (provider.isImporting) return;
 
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -34,42 +30,36 @@ class _ImportScreenState extends State<ImportScreen> {
       );
 
       if (result != null) {
-        setState(
-          () => _statusMessage = 'Importing data... this may take a moment.',
-        );
-        await _importService.importExcel(result.files.first.bytes!);
-
-        await SystemAuditService.logAction(
-          actionType: 'IMPORT',
-          affectedEntity: 'SYSTEM',
-          description: 'Imported Excel loan book data.',
-        );
-
-        setState(() => _statusMessage = 'Import successful!');
+        // Run the import in background through provider
+        provider.runImport(result.files.first.bytes!);
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Import started in background...'),
+              backgroundColor: Colors.blueAccent,
+            ),
+          );
+        }
       } else {
-        setState(() => _statusMessage = 'No file selected.');
+        provider.setStatus('No file selected.');
       }
     } catch (e) {
-      setState(() => _statusMessage = 'Error during import: $e');
-    } finally {
-      setState(() => _isLoading = false);
+      provider.setStatus('Error during import: $e');
     }
   }
 
   Future<void> _handleBackup() async {
-    setState(() {
-      _isLoading = true;
-      _statusMessage = 'Generating system backup...';
-    });
+    final provider = context.read<ImportProvider>();
+    provider.startBackup();
+    provider.setStatus('Generating system backup...');
 
     try {
       final backupData = await _importService.generateBackup();
       final jsonString = jsonEncode(backupData);
-
-      // Basic Encryption (Base64) - in production use a real encryption key
       final encryptedString = base64Encode(utf8.encode(jsonString));
-
       final bytes = utf8.encode(encryptedString);
+      
       final blob = html.Blob([bytes]);
       final url = html.Url.createObjectUrlFromBlob(blob);
       final anchor = html.AnchorElement(href: url)
@@ -86,21 +76,16 @@ class _ImportScreenState extends State<ImportScreen> {
         description: 'Generated and downloaded a system backup.',
       );
 
-      setState(
-        () => _statusMessage = 'Backup generated and downloaded successfully.',
-      );
+      provider.endBackup('Backup generated and downloaded successfully.');
     } catch (e) {
-      setState(() => _statusMessage = 'Backup failed: $e');
-    } finally {
-      setState(() => _isLoading = false);
+      provider.endBackup('Backup failed: $e');
     }
   }
 
   Future<void> _handleRestore() async {
-    setState(() {
-      _isLoading = true;
-      _statusMessage = 'Selecting backup file...';
-    });
+    final provider = context.read<ImportProvider>();
+    provider.startRestore();
+    provider.setStatus('Selecting backup file...');
 
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -109,7 +94,7 @@ class _ImportScreenState extends State<ImportScreen> {
       );
 
       if (result != null) {
-        setState(() => _statusMessage = 'Decrypting and restoring data...');
+        provider.setStatus('Decrypting and restoring data...');
 
         final encryptedString = utf8.decode(result.files.first.bytes!);
         final jsonString = utf8.decode(base64Decode(encryptedString));
@@ -123,15 +108,12 @@ class _ImportScreenState extends State<ImportScreen> {
           description: 'Restored system from a backup file.',
         );
 
-        setState(() => _statusMessage = 'System restored successfully!');
+        provider.endRestore('System restored successfully!');
+      } else {
+        provider.endRestore(null);
       }
     } catch (e) {
-      setState(
-        () => _statusMessage =
-            'Restore failed: Ensure the file is a valid NSBSA backup. Error: $e',
-      );
-    } finally {
-      setState(() => _isLoading = false);
+      provider.endRestore('Restore failed: Ensure the file is valid. $e');
     }
   }
 
@@ -139,8 +121,14 @@ class _ImportScreenState extends State<ImportScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final authProvider = Provider.of<AuthProvider>(context);
+    final importProvider = context.watch<ImportProvider>();
+    
     final isSuperAdmin = authProvider.userRole == 'Super Admin';
     final isAdmin = authProvider.userRole == 'Admin' || isSuperAdmin;
+
+    final isLoadingAny = importProvider.isImporting || 
+                         importProvider.isBackupRunning || 
+                         importProvider.isRestoreRunning;
 
     return Scaffold(
       body: SingleChildScrollView(
@@ -183,7 +171,7 @@ class _ImportScreenState extends State<ImportScreen> {
                       icon: Icons.table_view,
                       buttonLabel: 'Select Excel File',
                       onPressed: _pickAndImportFile,
-                      isLoading: _isLoading,
+                      isLoading: importProvider.isImporting,
                       color: theme.primaryColor,
                     ),
                     if (isAdmin)
@@ -194,7 +182,7 @@ class _ImportScreenState extends State<ImportScreen> {
                         icon: Icons.backup,
                         buttonLabel: 'Backup Data',
                         onPressed: _handleBackup,
-                        isLoading: _isLoading,
+                        isLoading: importProvider.isBackupRunning,
                         color: Colors.blueAccent,
                       ),
                   ],
@@ -209,58 +197,91 @@ class _ImportScreenState extends State<ImportScreen> {
                     icon: Icons.restore,
                     buttonLabel: 'Restore Data',
                     onPressed: () => _confirmRestore(context),
-                    isLoading: _isLoading,
+                    isLoading: importProvider.isRestoreRunning,
                     color: Colors.orangeAccent,
                     fullWidth: true,
                   ),
                 ],
 
-                if (_statusMessage != null) ...[
+                if (importProvider.statusMessage != null) ...[
                   const SizedBox(height: 32),
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color:
-                          _statusMessage!.contains('Error') ||
-                              _statusMessage!.contains('failed')
+                      color: importProvider.statusMessage!.contains('Error') ||
+                              importProvider.statusMessage!.contains('failed')
                           ? Colors.red.withOpacity(0.1)
                           : Colors.green.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                        color:
-                            _statusMessage!.contains('Error') ||
-                                _statusMessage!.contains('failed')
+                        color: importProvider.statusMessage!.contains('Error') ||
+                                importProvider.statusMessage!.contains('failed')
                             ? Colors.red
                             : Colors.green,
                       ),
                     ),
-                    child: Row(
+                    child: Column(
                       children: [
-                        Icon(
-                          _statusMessage!.contains('Error') ||
-                                  _statusMessage!.contains('failed')
-                              ? Icons.error_outline
-                              : Icons.check_circle_outline,
-                          color:
-                              _statusMessage!.contains('Error') ||
-                                  _statusMessage!.contains('failed')
-                              ? Colors.red
-                              : Colors.green,
+                        Row(
+                          children: [
+                            if (isLoadingAny)
+                              const SizedBox(
+                                height: 16,
+                                width: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.green),
+                                ),
+                              )
+                            else
+                              Icon(
+                                importProvider.statusMessage!.contains('Error') ||
+                                        importProvider.statusMessage!.contains('failed')
+                                    ? Icons.error_outline
+                                    : Icons.check_circle_outline,
+                                color: importProvider.statusMessage!.contains('Error') ||
+                                        importProvider.statusMessage!.contains('failed')
+                                    ? Colors.red
+                                    : Colors.green,
+                              ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                importProvider.statusMessage!,
+                                style: TextStyle(
+                                  color: importProvider.statusMessage!.contains('Error') ||
+                                          importProvider.statusMessage!.contains('failed')
+                                      ? Colors.red
+                                      : Colors.green,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            _statusMessage!,
-                            style: TextStyle(
-                              color:
-                                  _statusMessage!.contains('Error') ||
-                                      _statusMessage!.contains('failed')
-                                  ? Colors.red
-                                  : Colors.green,
-                              fontWeight: FontWeight.w600,
+                        if (importProvider.isImporting && importProvider.progress > 0) ...[
+                          const SizedBox(height: 16),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: importProvider.progress,
+                              backgroundColor: Colors.white10,
+                              valueColor: const AlwaysStoppedAnimation<Color>(
+                                  Colors.green),
+                              minHeight: 6,
                             ),
                           ),
-                        ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${(importProvider.progress * 100).toInt()}% Complete',
+                            style: TextStyle(
+                              color: Colors.green.withOpacity(0.7),
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -425,11 +446,9 @@ class _ImportScreenState extends State<ImportScreen> {
           ),
           TextButton(
             onPressed: () async {
+              final provider = context.read<ImportProvider>();
               Navigator.pop(context);
-              setState(() {
-                _isLoading = true;
-                _statusMessage = 'Clearing all data...';
-              });
+              provider.setStatus('Clearing all data...');
               try {
                 await _importService.clearAllData();
                 await SystemAuditService.logAction(
@@ -437,11 +456,9 @@ class _ImportScreenState extends State<ImportScreen> {
                   affectedEntity: 'SYSTEM',
                   description: 'Cleared all system data.',
                 );
-                setState(() => _statusMessage = 'System reset successfully!');
+                provider.setStatus('System reset successfully!');
               } catch (e) {
-                setState(() => _statusMessage = 'Error clearing data: $e');
-              } finally {
-                setState(() => _isLoading = false);
+                provider.setStatus('Error clearing data: $e');
               }
             },
             child: const Text(

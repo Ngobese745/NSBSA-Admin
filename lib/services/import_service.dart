@@ -9,15 +9,35 @@ import 'notification_service.dart';
 class ImportService {
   final _supabase = Supabase.instance.client;
 
-  Future<void> importExcel(List<int> bytes) async {
+  Future<void> importExcel(List<int> bytes, {Function(double, String)? onProgress}) async {
+    onProgress?.call(0.0, 'Analyzing Excel file...');
     var decoder = SpreadsheetDecoder.decodeBytes(bytes);
-    Set<String> processedGroupLoans =
-        {}; // Track groups that already got a loan in this sheet
-
+    
+    // 1. Calculate total valid rows for progress tracking
+    int totalValidRows = 0;
+    List<String> validSheets = [];
     for (var table in decoder.tables.keys) {
-      if (!_isMonthSheet(table)) continue;
+      if (_isMonthSheet(table)) {
+        validSheets.add(table);
+        var sheet = decoder.tables[table]!;
+        for (int i = 1; i < sheet.maxRows; i++) {
+          if (sheet.rows[i].isNotEmpty && sheet.rows[i][0] != null) {
+            totalValidRows++;
+          }
+        }
+      }
+    }
 
+    if (totalValidRows == 0) {
+      throw Exception('No valid data found in any month sheet (January-December).');
+    }
+
+    int processedRows = 0;
+    onProgress?.call(0.05, 'Importing $totalValidRows records...');
+
+    for (var table in validSheets) {
       var sheet = decoder.tables[table]!;
+      DateTime sheetDate = _getSheetDate(table);
 
       for (int i = 1; i < sheet.maxRows; i++) {
         var row = sheet.rows[i];
@@ -26,79 +46,85 @@ class ImportService {
         String name = row[0]?.toString() ?? '';
         if (name.isEmpty || name == 'null') continue;
 
-        String idNumber = row[1]?.toString() ?? '';
-        String phone = row[2]?.toString() ?? '';
-        String groupName = row[3]?.toString() ?? 'Default Group';
-        String businessType = row[4]?.toString() ?? '';
-        String dfName = row[5]?.toString() ?? '';
-        String gender = row[6]?.toString() ?? '';
+        processedRows++;
+        double progress = 0.05 + (processedRows / totalValidRows * 0.9);
+        onProgress?.call(progress, 'Processing: $name ($table)');
 
-        double amount = _toDouble(row[7]);
-        int term = _toInt(row[8]);
-        DateTime? firstPaymentDate = _toDateTime(row[9]);
-        double openingAmount = _toDouble(row[10]);
-        double initiationFee = _toDouble(row[11]);
-        double adminFee = _toDouble(row[12]);
-        double monthlyInstalment = _toDouble(row.length > 13 ? row[13] : 0);
-        double penaltyFee = _toDouble(row.length > 14 ? row[14] : 0);
+        try {
+          String idNumber = row[1]?.toString() ?? '';
+          String phone = row[2]?.toString() ?? '';
+          String groupName = row[3]?.toString() ?? 'Default Group';
+          String businessType = row[4]?.toString() ?? '';
+          String dfName = row[5]?.toString() ?? '';
+          String gender = row[6]?.toString() ?? '';
 
-        // Actual paid amounts
-        double paidInit = _toDouble(row.length > 15 ? row[15] : 0);
-        double paidAdmin = _toDouble(row.length > 16 ? row[16] : 0);
-        double paidInstalment = _toDouble(row.length > 17 ? row[17] : 0);
-        double paidPenalty = _toDouble(row.length > 18 ? row[18] : 0);
-        double totalPaidThisMonth =
-            paidInit + paidAdmin + paidInstalment + paidPenalty;
+          double amount = _toDouble(row[7]);
+          int term = _toInt(row[8]);
+          DateTime? firstPaymentDate = _toDateTime(row[9]);
+          double openingAmount = _toDouble(row[10]);
+          double initiationFee = _toDouble(row[11]);
+          double adminFee = _toDouble(row[12]);
+          double monthlyInstalment = _toDouble(row.length > 13 ? row[13] : 0);
+          double penaltyFee = _toDouble(row.length > 14 ? row[14] : 0);
 
-        // 1. Get or Create Group
-        String groupId = await _getOrCreateGroup(groupName);
+          double paidInit = _toDouble(row.length > 15 ? row[15] : 0);
+          double paidAdmin = _toDouble(row.length > 16 ? row[16] : 0);
+          double paidInstalment = _toDouble(row.length > 17 ? row[17] : 0);
+          double paidPenalty = _toDouble(row.length > 18 ? row[18] : 0);
+          double totalPaidThisMonth = paidInit + paidAdmin + paidInstalment + paidPenalty;
 
-        // 2. Get or Create Vendor
-        String vendorId = await _getOrCreateVendor(
-          groupId: groupId,
-          name: name,
-          phone: phone,
-          idNumber: idNumber,
-          businessType: businessType,
-          dfName: dfName,
-          gender: gender,
-        );
+          // 1. Get or Create Group
+          String groupId = await _getOrCreateGroup(groupName);
 
-        // 3. Handle Loan & Payment Logic
-        if (amount > 0) {
-          // Check if this vendor already has an active loan of this amount
-          String? existingLoanId = await _findExistingLoan(vendorId, amount);
+          // 2. Get or Create Vendor
+          String vendorId = await _getOrCreateVendor(
+            groupId: groupId,
+            name: name,
+            phone: phone,
+            idNumber: idNumber,
+            businessType: businessType,
+            dfName: dfName,
+            gender: gender,
+          );
 
-          if (existingLoanId == null) {
-            // First time seeing this loan, create it
-            existingLoanId = await _upsertLoan(
-              groupId: groupId,
-              vendorId: vendorId,
-              amount: amount,
-              term: term,
-              monthlyPayment: monthlyInstalment,
-              initiationFee: initiationFee,
-              adminFee: adminFee,
-              penaltyFee: penaltyFee,
-              openingAmount: openingAmount,
-              firstPaymentDate: firstPaymentDate,
-            );
+          // 3. Handle Loan & Payment Logic
+          if (amount > 0) {
+            String? existingLoanId = await _findExistingLoan(vendorId, amount);
+
+            if (existingLoanId == null) {
+              existingLoanId = await _upsertLoan(
+                groupId: groupId,
+                vendorId: vendorId,
+                amount: amount,
+                term: term,
+                monthlyPayment: monthlyInstalment,
+                initiationFee: initiationFee,
+                adminFee: adminFee,
+                penaltyFee: penaltyFee,
+                openingAmount: openingAmount,
+                firstPaymentDate: firstPaymentDate,
+              );
+            }
+
+            if (totalPaidThisMonth > 0) {
+              await _recordPayment(
+                loanId: existingLoanId,
+                amount: totalPaidThisMonth,
+                date: sheetDate,
+              );
+            }
           }
-
-          if (totalPaidThisMonth > 0) {
-            await _recordPayment(
-              loanId: existingLoanId,
-              amount: totalPaidThisMonth,
-              date: _getSheetDate(table),
-            );
-          }
+        } catch (e) {
+          debugPrint('Error importing row for $name: $e');
+          // Continue with next row
         }
       }
     }
 
+    onProgress?.call(1.0, 'Finalizing import...');
     await NotificationService.notifyAdmins(
       'Data Import Complete',
-      'The Excel data import has finished successfully.',
+      'The Excel data import has finished successfully. $totalValidRows records processed.',
       type: 'SYSTEM',
     );
   }

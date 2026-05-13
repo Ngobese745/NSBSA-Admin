@@ -11,12 +11,14 @@ class LoanModel {
   final double? penaltyFee;
   final double? openingAmount;
   final DateTime? firstInstalmentDate;
+  final String? vendorName;
   final DateTime createdAt;
 
   LoanModel({
     required this.id,
     required this.groupId,
     this.vendorId,
+    this.vendorName,
     required this.amount,
     required this.durationMonths,
     required this.monthlyPayment,
@@ -30,10 +32,19 @@ class LoanModel {
   });
 
   factory LoanModel.fromJson(Map<String, dynamic> json) {
+    // Handle nested vendor name from Supabase join: vendors(name)
+    String? vName;
+    if (json['vendors'] != null && json['vendors'] is Map) {
+      vName = json['vendors']['name'];
+    } else if (json['vendor_name'] != null) {
+      vName = json['vendor_name'];
+    }
+
     return LoanModel(
       id: json['id'],
       groupId: json['group_id'],
       vendorId: json['vendor_id'],
+      vendorName: vName,
       amount: (json['amount'] as num).toDouble(),
       durationMonths: json['duration_months'],
       monthlyPayment: (json['monthly_payment'] as num).toDouble(),
@@ -61,6 +72,7 @@ class LoanModel {
     final map = <String, dynamic>{
       'group_id': groupId,
       'vendor_id': vendorId,
+      'vendor_name': vendorName,
       'amount': amount,
       'duration_months': durationMonths,
       'monthly_payment': monthlyPayment,

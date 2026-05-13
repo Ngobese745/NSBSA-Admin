@@ -168,6 +168,7 @@ class GroupsScreen extends StatelessWidget {
         'gender': TextEditingController(text: 'F'),
         'business': TextEditingController(),
         'whatsapp': TextEditingController(),
+        'email': TextEditingController(),
         'address': TextEditingController(),
         'role': TextEditingController(text: 'Member'),
         'savings_amount': TextEditingController(text: '0'),
@@ -280,6 +281,7 @@ class GroupsScreen extends StatelessWidget {
                                   'gender': TextEditingController(text: 'F'),
                                   'business': TextEditingController(),
                                   'whatsapp': TextEditingController(),
+                                  'email': TextEditingController(),
                                   'address': TextEditingController(),
                                   'role': TextEditingController(text: 'Member'),
                                   'savings_amount': TextEditingController(
@@ -480,6 +482,23 @@ class GroupsScreen extends StatelessWidget {
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: TextField(
+                                      controller: controllers['email'],
+                                      style: TextStyle(
+                                        color: Theme.of(
+                                          context,
+                                        ).textTheme.bodyMedium?.color,
+                                      ),
+                                      decoration: const InputDecoration(
+                                        labelText: 'Email',
+                                        labelStyle: TextStyle(
+                                          color: Colors.grey,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: TextField(
                                       controller: controllers['business'],
                                       style: TextStyle(
                                         color: Theme.of(
@@ -628,6 +647,7 @@ class GroupsScreen extends StatelessWidget {
                             'gender': controllers['gender']!.text,
                             'business': controllers['business']!.text,
                             'whatsapp': controllers['whatsapp']!.text,
+                            'email': controllers['email']!.text,
                             'address': controllers['address']!.text,
                             'role': controllers['role']!.text,
                             'savings_amount':

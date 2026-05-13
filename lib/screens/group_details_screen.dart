@@ -885,8 +885,21 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     final loan = _loans[index];
                     return ListTile(
                       title: Text('Loan R ${loan.amount}'),
-                      subtitle: Text(
-                        'Status: ${loan.status} • Term: ${loan.durationMonths} Months',
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            loan.vendorName ?? 'Unknown Member',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: AppTheme.primaryGold.withOpacity(0.8),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          Text(
+                            'Status: ${loan.status} • Term: ${loan.durationMonths} Months',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ],
                       ),
                       onTap: () {
                         Navigator.push(
@@ -1557,6 +1570,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     final businessController = TextEditingController();
     final dfController = TextEditingController();
     final whatsappController = TextEditingController();
+    final emailController = TextEditingController();
     final addressController = TextEditingController();
     final savingsAmountController = TextEditingController(text: '0');
     String selectedGender = 'F';
@@ -1699,6 +1713,16 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     ),
                     decoration: const InputDecoration(
                       labelText: 'WhatsApp',
+                      labelStyle: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                  TextField(
+                    controller: emailController,
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Email Address',
                       labelStyle: TextStyle(color: Colors.grey),
                     ),
                   ),
@@ -1865,6 +1889,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     businessType: businessController.text,
                     dfName: dfController.text,
                     whatsappNumber: whatsappController.text,
+                    email: emailController.text,
                     address: addressController.text,
                     role: selectedRole,
                     savingsAmount:

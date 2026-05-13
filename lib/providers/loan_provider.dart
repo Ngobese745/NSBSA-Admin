@@ -30,7 +30,7 @@ class LoanProvider with ChangeNotifier {
     try {
       final response = await _supabase
           .from('loans')
-          .select()
+          .select('*, vendors(name)')
           .order('created_at', ascending: false);
       _loans = (response as List).map((e) => LoanModel.fromJson(e)).toList();
 
@@ -48,9 +48,12 @@ class LoanProvider with ChangeNotifier {
 
   Future<LoanModel> addLoan(LoanModel loan) async {
     try {
+      final loanData = loan.toJson();
+      loanData.remove('vendor_name'); // Prevent schema cache error
+      
       final response = await _supabase
           .from('loans')
-          .insert(loan.toJson())
+          .insert(loanData)
           .select()
           .single();
       final newLoan = LoanModel.fromJson(response);
@@ -88,7 +91,7 @@ class LoanProvider with ChangeNotifier {
     try {
       final response = await _supabase
           .from('loans')
-          .select()
+          .select('*, vendors(name)')
           .eq('group_id', groupId)
           .order('created_at', ascending: false);
       return (response as List).map((e) => LoanModel.fromJson(e)).toList();
@@ -100,9 +103,12 @@ class LoanProvider with ChangeNotifier {
 
   Future<void> updateLoan(String id, Map<String, dynamic> updates) async {
     try {
+      final safeUpdates = Map<String, dynamic>.from(updates);
+      safeUpdates.remove('vendor_name'); // Prevent schema cache error
+      
       final response = await _supabase
           .from('loans')
-          .update(updates)
+          .update(safeUpdates)
           .eq('id', id)
           .select()
           .single();

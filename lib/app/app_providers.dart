@@ -27,5 +27,6 @@ List<SingleChildWidget> buildAppProviders() {
     ),
     ChangeNotifierProvider(create: (_) => MarketingProvider()..fetchCampaigns()),
     ChangeNotifierProvider(create: (_) => ApiManagementProvider()),
+    ChangeNotifierProvider(create: (_) => ImportProvider()),
   ];
 }

@@ -291,8 +291,13 @@ Future<void> _openKeyEditor(BuildContext context, Map<String, dynamic>? existing
   final apiProv = context.read<ApiManagementProvider>();
   
   final labelCtrl = TextEditingController(text: existing?['label'] ?? '');
-  final keyCtrl = TextEditingController();
   String service = existing?['service_name'] ?? 'wesender';
+  
+  final existingKey = existing?['api_key']?.toString() ?? '';
+  final parts = existingKey.split(':');
+  
+  final clientIdCtrl = TextEditingController(text: (parts.isNotEmpty && service == 'smsworx') ? parts[0] : '');
+  final apiSecretCtrl = TextEditingController(text: (parts.length > 1 && service == 'smsworx') ? parts[1] : (service != 'smsworx' ? existingKey : ''));
 
   final result = await showDialog<bool>(
     context: context,
@@ -317,25 +322,54 @@ Future<void> _openKeyEditor(BuildContext context, Map<String, dynamic>? existing
               decoration: const InputDecoration(labelText: 'Description / Label', hintText: 'e.g. Production Key 2025'),
             ),
             const SizedBox(height: 16),
-            TextField(
-              controller: keyCtrl,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'API Key',
-                hintText: 'Enter your secure key',
-                helperText: 'Key will be masked and stored securely.',
+            if (service == 'smsworx') ...[
+              TextField(
+                controller: clientIdCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Client ID (Username)',
+                  hintText: 'Enter your SMSWorx Client ID',
+                ),
               ),
-            ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: apiSecretCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'API Secret (Password)',
+                  hintText: 'Enter your SMSWorx API Secret',
+                ),
+              ),
+            ] else ...[
+              TextField(
+                controller: apiSecretCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'API Key',
+                  hintText: 'Enter your secure key',
+                  helperText: 'Key will be masked and stored securely.',
+                ),
+              ),
+            ],
           ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           FilledButton(
             onPressed: () async {
-              if (keyCtrl.text.isEmpty) return;
-              final testOk = await apiProv.testConnection(service, keyCtrl.text);
+              final String finalKey = service == 'smsworx' 
+                  ? '${clientIdCtrl.text.trim()}:${apiSecretCtrl.text.trim()}'
+                  : apiSecretCtrl.text.trim();
+              
+              if (finalKey.isEmpty || (service == 'smsworx' && (clientIdCtrl.text.isEmpty || apiSecretCtrl.text.isEmpty))) {
+                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Please fill in all fields')));
+                return;
+              }
+
+              final testOk = await apiProv.testConnection(service, finalKey);
               if (testOk && ctx.mounted) {
                 Navigator.pop(ctx, true);
+              } else if (ctx.mounted) {
+                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Connection Test Failed'), backgroundColor: Colors.red));
               }
             },
             child: const Text('Test & Save'),
@@ -346,11 +380,15 @@ Future<void> _openKeyEditor(BuildContext context, Map<String, dynamic>? existing
   );
 
   if (result == true && context.mounted) {
+    final String finalKey = service == 'smsworx' 
+        ? '${clientIdCtrl.text.trim()}:${apiSecretCtrl.text.trim()}'
+        : apiSecretCtrl.text.trim();
+
     try {
       await apiProv.saveKey(
         serviceName: service,
         label: labelCtrl.text,
-        apiKey: keyCtrl.text,
+        apiKey: finalKey,
         userId: auth.userProfile!.id,
         userEmail: auth.userProfile!.email!,
       );

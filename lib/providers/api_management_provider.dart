@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/system_audit_service.dart';
+import '../services/smsworx_service.dart';
+import '../services/wesender_service.dart';
 
 class ApiManagementProvider with ChangeNotifier {
   final _supabase = Supabase.instance.client;
@@ -98,9 +100,15 @@ class ApiManagementProvider with ChangeNotifier {
   }
 
   Future<bool> testConnection(String serviceName, String apiKey) async {
-    // Placeholder for actual API connection testing
-    // In a real scenario, this would call a cloud function or 
-    // a lightweight health-check endpoint of the service.
+    if (serviceName.toLowerCase() == 'smsworx') {
+      final parts = apiKey.split(':');
+      if (parts.length != 2) return false;
+      return await SMSWorxService().testConnection(parts[0], parts[1]);
+    } else if (serviceName.toLowerCase() == 'wesender') {
+      return await WeSenderService().testConnection(apiKey);
+    }
+
+    // Placeholder for other services
     await Future.delayed(const Duration(seconds: 1));
     return true; // Simulate success
   }

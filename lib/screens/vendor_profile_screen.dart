@@ -27,6 +27,8 @@ import '../services/vendor_pdf_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../widgets/communication/communication_dialog.dart';
+
 class VendorProfileScreen extends StatefulWidget {
   final VendorModel vendor;
 
@@ -127,6 +129,16 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.chat_bubble_outline, size: 20),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => CommunicationDialog(vendor: _currentVendor),
+              );
+            },
+            tooltip: 'Send Message',
+          ),
           IconButton(
             icon: const Icon(Icons.edit_outlined, size: 20),
             onPressed: () => _showEditVendorDialog(context),
@@ -724,6 +736,11 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                 'Business',
                 _currentVendor.businessType ?? 'N/A',
                 Icons.business_center_outlined,
+              ),
+              _buildInfoRow(
+                'Email',
+                _currentVendor.email ?? 'N/A',
+                Icons.email_outlined,
               ),
               InkWell(
                 onTap: () => _showUpdateSavingsDialog(context),
@@ -1353,6 +1370,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     final whatsappController = TextEditingController(
       text: _currentVendor.whatsappNumber,
     );
+    final emailController = TextEditingController(text: _currentVendor.email);
     final addressController = TextEditingController(
       text: _currentVendor.address,
     );
@@ -1423,6 +1441,17 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: emailController,
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: 'Email Address',
+                      labelStyle: TextStyle(color: Colors.grey),
+                    ),
                   ),
                   const SizedBox(height: 16),
                   Row(
@@ -1658,6 +1687,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                   'gender': selectedGender,
                   'df_name': dfNameController.text,
                   'whatsapp_number': whatsappController.text,
+                  'email': emailController.text,
                   'address': addressController.text,
                   'role': selectedRole,
                   'savings_amount':
@@ -1684,6 +1714,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                         gender: selectedGender,
                         businessType: businessController.text,
                         whatsappNumber: whatsappController.text,
+                        email: emailController.text,
                         dfName: dfNameController.text,
                         address: addressController.text,
                         role: selectedRole,

@@ -9,8 +9,8 @@ class AnalyticsProvider with ChangeNotifier {
   bool _isLoading = false;
   bool get isLoading => _isLoading;
 
-  List<MonthlyData> _collectionTrend = [];
-  List<MonthlyData> get collectionTrend => _collectionTrend;
+  List<MonthlyTrend> _monthlyTrend = [];
+  List<MonthlyTrend> get monthlyTrend => _monthlyTrend;
 
   List<GroupPerformance> _topGroups = [];
   List<GroupPerformance> get topGroups => _topGroups;
@@ -34,10 +34,9 @@ class AnalyticsProvider with ChangeNotifier {
     required List<PaymentModel> payments,
   }) {
     _isLoading = true;
-    // notifyListeners(); // Delay notify to avoid build errors if called during build
 
-    // 1. Collection Trend (Last 6 Months)
-    _collectionTrend = _calculateCollectionTrend(payments);
+    // 1. Monthly Trend (Jan to Now)
+    _monthlyTrend = _calculateMonthlyTrend(loans, payments);
 
     // 2. Top Groups by Collection
     _calculateTopGroups(groups, vendors, loans, payments);
@@ -49,28 +48,60 @@ class AnalyticsProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  List<MonthlyData> _calculateCollectionTrend(List<PaymentModel> payments) {
+  List<MonthlyTrend> _calculateMonthlyTrend(
+    List<LoanModel> loans,
+    List<PaymentModel> payments,
+  ) {
     final now = DateTime.now();
-    final Map<String, double> monthlyTotals = {};
+    final Map<int, double> monthlyDisbursed = {};
+    final Map<int, double> monthlyCollected = {};
 
-    for (int i = 5; i >= 0; i--) {
-      final monthDate = DateTime(now.year, now.month - i, 1);
-      final key =
-          '${monthDate.year}-${monthDate.month.toString().padLeft(2, '0')}';
-      monthlyTotals[key] = 0;
+    // Initialize months from Jan (1) to current month
+    for (int i = 1; i <= now.month; i++) {
+      monthlyDisbursed[i] = 0;
+      monthlyCollected[i] = 0;
     }
 
-    for (var p in payments) {
-      final key =
-          '${p.datePaid.year}-${p.datePaid.month.toString().padLeft(2, '0')}';
-      if (monthlyTotals.containsKey(key)) {
-        monthlyTotals[key] = monthlyTotals[key]! + p.amountPaid;
+    // Process loans for disbursement trend
+    for (var l in loans) {
+      if (l.createdAt.year == now.year && l.createdAt.month <= now.month) {
+        monthlyDisbursed[l.createdAt.month] =
+            (monthlyDisbursed[l.createdAt.month] ?? 0) + l.amount;
       }
     }
 
-    return monthlyTotals.entries
-        .map((e) => MonthlyData(e.key, e.value))
-        .toList();
+    // Process payments for collection trend
+    for (var p in payments) {
+      if (p.datePaid.year == now.year && p.datePaid.month <= now.month) {
+        monthlyCollected[p.datePaid.month] =
+            (monthlyCollected[p.datePaid.month] ?? 0) + p.amountPaid;
+      }
+    }
+
+    final List<String> monthNames = [
+      '',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+
+    return List.generate(now.month, (index) {
+      final m = index + 1;
+      return MonthlyTrend(
+        monthNames[m],
+        monthlyDisbursed[m] ?? 0.0,
+        monthlyCollected[m] ?? 0.0,
+      );
+    });
   }
 
   void _calculateTopGroups(
@@ -80,23 +111,26 @@ class AnalyticsProvider with ChangeNotifier {
     List<PaymentModel> payments,
   ) {
     final Map<String, double> groupCollections = {};
-    
+
     // Create maps for faster lookup
     final Map<String, String> vendorToGroup = {
       for (var v in vendors) v.id: v.groupId
     };
     final Map<String, String> loanToGroup = {};
     for (var l in loans) {
-      final groupId = vendorToGroup[l.vendorId];
-      if (groupId != null) {
-        loanToGroup[l.id] = groupId;
+      if (l.vendorId != null) {
+        final groupId = vendorToGroup[l.vendorId];
+        if (groupId != null) {
+          loanToGroup[l.id] = groupId;
+        }
       }
     }
 
     for (var p in payments) {
       final groupId = loanToGroup[p.loanId];
       if (groupId != null) {
-        groupCollections[groupId] = (groupCollections[groupId] ?? 0) + p.amountPaid;
+        groupCollections[groupId] =
+            (groupCollections[groupId] ?? 0) + p.amountPaid;
       }
     }
 
@@ -132,9 +166,7 @@ class AnalyticsProvider with ChangeNotifier {
       int overdueCount = 0;
 
       for (var loan in vendorLoans) {
-        final loanPayments = payments
-            .where((p) => p.loanId == loan.id)
-            .toList();
+        final loanPayments = payments.where((p) => p.loanId == loan.id).toList();
         final expected =
             loan.amount +
             (loan.initiationFee ?? 0) +
@@ -154,9 +186,7 @@ class AnalyticsProvider with ChangeNotifier {
         }
       }
 
-      double repaymentRate = totalExpected > 0
-          ? (totalPaid / totalExpected)
-          : 1.0;
+      double repaymentRate = totalExpected > 0 ? (totalPaid / totalExpected) : 1.0;
       double score = (repaymentRate * 80) + (overdueCount > 0 ? 0 : 20);
       _vendorCreditScores[vendor.id] = score.clamp(0, 100);
     }
@@ -178,10 +208,11 @@ class AnalyticsProvider with ChangeNotifier {
   }
 }
 
-class MonthlyData {
+class MonthlyTrend {
   final String month;
-  final double amount;
-  MonthlyData(this.month, this.amount);
+  final double disbursed;
+  final double collected;
+  MonthlyTrend(this.month, this.disbursed, this.collected);
 }
 
 class GroupPerformance {

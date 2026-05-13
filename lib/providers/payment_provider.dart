@@ -8,6 +8,9 @@ import '../services/loan_calculation_service.dart';
 import '../services/system_audit_service.dart';
 import '../services/notification_service.dart';
 
+import 'package:intl/intl.dart';
+import '../services/communication_service.dart';
+
 class PaymentProvider with ChangeNotifier {
   final _supabase = Supabase.instance.client;
   List<PaymentModel> _payments = [];
@@ -94,10 +97,44 @@ class PaymentProvider with ChangeNotifier {
         type: 'FINANCIAL',
       );
 
+      // Trigger Automated Payment Confirmation
+      _triggerPaymentConfirmation(newPayment, loan);
+
       return newPayment;
     } catch (e) {
       debugPrint('Error adding payment: $e');
       rethrow;
+    }
+  }
+
+  Future<void> _triggerPaymentConfirmation(PaymentModel payment, LoanModel? loan) async {
+    try {
+      String? vendorId = loan?.vendorId;
+      if (vendorId == null) {
+         final loanData = await _supabase.from('loans').select('vendor_id').eq('id', payment.loanId).single();
+         vendorId = loanData['vendor_id']?.toString();
+      }
+      
+      if (vendorId != null) {
+        final vendorData = await _supabase.from('vendors').select('name, email, phone, whatsapp_number').eq('id', vendorId).single();
+        
+        final commService = CommunicationService();
+        final formattedDate = DateFormat('MMMM dd, yyyy').format(payment.datePaid);
+        
+        commService.sendPaymentConfirmation(
+          vendorId: vendorId,
+          vendorName: vendorData['name'] ?? 'Member',
+          toEmail: vendorData['email'] ?? '',
+          toPhone: vendorData['phone'] ?? '',
+          toWhatsApp: vendorData['whatsapp_number'] ?? '',
+          amount: payment.amountPaid.toStringAsFixed(2),
+          transactionId: payment.id,
+          date: formattedDate,
+          paymentMethod: payment.paymentMethod ?? 'Electronic Transfer',
+        ).catchError((e) => debugPrint('Error sending confirmation: $e'));
+      }
+    } catch (e) {
+      debugPrint('Failed to fetch vendor or send confirmation: $e');
     }
   }
 
@@ -134,10 +171,20 @@ class PaymentProvider with ChangeNotifier {
       }).toList();
 
       // 3. Bulk insert individual payments
-      await _supabase.from('payments').insert(paymentsToInsert);
+      final insertedData = await _supabase.from('payments').insert(paymentsToInsert).select();
+      final insertedPayments = (insertedData as List).map((e) => PaymentModel.fromJson(e)).toList();
 
       // Refresh payments list locally
       await fetchPayments(forceRefresh: true);
+
+      // Trigger Automated Payment Confirmations for each member in the group payment
+      for (final payment in insertedPayments) {
+        LoanModel? loan;
+        try {
+          loan = loans?.firstWhere((l) => l.id == payment.loanId);
+        } catch (_) {}
+        _triggerPaymentConfirmation(payment, loan);
+      }
 
       // 4. Check for loan settlements
       if (loans != null) {

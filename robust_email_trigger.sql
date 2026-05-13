@@ -1,8 +1,8 @@
 -- SQL Migration: Robust Email Delivery Trigger
 -- This replaces the UI-based Webhook with a dynamic SQL trigger to ensure all recipients receive emails.
 
--- 1. Enable the net extension (Supabase built-in)
-CREATE EXTENSION IF NOT EXISTS "net" WITH SCHEMA "extensions";
+-- 1. Enable the http extension (Supabase built-in)
+CREATE EXTENSION IF NOT EXISTS "http" WITH SCHEMA "extensions";
 
 -- 2. Create the processing function
 CREATE OR REPLACE FUNCTION public.process_email_outbox()
@@ -27,20 +27,26 @@ BEGIN
         'html', NEW.html_content
     );
 
-    -- Perform the HTTP POST request via extensions.net_http_get/post
-    PERFORM extensions.http_post(
-        url := 'https://api.mailersend.com/v1/email',
-        headers := jsonb_build_object(
-            'Content-Type', 'application/json',
-            'Authorization', 'Bearer ' || api_key
-        ),
-        body := payload
-    );
+    -- Perform the HTTP POST request using pgsql-http syntax
+    PERFORM extensions.http((
+        'POST',
+        'https://api.mailersend.com/v1/email',
+        ARRAY[extensions.http_header('Authorization', 'Bearer ' || api_key)],
+        'application/json',
+        payload::text
+    )::extensions.http_request);
 
     -- Update row status to indicate it was processed
     UPDATE public.email_outbox 
     SET status = 'sent', processed_at = now()
     WHERE id = NEW.id;
+
+    -- Sync status with communication_logs
+    IF NEW.log_id IS NOT NULL THEN
+        UPDATE public.communication_logs
+        SET status = 'sent'
+        WHERE id = NEW.log_id;
+    END IF;
 
     RETURN NEW;
 EXCEPTION WHEN OTHERS THEN
@@ -48,6 +54,14 @@ EXCEPTION WHEN OTHERS THEN
     UPDATE public.email_outbox 
     SET status = 'failed', last_error = SQLERRM
     WHERE id = NEW.id;
+
+    -- Sync failed status with communication_logs
+    IF NEW.log_id IS NOT NULL THEN
+        UPDATE public.communication_logs
+        SET status = 'failed', error_message = COALESCE(SQLERRM, 'Email delivery failed')
+        WHERE id = NEW.log_id;
+    END IF;
+
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
