@@ -1256,13 +1256,47 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                           style: TextStyle(color: Colors.redAccent),
                         ),
                         onPressed: () async {
-                          await AccountManagementService.rejectPasswordReset(
-                            requestId: req['id'],
-                            targetEmail: email,
-                            operatorEmail:
-                                authProvider.currentUser?.email ?? 'Unknown',
+                          final reasonCtrl = TextEditingController();
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('Reject Reset Request'),
+                              content: TextField(
+                                controller: reasonCtrl,
+                                decoration: const InputDecoration(
+                                  labelText: 'Reason for rejection',
+                                  hintText: 'e.g. Identity could not be verified',
+                                ),
+                                maxLines: 3,
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.redAccent,
+                                  ),
+                                  child: const Text('Reject Request'),
+                                ),
+                              ],
+                            ),
                           );
-                          _fetchPendingResets();
+
+                          if (confirmed == true) {
+                            await AccountManagementService.rejectPasswordReset(
+                              requestId: req['id'],
+                              targetEmail: email,
+                              operatorEmail:
+                                  authProvider.currentUser?.email ?? 'Unknown',
+                              reason: reasonCtrl.text.trim().isEmpty
+                                  ? null
+                                  : reasonCtrl.text.trim(),
+                            );
+                            _fetchPendingResets();
+                          }
                         },
                       ),
                       const SizedBox(width: 8),
@@ -1274,20 +1308,44 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                           foregroundColor: Colors.black,
                         ),
                         onPressed: () async {
-                          await AccountManagementService.approvePasswordReset(
-                            requestId: req['id'],
-                            targetEmail: email,
-                            operatorEmail:
-                                authProvider.currentUser?.email ?? 'Unknown',
-                          );
-                          _fetchPendingResets();
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Reset link sent to user.'),
-                                backgroundColor: Colors.green,
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('Approve Reset Request?'),
+                              content: Text(
+                                'A secure temporary password will be generated and sent to $email.',
                               ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  child: const Text('Approve & Send'),
+                                ),
+                              ],
+                            ),
+                          );
+
+                          if (confirm == true) {
+                            await AccountManagementService.approvePasswordReset(
+                              requestId: req['id'],
+                              targetEmail: email,
+                              operatorEmail:
+                                  authProvider.currentUser?.email ?? 'Unknown',
                             );
+                            _fetchPendingResets();
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Reset approved. Temporary credentials sent to user.',
+                                  ),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
                           }
                         },
                       ),

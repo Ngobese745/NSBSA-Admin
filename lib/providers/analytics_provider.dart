@@ -40,7 +40,7 @@ class AnalyticsProvider with ChangeNotifier {
     _collectionTrend = _calculateCollectionTrend(payments);
 
     // 2. Top Groups by Collection
-    _calculateTopGroups(groups, payments);
+    _calculateTopGroups(groups, vendors, loans, payments);
 
     // 3. Risk & Credit Scores
     _calculateScores(groups, vendors, loans, payments);
@@ -75,30 +75,38 @@ class AnalyticsProvider with ChangeNotifier {
 
   void _calculateTopGroups(
     List<GroupModel> groups,
+    List<VendorModel> vendors,
+    List<LoanModel> loans,
     List<PaymentModel> payments,
   ) {
     final Map<String, double> groupCollections = {};
-    for (var g in groups) {
-      groupCollections[g.name] = 0;
+    
+    // Create maps for faster lookup
+    final Map<String, String> vendorToGroup = {
+      for (var v in vendors) v.id: v.groupId
+    };
+    final Map<String, String> loanToGroup = {};
+    for (var l in loans) {
+      final groupId = vendorToGroup[l.vendorId];
+      if (groupId != null) {
+        loanToGroup[l.id] = groupId;
+      }
     }
 
     for (var p in payments) {
-      // Find group name via payment -> loan -> vendor -> group
-      // This is expensive but okay for analytics calculation
-      // Alternatively, we can use the provider data passed in
+      final groupId = loanToGroup[p.loanId];
+      if (groupId != null) {
+        groupCollections[groupId] = (groupCollections[groupId] ?? 0) + p.amountPaid;
+      }
     }
 
-    // Simpler: assume we have a way to link payment to group name
-    // For now, let's use a mock-ready structure that calculates from available data
-
     _topGroups = groups.map((g) {
-      // Mocking or calculating based on real data if possible
-      // Since payments don't have group_id directly, we'd need more complex joining
-      return GroupPerformance(g.name, 50000.0 + (g.name.length * 1000));
+      final collected = groupCollections[g.id] ?? 0.0;
+      return GroupPerformance(g.name, collected);
     }).toList();
 
     _topGroups.sort((a, b) => b.collected.compareTo(a.collected));
-    if (_topGroups.length > 10) _topGroups = _topGroups.sublist(0, 10);
+    if (_topGroups.length > 5) _topGroups = _topGroups.sublist(0, 5);
   }
 
   void _calculateScores(

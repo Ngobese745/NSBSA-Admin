@@ -30,6 +30,7 @@ import '../services/access_control_service.dart';
 import '../widgets/feature_disabled_placeholder.dart';
 import '../widgets/system_status_banner_strip.dart';
 import '../widgets/notification_bell.dart';
+import 'marketing/marketing_hub_screen.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -55,6 +56,7 @@ class _MainShellState extends State<MainShell> {
     'Advanced Analytics',
     'Financial Reports',
     'Import Data',
+    'Marketing',
     'Center Management',
     'User Management',
     'Developer Management',
@@ -96,10 +98,12 @@ class _MainShellState extends State<MainShell> {
       case 7:
         return guard('import', const ImportScreen());
       case 8:
-        return const CenterManagementScreen();
+        return guard('marketing', const MarketingHubScreen());
       case 9:
-        return guard('user_management', const UserManagementScreen());
+        return const CenterManagementScreen();
       case 10:
+        return guard('user_management', const UserManagementScreen());
+      case 11:
         return const DeveloperManagementScreen();
       default:
         return guard('dashboard', const DashboardScreen());
@@ -497,9 +501,11 @@ class _MainShellState extends State<MainShell> {
                 0,
                 featureKey: 'dashboard',
               ),
-              _buildNavItem(Icons.group, 'Groups', 1, featureKey: 'groups'),
-              _buildNavItem(Icons.person, 'Vendors', 2, featureKey: 'vendors'),
-              if (AccessControlService.canProcessPayments(profile)) ...[
+              if (!profile!.isMarketing || profile.isSuperAdmin) ...[
+                _buildNavItem(Icons.group, 'Groups', 1, featureKey: 'groups'),
+                _buildNavItem(Icons.person, 'Vendors', 2, featureKey: 'vendors'),
+              ],
+              if (AccessControlService.canProcessPayments(profile) && (!profile.isMarketing || profile.isSuperAdmin)) ...[
                 _buildNavItem(
                   Icons.account_balance,
                   'Loans',
@@ -513,21 +519,21 @@ class _MainShellState extends State<MainShell> {
                   featureKey: 'payments',
                 ),
               ],
-              if (AccessControlService.canViewReports(profile))
+              if (AccessControlService.canViewReports(profile) && (!profile.isMarketing || profile.isSuperAdmin))
                 _buildNavItem(
                   Icons.insights,
                   'Analytics',
                   5,
                   featureKey: 'analytics',
                 ),
-              if (AccessControlService.canViewReports(profile))
+              if (AccessControlService.canViewReports(profile) && (!profile.isMarketing || profile.isSuperAdmin))
                 _buildNavItem(
                   Icons.assessment,
                   'Reports',
                   6,
                   featureKey: 'reports',
                 ),
-              if (!AccessControlService.isFieldAgent(profile))
+              if (!AccessControlService.isFieldAgent(profile) && (!profile.isMarketing || profile.isSuperAdmin))
                 _buildNavItem(
                   Icons.upload_file,
                   'Import Data',
@@ -535,7 +541,16 @@ class _MainShellState extends State<MainShell> {
                   featureKey: 'import',
                 ),
 
-              _buildNavItem(Icons.business, 'Centers', 8),
+              if (profile?.isMarketing ?? false)
+                _buildNavItem(
+                  Icons.campaign,
+                  'Marketing',
+                  8,
+                  featureKey: 'marketing',
+                ),
+
+              if (!profile.isMarketing || profile.isSuperAdmin)
+                _buildNavItem(Icons.business, 'Centers', 9),
 
               if (AccessControlService.canManageUsers(profile)) ...[
                 const Divider(
@@ -547,7 +562,7 @@ class _MainShellState extends State<MainShell> {
                 _buildNavItem(
                   Icons.manage_accounts,
                   'User Management',
-                  9,
+                  10,
                   featureKey: 'user_management',
                 ),
               ],
@@ -558,7 +573,7 @@ class _MainShellState extends State<MainShell> {
                   indent: 16,
                   endIndent: 16,
                 ),
-                _buildNavItem(Icons.developer_mode, 'Developer Management', 10),
+                _buildNavItem(Icons.developer_mode, 'Developer Management', 11),
               ],
             ],
           ),

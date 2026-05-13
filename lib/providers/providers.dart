@@ -15,3 +15,5 @@ export 'search_provider.dart';
 export 'theme_provider.dart';
 export 'vendor_provider.dart';
 export 'center_provider.dart';
+export 'marketing_provider.dart';
+export 'api_management_provider.dart';

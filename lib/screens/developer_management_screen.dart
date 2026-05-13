@@ -14,6 +14,7 @@ import '../models/developer_controls.dart';
 import '../providers/auth_provider.dart';
 import '../providers/developer_controls_provider.dart';
 import '../services/access_control_service.dart';
+import 'developer/api_management_panel.dart';
 import '../theme/app_theme.dart';
 
 /// Super Admin + allowlisted developer only (see [AccessControlService.canAccessDeveloperTools]).
@@ -32,7 +33,7 @@ class _DeveloperManagementScreenState extends State<DeveloperManagementScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) context.read<DeveloperControlsProvider>().refresh();
     });
@@ -141,6 +142,10 @@ class _DeveloperManagementScreenState extends State<DeveloperManagementScreen>
                   text: 'System Audit Log',
                   icon: Icon(Icons.security, size: 18),
                 ),
+                Tab(
+                  text: 'API Keys',
+                  icon: Icon(Icons.api_outlined, size: 18),
+                ),
               ],
             ),
           ),
@@ -152,6 +157,7 @@ class _DeveloperManagementScreenState extends State<DeveloperManagementScreen>
                 _FeaturesPanel(),
                 _ActivityLogPanel(),
                 _SystemAuditLogPanel(),
+                ApiManagementPanel(),
               ],
             ),
           ),

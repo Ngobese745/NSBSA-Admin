@@ -51,6 +51,9 @@ class AccessControlService {
   static bool canManageAnnouncements(ProfileModel? profile) =>
       hasRole(profile, ['Super Admin', 'Admin', 'Marketing']);
 
+  static bool canAccessMarketing(ProfileModel? profile) =>
+      hasRole(profile, ['Super Admin', 'Admin', 'Marketing']);
+
   /// Data Editing (Everyone except Field Agents who are view-only)
   static bool canEditData(ProfileModel? profile) =>
       profile != null && profile.role != 'Development Facilitator';

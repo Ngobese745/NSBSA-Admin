@@ -122,11 +122,11 @@ class AccountManagementService {
     );
   }
 
-  /// Generates a random temporary password in the format NSBSA-Setup-XXXX.
+  /// Generates a secure temporary password (min 12 chars, mixed case, numbers, symbols).
   static String _generateTempPassword() {
-    final rand = Random();
-    final code = List.generate(4, (index) => rand.nextInt(10)).join();
-    return 'NSBSA-Setup-$code';
+    const chars = r'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$&*';
+    final rand = Random.secure();
+    return List.generate(14, (index) => chars[rand.nextInt(chars.length)]).join();
   }
 
   /// Finalizes the password setup for a user forced to change it.
@@ -316,30 +316,65 @@ class AccountManagementService {
     return List<Map<String, dynamic>>.from(data);
   }
 
-  /// Super Admin approves a reset request — triggers the reset email.
+  /// Super Admin approves a reset request — generates temp password and sends email.
   static Future<void> approvePasswordReset({
     required String requestId,
     required String targetEmail,
     required String operatorEmail,
   }) async {
-    // 1. Send the actual reset email via admin client
-    await _admin.auth.resetPasswordForEmail(targetEmail);
+    // 1. Find the user ID
+    final profileData = await _admin
+        .from('profiles')
+        .select('id')
+        .eq('email', targetEmail)
+        .maybeSingle();
+    
+    if (profileData == null) {
+      throw Exception('No user profile found for $targetEmail');
+    }
+    final userId = profileData['id'];
 
-    // 2. Mark request as approved
+    // 2. Generate secure temp password
+    final tempPassword = _generateTempPassword();
+
+    // 3. Update Auth User (metadata + password)
+    await _admin.auth.admin.updateUserById(
+      userId,
+      attributes: AdminUserAttributes(
+        password: tempPassword,
+        userMetadata: {'must_change_password': true},
+      ),
+    );
+
+    // 4. Mark request as Completed
     await _client
         .from('password_reset_requests')
         .update({
-          'status': 'approved',
+          'status': 'completed',
           'reviewed_by': operatorEmail,
           'reviewed_at': DateTime.now().toIso8601String(),
         })
         .eq('id', requestId);
 
-    // 3. Log the approval
+    // 5. Send Email via CommunicationService
+    final comms = CommunicationService();
+    await comms.sendPasswordResetApproved(
+      toEmail: targetEmail,
+      tempPassword: tempPassword,
+    );
+
+    // 6. Log the approval
     await logEvent(
       eventType: 'reset_approved',
       targetEmail: targetEmail,
       operatorEmail: operatorEmail,
+      metadata: {'method': 'temporary_password'},
+    );
+
+    SystemAuditService.logAction(
+      actionType: 'APPROVE_RESET',
+      affectedEntity: 'User: $targetEmail',
+      description: 'Approved password reset and generated temporary credentials.',
     );
   }
 
@@ -348,20 +383,38 @@ class AccountManagementService {
     required String requestId,
     required String targetEmail,
     required String operatorEmail,
+    String? reason,
   }) async {
+    // 1. Mark request as Rejected
     await _client
         .from('password_reset_requests')
         .update({
           'status': 'rejected',
           'reviewed_by': operatorEmail,
           'reviewed_at': DateTime.now().toIso8601String(),
+          'rejection_reason': reason,
         })
         .eq('id', requestId);
 
+    // 2. Send rejection email
+    final comms = CommunicationService();
+    await comms.sendPasswordResetRejected(
+      toEmail: targetEmail,
+      reason: reason,
+    );
+
+    // 3. Log the rejection
     await logEvent(
       eventType: 'reset_rejected',
       targetEmail: targetEmail,
       operatorEmail: operatorEmail,
+      metadata: {'reason': reason},
+    );
+
+    SystemAuditService.logAction(
+      actionType: 'REJECT_RESET',
+      affectedEntity: 'User: $targetEmail',
+      description: 'Rejected password reset request. Reason: ${reason ?? 'Security policy'}',
     );
   }
 

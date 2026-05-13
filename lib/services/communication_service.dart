@@ -115,6 +115,124 @@ class CommunicationService {
     });
   }
 
+  Future<void> sendPasswordResetApproved({
+    required String toEmail,
+    required String tempPassword,
+  }) async {
+    debugPrint('Queuing password reset approval for $toEmail');
+
+    final htmlTemplate = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0A0E14; color: #E6E6E6; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 40px auto; background-color: #161B22; border-radius: 16px; overflow: hidden; border: 1px solid #30363D; }
+        .header { background-color: #0D1117; padding: 40px; text-align: center; border-bottom: 2px solid #D4AF37; }
+        .logo { max-width: 120px; }
+        .content { padding: 40px 50px; line-height: 1.6; }
+        h1 { color: #FFFFFF; font-size: 24px; margin-top: 0; }
+        p { color: #B1BAC4; font-size: 16px; }
+        .credentials-box { background-color: #0D1117; border: 1px solid #30363D; border-radius: 12px; padding: 25px; margin: 30px 0; }
+        .label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #8B949E; display: block; margin-bottom: 5px; }
+        .value { font-family: monospace; font-size: 18px; color: #D4AF37; font-weight: bold; }
+        .button { display: inline-block; padding: 16px 32px; background-color: #D4AF37; color: #000000 !important; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 30px; }
+        .footer { padding: 30px; text-align: center; color: #484F58; font-size: 12px; background-color: #0D1117; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="https://www.stokvelbody.org.za/wp-content/uploads/2019/05/logo02.png" alt="NSBSA Logo" class="logo">
+        </div>
+        <div class="content">
+            <h1>Password Reset Approved</h1>
+            <p>Your request for a password reset has been reviewed and approved by an administrator.</p>
+            
+            <div class="credentials-box">
+                <span class="label">Temporary Password</span>
+                <span class="value">$tempPassword</span>
+            </div>
+
+            <p style="color: #FF7B72; font-size: 14px;"><strong>Note:</strong> This password is valid for 24 hours. You will be required to change it immediately upon logging in.</p>
+
+            <div style="text-align: center;">
+                <a href="https://nsbsa-admin.vercel.app" class="button">Log In & Secure Account</a>
+            </div>
+        </div>
+        <div class="footer">
+            <p>&copy; 2024 NSBSA Administrative Platform</p>
+        </div>
+    </div>
+</body>
+</html>
+''';
+
+    await _client.from('email_outbox').insert({
+      'to_email': toEmail,
+      'subject': 'Password Reset Approved - NSBSA',
+      'html_content': htmlTemplate,
+      'metadata': {'type': 'password_reset_approved'},
+    });
+  }
+
+  Future<void> sendPasswordResetRejected({
+    required String toEmail,
+    String? reason,
+  }) async {
+    debugPrint('Queuing password reset rejection for $toEmail');
+
+    final htmlTemplate = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0A0E14; color: #E6E6E6; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 40px auto; background-color: #161B22; border-radius: 16px; overflow: hidden; border: 1px solid #30363D; }
+        .header { background-color: #0D1117; padding: 40px; text-align: center; border-bottom: 2px solid #FF7B72; }
+        .logo { max-width: 120px; }
+        .content { padding: 40px 50px; line-height: 1.6; }
+        h1 { color: #FFFFFF; font-size: 24px; margin-top: 0; }
+        p { color: #B1BAC4; font-size: 16px; }
+        .reason-box { background-color: #0D1117; border-left: 4px solid #FF7B72; padding: 15px 20px; margin: 25px 0; }
+        .footer { padding: 30px; text-align: center; color: #484F58; font-size: 12px; background-color: #0D1117; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="https://www.stokvelbody.org.za/wp-content/uploads/2019/05/logo02.png" alt="NSBSA Logo" class="logo">
+        </div>
+        <div class="content">
+            <h1>Password Reset Request Update</h1>
+            <p>Your request for a password reset has been reviewed and could not be approved at this time.</p>
+            
+            <div class="reason-box">
+                <p style="margin: 0; font-style: italic;">"${reason ?? 'The request did not meet security verification requirements.'}"</p>
+            </div>
+
+            <p>If you believe this is an error, please contact your department head or system administrator directly.</p>
+        </div>
+        <div class="footer">
+            <p>&copy; 2024 NSBSA Administrative Platform</p>
+        </div>
+    </div>
+</body>
+</html>
+''';
+
+    await _client.from('email_outbox').insert({
+      'to_email': toEmail,
+      'subject': 'Password Reset Request Update - NSBSA',
+      'html_content': htmlTemplate,
+      'metadata': {'type': 'password_reset_rejected'},
+    });
+  }
+
   Future<void> sendAnnouncement({
     required String groupRef,
     required String message,

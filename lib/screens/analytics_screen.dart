@@ -446,7 +446,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               itemBuilder: (context, index) {
                 final group = topGroups[index];
                 final maxValue = topGroups.first.collected;
-                final percentage = group.collected / maxValue;
+                final percentage = maxValue > 0 ? group.collected / maxValue : 0.0;
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: Column(
