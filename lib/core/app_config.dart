@@ -38,4 +38,9 @@ class AppConfig {
     }
     return key;
   }
+
+  static String get mailerSendApiKey {
+    final key = _sanitize(dotenv.env['MAILERSEND_API_KEY']);
+    return key;
+  }
 }

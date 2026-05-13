@@ -19,7 +19,7 @@ class PasswordSetupScreen extends StatefulWidget {
 }
 
 class _PasswordSetupScreenState extends State<PasswordSetupScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   final _passwordController = TextEditingController();
   final _confirmController = TextEditingController();
   bool _obscureNew = true;
@@ -31,6 +31,8 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
 
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
+  late AnimationController _bgAnimationController;
+  late Animation<double> _bgScaleAnimation;
 
   @override
   void initState() {
@@ -42,6 +44,15 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
     _fadeAnim = CurvedAnimation(parent: _animController, curve: Curves.easeOut);
     _animController.forward();
 
+    _bgAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 20),
+    )..repeat(reverse: true);
+
+    _bgScaleAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
+      CurvedAnimation(parent: _bgAnimationController, curve: Curves.easeInOut),
+    );
+
     // Process the recovery link
     _initializeRecoveryFlow();
   }
@@ -49,6 +60,7 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
   @override
   void dispose() {
     _animController.dispose();
+    _bgAnimationController.dispose();
     _passwordController.dispose();
     _confirmController.dispose();
     super.dispose();
@@ -209,19 +221,30 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen>
     const gold = Color(0xFFD4AF37);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF050505),
       body: Stack(
         children: [
-          // Background Gradient
+          // Background Image with Zoom Animation (matching Login)
           Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment.center,
-                  radius: 1.2,
-                  colors: [gold.withOpacity(0.05), Colors.black],
-                ),
-              ),
+            child: AnimatedBuilder(
+              animation: _bgScaleAnimation,
+              builder: (context, child) {
+                return Transform.scale(
+                  scale: _bgScaleAnimation.value,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      image: DecorationImage(
+                        image: const AssetImage('assets/images/login_bg.jpg'),
+                        fit: BoxFit.cover,
+                        colorFilter: ColorFilter.mode(
+                          Colors.black.withOpacity(0.5),
+                          BlendMode.darken,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
 

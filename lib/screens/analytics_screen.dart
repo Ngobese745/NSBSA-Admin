@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/app_breakpoints.dart';
+import '../core/app_assets.dart';
 import '../core/pdf_branding.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../providers/group_provider.dart';
@@ -73,117 +74,125 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     }
 
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(isTablet ? 24 : 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildHeader(theme, analyticsProvider),
-            const SizedBox(height: 32),
-
-            // Top Section (Summary, Pie, Top Groups)
-            if (isDesktop)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 1,
-                    child: _buildSummaryCard(
+      backgroundColor: Colors.transparent,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.black, Colors.grey.shade900],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.all(isTablet ? 24 : 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 24),
+              _buildHeader(theme, analyticsProvider),
+              const SizedBox(height: 32),
+              // Rest of content unchanged
+              // Top Section (Summary, Pie, Top Groups)
+              if (isDesktop)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 1,
+                      child: _buildSummaryCard(
+                        'No of Members',
+                        vendorProvider.vendors.length.toString(),
+                        'Total Registered',
+                        Icons.people_outline,
+                        theme,
+                      ),
+                    ),
+                    const SizedBox(width: 24),
+                    Expanded(
+                      flex: 2,
+                      child: _buildFinancialMixPie(analyticsProvider, theme),
+                    ),
+                    const SizedBox(width: 24),
+                    Expanded(
+                      flex: 2,
+                      child: _buildTopGroupsChart(analyticsProvider, theme),
+                    ),
+                  ],
+                )
+              else
+                Column(
+                  children: [
+                    _buildSummaryCard(
                       'No of Members',
                       vendorProvider.vendors.length.toString(),
                       'Total Registered',
                       Icons.people_outline,
                       theme,
+                      height: 220,
                     ),
-                  ),
-                  const SizedBox(width: 24),
-                  Expanded(
-                    flex: 2,
-                    child: _buildFinancialMixPie(analyticsProvider, theme),
-                  ),
-                  const SizedBox(width: 24),
-                  Expanded(
-                    flex: 2,
-                    child: _buildTopGroupsChart(analyticsProvider, theme),
-                  ),
-                ],
-              )
-            else
-              Column(
-                children: [
-                  _buildSummaryCard(
-                    'No of Members',
-                    vendorProvider.vendors.length.toString(),
-                    'Total Registered',
-                    Icons.people_outline,
-                    theme,
-                    height: 220,
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildFinancialMixPie(
-                          analyticsProvider,
-                          theme,
-                          height: 250,
-                        ),
-                      ),
-                      if (isTablet) ...[
-                        const SizedBox(width: 16),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
                         Expanded(
-                          child: _buildTopGroupsChart(
+                          child: _buildFinancialMixPie(
                             analyticsProvider,
                             theme,
                             height: 250,
                           ),
                         ),
+                        if (isTablet) ...[
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _buildTopGroupsChart(
+                              analyticsProvider,
+                              theme,
+                              height: 250,
+                            ),
+                          ),
+                        ],
                       ],
+                    ),
+                    if (!isTablet) ...[
+                      const SizedBox(height: 16),
+                      _buildTopGroupsChart(analyticsProvider, theme, height: 250),
                     ],
-                  ),
-                  if (!isTablet) ...[
-                    const SizedBox(height: 16),
-                    _buildTopGroupsChart(analyticsProvider, theme, height: 250),
                   ],
-                ],
-              ),
-
-            const SizedBox(height: 24),
-
-            // Bottom Section (Trend Chart, Risk Map)
-            if (isDesktop)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: _buildSmoothTrendChart(analyticsProvider, theme),
-                  ),
-                  const SizedBox(width: 24),
-                  Expanded(
-                    flex: 2,
-                    child: _buildRiskGrid(
+                ),
+              const SizedBox(height: 24),
+              // Bottom Section (Trend Chart, Risk Map)
+              if (isDesktop)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: _buildSmoothTrendChart(analyticsProvider, theme),
+                    ),
+                    const SizedBox(width: 24),
+                    Expanded(
+                      flex: 2,
+                      child: _buildRiskGrid(
+                        analyticsProvider,
+                        groupProvider.groups,
+                        theme,
+                      ),
+                    ),
+                  ],
+                )
+              else
+                Column(
+                  children: [
+                    _buildSmoothTrendChart(analyticsProvider, theme),
+                    const SizedBox(height: 16),
+                    _buildRiskGrid(
                       analyticsProvider,
                       groupProvider.groups,
                       theme,
                     ),
-                  ),
-                ],
-              )
-            else
-              Column(
-                children: [
-                  _buildSmoothTrendChart(analyticsProvider, theme),
-                  const SizedBox(height: 16),
-                  _buildRiskGrid(
-                    analyticsProvider,
-                    groupProvider.groups,
-                    theme,
-                  ),
-                ],
-              ),
-          ],
+                  ],
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -193,49 +202,52 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isMobile = constraints.maxWidth < 600;
-        return Wrap(
-          spacing: 16,
-          runSpacing: 16,
-          alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Business Intelligence',
-                  style: theme.textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.primary,
-                    fontSize: isMobile ? 24 : 32,
+        return SizedBox(
+          width: double.infinity,
+          child: Wrap(
+            spacing: 16,
+            runSpacing: 16,
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Business Intelligence',
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.primary,
+                      fontSize: isMobile ? 24 : 32,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Real-time operational and financial health metrics',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey,
+                  const SizedBox(height: 4),
+                  Text(
+                    'Real-time operational and financial health metrics',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: Colors.grey,
+                    ),
                   ),
-                ),
-              ],
-            ),
-            ElevatedButton.icon(
-              onPressed: () => _exportAnalyticsToPDF(analyticsProvider),
-              icon: const Icon(Icons.picture_as_pdf),
-              label: const Text('PDF Export'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: theme.colorScheme.primary,
-                foregroundColor: Colors.black,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 16,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                ],
+              ),
+              ElevatedButton.icon(
+                onPressed: () => _exportAnalyticsToPDF(analyticsProvider),
+                icon: const Icon(Icons.picture_as_pdf),
+                label: const Text('PDF Export'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: theme.colorScheme.primary,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 16,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         );
       },
     );
@@ -304,6 +316,21 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     ThemeData theme, {
     double height = 220,
   }) {
+    final totalExpected = provider.globalTotalExpected;
+    final totalPaid = provider.globalTotalPaid;
+    final totalOutstanding = totalExpected > totalPaid ? totalExpected - totalPaid : 0.0;
+    
+    double collectedPercentage = 0;
+    double outstandingPercentage = 0;
+
+    if (totalExpected > 0) {
+      collectedPercentage = (totalPaid / totalExpected) * 100;
+      outstandingPercentage = (totalOutstanding / totalExpected) * 100;
+    } else {
+      collectedPercentage = 100;
+      outstandingPercentage = 0;
+    }
+
     return Container(
       height: height,
       padding: const EdgeInsets.all(24),
@@ -341,29 +368,30 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 centerSpaceRadius: 40,
                 sections: [
                   PieChartSectionData(
-                    value: 68,
+                    value: collectedPercentage > 0 ? collectedPercentage : 1, // Prevent division by zero errors in chart
                     color: theme.colorScheme.primary,
                     radius: 25,
                     showTitle: true,
-                    title: '68%',
+                    title: totalExpected > 0 ? '${collectedPercentage.toStringAsFixed(0)}%' : 'N/A',
                     titleStyle: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
                       color: Colors.black,
                     ),
                   ),
-                  PieChartSectionData(
-                    value: 32,
-                    color: theme.colorScheme.primary.withOpacity(0.2),
-                    radius: 25,
-                    showTitle: true,
-                    title: '32%',
-                    titleStyle: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                      color: Colors.white,
+                  if (totalExpected > 0)
+                    PieChartSectionData(
+                      value: outstandingPercentage,
+                      color: theme.colorScheme.primary.withOpacity(0.2),
+                      radius: 25,
+                      showTitle: true,
+                      title: '${outstandingPercentage.toStringAsFixed(0)}%',
+                      titleStyle: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                        color: Colors.white,
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),

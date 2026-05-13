@@ -21,6 +21,12 @@ class AnalyticsProvider with ChangeNotifier {
   Map<String, double> _vendorCreditScores = {}; // vendorId -> score (0-100)
   Map<String, double> get vendorCreditScores => _vendorCreditScores;
 
+  double _globalTotalExpected = 0.0;
+  double get globalTotalExpected => _globalTotalExpected;
+
+  double _globalTotalPaid = 0.0;
+  double get globalTotalPaid => _globalTotalPaid;
+
   void calculateAnalytics({
     required List<GroupModel> groups,
     required List<VendorModel> vendors,
@@ -103,6 +109,8 @@ class AnalyticsProvider with ChangeNotifier {
   ) {
     _vendorCreditScores = {};
     _groupRiskScores = {};
+    _globalTotalExpected = 0.0;
+    _globalTotalPaid = 0.0;
 
     for (var vendor in vendors) {
       final vendorLoans = loans.where((l) => l.vendorId == vendor.id).toList();
@@ -129,6 +137,8 @@ class AnalyticsProvider with ChangeNotifier {
 
         totalExpected += expected;
         totalPaid += paid;
+        _globalTotalExpected += expected;
+        _globalTotalPaid += paid;
 
         // Simple overdue check: if balance > 0 and loan is old
         if (expected - paid > 10) {

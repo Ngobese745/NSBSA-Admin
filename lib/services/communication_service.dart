@@ -108,6 +108,10 @@ class CommunicationService {
       'to_email': toEmail,
       'subject': 'Your NSBSA Admin Credentials',
       'html_content': htmlTemplate,
+      'metadata': {
+        'full_name': fullName,
+        'type': 'staff_invite',
+      },
     });
   }
 
