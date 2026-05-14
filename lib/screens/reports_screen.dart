@@ -12,6 +12,7 @@ import '../providers/payment_provider.dart';
 import '../theme/app_theme.dart';
 import 'loan_details_screen.dart';
 import '../services/loan_calculation_service.dart';
+import '../services/excel_export_service.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -161,7 +162,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
     final totalAdminFees = loanProvider.loans.fold(
       0.0,
-      (sum, l) => sum + (l.monthlyAdminFee ?? 0),
+      (sum, l) => sum + ((l.monthlyAdminFee ?? 0) * l.durationMonths),
     );
     final totalPenaltyFees = loanProvider.loans.fold(0.0, (sum, l) {
       final loanPayments = paymentProvider.payments
@@ -198,25 +199,48 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   ),
                 ],
               ),
-              ElevatedButton.icon(
-                onPressed: () => _generatePDF(
-                  context,
-                  totalDisbursed,
-                  totalCollected,
-                  totalOutstanding,
-                  totalExpectedFees,
-                  totalSavings,
-                ),
-                icon: const Icon(Icons.download),
-                label: const Text('Export PDF Report'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryGold,
-                  foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 20,
+              Row(
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: () => _exportToExcel(
+                      loanProvider,
+                      paymentProvider,
+                      vendorProvider,
+                      groupProvider,
+                    ),
+                    icon: const Icon(Icons.table_view),
+                    label: const Text('Export Excel'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white10,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 20,
+                      ),
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 16),
+                  ElevatedButton.icon(
+                    onPressed: () => _generatePDF(
+                      context,
+                      totalDisbursed,
+                      totalCollected,
+                      totalOutstanding,
+                      totalExpectedFees,
+                      totalSavings,
+                    ),
+                    icon: const Icon(Icons.download),
+                    label: const Text('Export PDF Report'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryGold,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 20,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -895,6 +919,94 @@ class _ReportsScreenState extends State<ReportsScreen> {
           style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
         ),
       ],
+    );
+  }
+
+  Future<void> _exportToExcel(
+    LoanProvider loanProvider,
+    PaymentProvider paymentProvider,
+    VendorProvider vendorProvider,
+    GroupProvider groupProvider,
+  ) async {
+    final List<List<String>> data = [
+      [
+        'Member Name',
+        'ID Number',
+        'Phone',
+        'Group',
+        'Business',
+        'Principal',
+        'Term',
+        'Init Fee',
+        'Admin Fee',
+        'Penalty',
+        'Monthly',
+        'Total Paid',
+        'Balance',
+      ],
+    ];
+
+    for (var loan in loanProvider.loans) {
+      final vendor = vendorProvider.vendors
+          .where((v) => v.id == loan.vendorId)
+          .firstOrNull;
+      final group = groupProvider.groups
+          .where((g) => g.id == loan.groupId)
+          .firstOrNull;
+      final loanPayments = paymentProvider.payments
+          .where((p) => p.loanId == loan.id)
+          .toList();
+      final totalPaid = loanPayments.fold(0.0, (sum, p) => sum + p.amountPaid);
+      final balance = LoanCalculationService.calculateBalance(
+        loan,
+        loanPayments,
+      );
+      final penalty = LoanCalculationService.calculateAppliedPenalty(
+        loan,
+        loanPayments,
+      );
+
+      data.add([
+        vendor?.name ?? 'Unknown',
+        vendor?.idNumber ?? '-',
+        vendor?.phone ?? '-',
+        group?.name ?? '-',
+        vendor?.businessType ?? '-',
+        'R ${loan.amount.toStringAsFixed(0)}',
+        '${loan.durationMonths}m',
+        'R ${loan.initiationFee?.toStringAsFixed(0) ?? '0'}',
+        'R ${loan.monthlyAdminFee?.toStringAsFixed(0) ?? '0'}',
+        'R ${penalty.toStringAsFixed(0)}',
+        'R ${loan.monthlyPayment.toStringAsFixed(0)}',
+        'R ${totalPaid.toStringAsFixed(0)}',
+        'R ${balance.toStringAsFixed(0)}',
+      ]);
+    }
+
+    // Calculate Summary Data
+    final totalDisbursed = loanProvider.loans.fold(0.0, (sum, l) => sum + l.amount);
+    final totalCollected = paymentProvider.payments.fold(0.0, (sum, p) => sum + p.amountPaid);
+    double totalOutstanding = 0;
+    for (var l in loanProvider.loans) {
+      final lp = paymentProvider.payments.where((p) => p.loanId == l.id).toList();
+      totalOutstanding += LoanCalculationService.calculateBalance(l, lp);
+    }
+    final totalSavings = vendorProvider.vendors.fold(0.0, (sum, v) => sum + (v.savingsAmount ?? 0.0));
+    final totalInitFees = loanProvider.loans.fold(0.0, (sum, l) => sum + (l.initiationFee ?? 0));
+    final totalAdminFees = loanProvider.loans.fold(0.0, (sum, l) => sum + ((l.monthlyAdminFee ?? 0) * l.durationMonths));
+    final totalExpectedFees = totalInitFees + totalAdminFees;
+    final collectionRate = totalDisbursed > 0 ? (totalCollected / totalDisbursed * 100).toStringAsFixed(1) : '0';
+
+    await ExcelExportService.exportMasterLedger(
+      summary: {
+        'totalDisbursed': totalDisbursed.toStringAsFixed(0),
+        'totalCollected': totalCollected.toStringAsFixed(0),
+        'totalOutstanding': totalOutstanding.toStringAsFixed(0),
+        'totalSavings': totalSavings.toStringAsFixed(0),
+        'totalExpectedFees': totalExpectedFees.toStringAsFixed(0),
+        'collectionRate': collectionRate,
+      },
+      ledgerData: data,
     );
   }
 }

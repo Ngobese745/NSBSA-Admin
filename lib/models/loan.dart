@@ -12,6 +12,7 @@ class LoanModel {
   final double? openingAmount;
   final DateTime? firstInstalmentDate;
   final String? vendorName;
+  final String? loanType;
   final DateTime createdAt;
 
   LoanModel({
@@ -19,6 +20,7 @@ class LoanModel {
     required this.groupId,
     this.vendorId,
     this.vendorName,
+    this.loanType,
     required this.amount,
     required this.durationMonths,
     required this.monthlyPayment,
@@ -61,6 +63,7 @@ class LoanModel {
       openingAmount: json['opening_amount'] != null
           ? (json['opening_amount'] as num).toDouble()
           : null,
+      loanType: json['loan_type'],
       firstInstalmentDate: json['first_instalment_date'] != null
           ? DateTime.parse(json['first_instalment_date'])
           : null,
@@ -73,6 +76,7 @@ class LoanModel {
       'group_id': groupId,
       'vendor_id': vendorId,
       'vendor_name': vendorName,
+      'loan_type': loanType,
       'amount': amount,
       'duration_months': durationMonths,
       'monthly_payment': monthlyPayment,

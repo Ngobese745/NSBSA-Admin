@@ -411,6 +411,11 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   }
 
   Widget _buildSavingsSection(ThemeData theme) {
+    final vendorProvider = context.watch<VendorProvider>();
+    final groupMembers = vendorProvider.vendors
+        .where((m) => m.groupId == widget.group.id)
+        .toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -422,40 +427,58 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         ),
         const SizedBox(height: 16),
         Card(
-          child: ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _members.length,
-            separatorBuilder: (context, index) =>
-                const Divider(height: 1, color: Colors.white10),
-            itemBuilder: (context, index) {
-              final member = _members[index];
-              return ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Colors.amber.withOpacity(0.1),
-                  child: const Icon(
-                    Icons.savings,
-                    color: Colors.amber,
-                    size: 20,
-                  ),
-                ),
-                title: Text(
-                  member.name,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: Text(
-                  'Frequency: ${member.savingsFrequency ?? 'Monthly'} • Starts: ${member.savingsStartDate?.toLocal().toString().split(' ')[0] ?? 'N/A'}',
-                ),
-                trailing: Text(
-                  'R ${member.savingsAmount?.toStringAsFixed(0) ?? '0'}',
-                  style: const TextStyle(
-                    color: Colors.amber,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-              );
-            },
+          child: ExpansionTile(
+            initiallyExpanded: false,
+            title: Text(
+              '${groupMembers.length} Members Enrolled',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            subtitle: const Text('View contribution details'),
+            children: [
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: groupMembers.length,
+                separatorBuilder: (context, index) =>
+                    const Divider(height: 1, color: Colors.white10),
+                itemBuilder: (context, index) {
+                  final member = groupMembers[index];
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.amber.withOpacity(0.1),
+                      child: const Icon(
+                        Icons.savings,
+                        color: Colors.amber,
+                        size: 20,
+                      ),
+                    ),
+                    title: Text(
+                      member.name,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(
+                      'Frequency: ${member.savingsFrequency ?? 'Monthly'} • Starts: ${member.savingsStartDate?.toLocal().toString().split(' ')[0] ?? 'N/A'}',
+                    ),
+                    trailing: Text(
+                      'R ${member.savingsAmount?.toStringAsFixed(2) ?? '0.00'}',
+                      style: const TextStyle(
+                        color: Colors.amber,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => VendorProfileScreen(vendor: member),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ],
           ),
         ),
       ],
@@ -654,7 +677,12 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           .toList();
       balance += LoanCalculationService.calculateBalance(loan, loanPayments);
     }
-    final totalSavings = _members.fold(
+    final vendorProvider = context.watch<VendorProvider>();
+    final groupMembers = vendorProvider.vendors
+        .where((m) => m.groupId == widget.group.id)
+        .toList();
+
+    final totalSavings = groupMembers.fold(
       0.0,
       (sum, m) => sum + (m.savingsAmount ?? 0.0),
     );
@@ -674,7 +702,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           children: [
             _buildStatCard(
               'Members',
-              _members.length.toString(),
+              groupMembers.length.toString(),
               Icons.people,
               theme.primaryColor,
             ),

@@ -44,12 +44,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
         !loanProvider.isLoading &&
         !paymentProvider.isLoading &&
         !vendorProvider.isLoading) {
-      analyticsProvider.calculateAnalytics(
-        groups: groupProvider.groups,
-        vendors: vendorProvider.vendors,
-        loans: loanProvider.loans,
-        payments: paymentProvider.payments,
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        analyticsProvider.calculateAnalytics(
+          groups: groupProvider.groups,
+          vendors: vendorProvider.vendors,
+          loans: loanProvider.loans,
+          payments: paymentProvider.payments,
+        );
+      });
     }
 
     final totalGroups = groupProvider.groups.length;
@@ -60,6 +63,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final totalCollected = paymentProvider.payments.fold(
       0.0,
       (sum, p) => sum + p.amountPaid,
+    );
+    final totalSavings = vendorProvider.vendors.fold(
+      0.0,
+      (sum, m) => sum + (m.savingsAmount ?? 0.0),
     );
     final groupRisks = computeGroupLoanRiskSummaries(
       groups: groupProvider.groups,
@@ -119,6 +126,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           [const Color(0xFFE5B942), const Color(0xFF996515)],
                         ),
                       ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildPremiumStatCard(
+                          context,
+                          'Total Savings',
+                          'R ${totalSavings.toStringAsFixed(0)}',
+                          Icons.savings_outlined,
+                          [const Color(0xFFF1C40F), const Color(0xFFF39C12)],
+                        ),
+                      ),
                     ],
                   )
                 else
@@ -146,6 +163,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         'R ${totalCollected.toStringAsFixed(0)}',
                         Icons.payments_outlined,
                         [const Color(0xFFE5B942), const Color(0xFF996515)],
+                      ),
+                      const SizedBox(height: 12),
+                      _buildPremiumStatCard(
+                        context,
+                        'Total Savings',
+                        'R ${totalSavings.toStringAsFixed(0)}',
+                        Icons.savings_outlined,
+                        [const Color(0xFFF1C40F), const Color(0xFFF39C12)],
                       ),
                     ],
                   ),

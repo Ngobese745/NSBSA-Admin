@@ -5,6 +5,9 @@ import '../models/loan.dart';
 import '../services/cache_service.dart';
 import '../services/system_audit_service.dart';
 import '../services/notification_service.dart';
+import '../services/realtime_service.dart';
+import '../services/offline_queue_service.dart';
+import '../services/connectivity_service.dart';
 
 class LoanProvider with ChangeNotifier {
   final _supabase = Supabase.instance.client;
@@ -13,6 +16,45 @@ class LoanProvider with ChangeNotifier {
 
   List<LoanModel> get loans => _loans;
   bool get isLoading => _isLoading;
+
+  LoanProvider() {
+    _initRealtime();
+  }
+
+  void _initRealtime() {
+    RealtimeService().subscribeToTable(
+      tableName: 'loans',
+      onData: (payload) {
+        final event = payload.eventType;
+        final data = payload.newRecord;
+        final oldData = payload.oldRecord;
+
+        if (event == PostgresChangeEvent.insert) {
+          final newLoan = LoanModel.fromJson(data);
+          if (!_loans.any((l) => l.id == newLoan.id)) {
+            _loans.insert(0, newLoan);
+            _syncCacheAndNotify();
+          }
+        } else if (event == PostgresChangeEvent.update) {
+          final updatedLoan = LoanModel.fromJson(data);
+          final index = _loans.indexWhere((l) => l.id == updatedLoan.id);
+          if (index != -1) {
+            _loans[index] = updatedLoan;
+            _syncCacheAndNotify();
+          }
+        } else if (event == PostgresChangeEvent.delete) {
+          final id = oldData['id'];
+          _loans.removeWhere((l) => l.id == id);
+          _syncCacheAndNotify();
+        }
+      },
+    );
+  }
+
+  void _syncCacheAndNotify() {
+    CacheService.saveCache('loans_cache', _loans.map((e) => e.toJson()).toList());
+    notifyListeners();
+  }
 
   Future<void> fetchLoans({bool forceRefresh = false}) async {
     if (!forceRefresh) {
@@ -33,11 +75,7 @@ class LoanProvider with ChangeNotifier {
           .select('*, vendors(name)')
           .order('created_at', ascending: false);
       _loans = (response as List).map((e) => LoanModel.fromJson(e)).toList();
-
-      await CacheService.saveCache(
-        'loans_cache',
-        _loans.map((e) => e.toJson()).toList(),
-      );
+      _syncCacheAndNotify();
     } catch (e) {
       debugPrint('Error fetching loans: $e');
     } finally {
@@ -47,42 +85,102 @@ class LoanProvider with ChangeNotifier {
   }
 
   Future<LoanModel> addLoan(LoanModel loan) async {
+    // Optimistic Update
+    _loans.insert(0, loan);
+    notifyListeners();
+
+    if (ConnectivityService().currentStatus == AppConnectivityStatus.offline) {
+      await OfflineQueueService().queueAction(OfflineAction(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        table: 'loans',
+        type: OfflineActionType.create,
+        data: loan.toJson(),
+        timestamp: DateTime.now(),
+      ));
+      return loan;
+    }
+
     try {
       final loanData = loan.toJson();
-      loanData.remove('vendor_name'); // Prevent schema cache error
+      loanData.remove('vendor_name');
       
-      final response = await _supabase
-          .from('loans')
-          .insert(loanData)
-          .select()
-          .single();
-      final newLoan = LoanModel.fromJson(response);
-
-      _loans.insert(0, newLoan);
-      notifyListeners();
-
-      // Background cache sync
-      CacheService.saveCache(
-        'loans_cache',
-        _loans.map((e) => e.toJson()).toList(),
-      );
-
-      SystemAuditService.logAction(
-        actionType: 'CREATE_LOAN',
-        affectedEntity: 'Loan for Vendor: ${loan.vendorId}',
-        description:
-            'Created a new loan for R${loan.amount}. Status: ${loan.status}',
-      );
-
-      await NotificationService.notifyAdmins(
-        'New Loan Created',
-        'A new loan of R${loan.amount} has been issued.',
-        type: 'FINANCIAL',
-      );
-
-      return newLoan;
+      final response = await _supabase.from('loans').insert(loanData).select().single();
+      final confirmedLoan = LoanModel.fromJson(response);
+      
+      final index = _loans.indexWhere((l) => l.id == loan.id || l.id == '');
+      if (index != -1) _loans[index] = confirmedLoan;
+      
+      _syncCacheAndNotify();
+      _logAndNotify(confirmedLoan);
+      return confirmedLoan;
     } catch (e) {
+      _loans.removeWhere((l) => l.id == loan.id);
+      notifyListeners();
       debugPrint('Error adding loan: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> updateLoan(String id, Map<String, dynamic> updates) async {
+    final oldLoanIndex = _loans.indexWhere((l) => l.id == id);
+    if (oldLoanIndex == -1) return;
+    
+    final oldLoan = _loans[oldLoanIndex];
+    
+    // Optimistic Update
+    // Note: This is a simplified merge, usually you'd create a copy with updates
+    // For brevity, we just trigger notify and wait for DB
+    
+    if (ConnectivityService().currentStatus == AppConnectivityStatus.offline) {
+      await OfflineQueueService().queueAction(OfflineAction(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        table: 'loans',
+        type: OfflineActionType.update,
+        data: {'id': id, ...updates},
+        timestamp: DateTime.now(),
+      ));
+      return;
+    }
+
+    try {
+      final safeUpdates = Map<String, dynamic>.from(updates);
+      safeUpdates.remove('vendor_name');
+      
+      final response = await _supabase.from('loans').update(safeUpdates).eq('id', id).select().single();
+      final updatedLoan = LoanModel.fromJson(response);
+
+      _loans[oldLoanIndex] = updatedLoan;
+      _syncCacheAndNotify();
+    } catch (e) {
+      debugPrint('Error updating loan: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteLoan(String id) async {
+    final oldLoanIndex = _loans.indexWhere((l) => l.id == id);
+    if (oldLoanIndex == -1) return;
+    final deletedLoan = _loans.removeAt(oldLoanIndex);
+    notifyListeners();
+
+    if (ConnectivityService().currentStatus == AppConnectivityStatus.offline) {
+      await OfflineQueueService().queueAction(OfflineAction(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        table: 'loans',
+        type: OfflineActionType.delete,
+        data: {'id': id},
+        timestamp: DateTime.now(),
+      ));
+      return;
+    }
+
+    try {
+      await _supabase.from('loans').delete().eq('id', id);
+      _syncCacheAndNotify();
+    } catch (e) {
+      _loans.insert(oldLoanIndex, deletedLoan);
+      notifyListeners();
+      debugPrint('Error deleting loan: $e');
       rethrow;
     }
   }
@@ -101,57 +199,16 @@ class LoanProvider with ChangeNotifier {
     }
   }
 
-  Future<void> updateLoan(String id, Map<String, dynamic> updates) async {
-    try {
-      final safeUpdates = Map<String, dynamic>.from(updates);
-      safeUpdates.remove('vendor_name'); // Prevent schema cache error
-      
-      final response = await _supabase
-          .from('loans')
-          .update(safeUpdates)
-          .eq('id', id)
-          .select()
-          .single();
-      final updatedLoan = LoanModel.fromJson(response);
-
-      final index = _loans.indexWhere((l) => l.id == id);
-      if (index != -1) {
-        _loans[index] = updatedLoan;
-        notifyListeners();
-        CacheService.saveCache(
-          'loans_cache',
-          _loans.map((e) => e.toJson()).toList(),
-        );
-        SystemAuditService.logAction(
-          actionType: 'UPDATE_LOAN',
-          affectedEntity: 'Loan ID: $id',
-          description: 'Updated loan details or status.',
-        );
-      }
-    } catch (e) {
-      debugPrint('Error updating loan: $e');
-      rethrow;
-    }
-  }
-
-  Future<void> deleteLoan(String id) async {
-    try {
-      await _supabase.from('loans').delete().eq('id', id);
-
-      _loans.removeWhere((l) => l.id == id);
-      notifyListeners();
-      CacheService.saveCache(
-        'loans_cache',
-        _loans.map((e) => e.toJson()).toList(),
-      );
-      SystemAuditService.logAction(
-        actionType: 'DELETE_LOAN',
-        affectedEntity: 'Loan ID: $id',
-        description: 'Deleted loan record from the system.',
-      );
-    } catch (e) {
-      debugPrint('Error deleting loan: $e');
-      rethrow;
-    }
+  void _logAndNotify(LoanModel loan) {
+    SystemAuditService.logAction(
+      actionType: 'CREATE_LOAN',
+      affectedEntity: 'Loan for Vendor: ${loan.vendorId}',
+      description: 'Created a new loan for R${loan.amount}.',
+    );
+    NotificationService.notifyAdmins(
+      'New Loan Created',
+      'A new loan of R${loan.amount} has been issued.',
+      type: 'FINANCIAL',
+    );
   }
 }

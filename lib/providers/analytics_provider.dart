@@ -21,6 +21,19 @@ class AnalyticsProvider with ChangeNotifier {
   Map<String, double> _vendorCreditScores = {}; // vendorId -> score (0-100)
   Map<String, double> get vendorCreditScores => _vendorCreditScores;
 
+  // DF & Centre Reporting Data
+  Map<String, Map<String, double>> _dfMonthlyDisbursed = {}; // dfName -> {month: amount}
+  Map<String, Map<String, double>> get dfMonthlyDisbursed => _dfMonthlyDisbursed;
+
+  Map<String, double> _centerTotalLoans = {}; // centerId -> amount
+  Map<String, double> get centerTotalLoans => _centerTotalLoans;
+
+  Map<String, double> _dfCollectionPerformance = {}; // dfName -> rate
+  Map<String, double> get dfCollectionPerformance => _dfCollectionPerformance;
+
+  Map<String, Map<String, dynamic>> _dfPerformance = {}; // dfName -> {collectionRate: double, activeLoans: int}
+  Map<String, Map<String, dynamic>> get dfPerformance => _dfPerformance;
+
   double _globalTotalExpected = 0.0;
   double get globalTotalExpected => _globalTotalExpected;
 
@@ -44,8 +57,92 @@ class AnalyticsProvider with ChangeNotifier {
     // 3. Risk & Credit Scores
     _calculateScores(groups, vendors, loans, payments);
 
+    // 4. DF & Centre Performance
+    _calculateDFCentrePerformance(groups, vendors, loans, payments);
+
     _isLoading = false;
     notifyListeners();
+  }
+
+  void _calculateDFCentrePerformance(
+    List<GroupModel> groups,
+    List<VendorModel> vendors,
+    List<LoanModel> loans,
+    List<PaymentModel> payments,
+  ) {
+    _dfMonthlyDisbursed = {};
+    _centerTotalLoans = {};
+    _dfCollectionPerformance = {};
+
+    final now = DateTime.now();
+    final monthNames = [
+      '',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+
+    // Maps for faster lookup
+    final Map<String, String?> groupToCenter = {for (var g in groups) g.id: g.centerId};
+    final Map<String, String?> groupToDF = {for (var g in groups) g.id: g.dfName};
+
+    for (var loan in loans) {
+      final groupId = loan.groupId;
+      final dfName = groupToDF[groupId] ?? 'Unassigned';
+      final centerId = groupToCenter[groupId];
+
+      // DF Monthly Disbursed
+      if (loan.createdAt.year == now.year) {
+        final month = monthNames[loan.createdAt.month];
+        _dfMonthlyDisbursed.putIfAbsent(dfName, () => {});
+        _dfMonthlyDisbursed[dfName]![month] =
+            (_dfMonthlyDisbursed[dfName]![month] ?? 0) + loan.amount;
+      }
+
+      // Centre Total Loans
+      if (centerId != null) {
+        _centerTotalLoans[centerId] = (_centerTotalLoans[centerId] ?? 0) + loan.amount;
+      }
+    }
+
+    // DF Collection Performance
+    final Map<String, double> dfDisbursed = {};
+    final Map<String, double> dfCollected = {};
+    final Map<String, int> dfActiveLoans = {};
+
+    for (var loan in loans) {
+      final dfName = groupToDF[loan.groupId] ?? 'Unassigned';
+      dfDisbursed[dfName] = (dfDisbursed[dfName] ?? 0) + loan.amount;
+      
+      final loanPayments = payments.where((p) => p.loanId == loan.id);
+      final collected = loanPayments.fold(0.0, (sum, p) => sum + p.amountPaid);
+      dfCollected[dfName] = (dfCollected[dfName] ?? 0) + collected;
+
+      if (loan.status == 'Active' || loan.status == 'Overdue') {
+        dfActiveLoans[dfName] = (dfActiveLoans[dfName] ?? 0) + 1;
+      }
+    }
+
+    _dfPerformance = {};
+    for (var df in dfDisbursed.keys) {
+      final disbursed = dfDisbursed[df] ?? 0.0;
+      final collected = dfCollected[df] ?? 0.0;
+      final rate = disbursed > 0 ? (collected / disbursed) * 100 : 100.0;
+      _dfCollectionPerformance[df] = rate;
+      _dfPerformance[df] = {
+        'collectionRate': rate,
+        'activeLoans': dfActiveLoans[df] ?? 0,
+      };
+    }
   }
 
   List<MonthlyTrend> _calculateMonthlyTrend(
@@ -168,7 +265,7 @@ class AnalyticsProvider with ChangeNotifier {
       for (var loan in vendorLoans) {
         final loanPayments = payments.where((p) => p.loanId == loan.id).toList();
         final expected =
-            loan.amount +
+            (loan.monthlyPayment * loan.durationMonths) +
             (loan.initiationFee ?? 0) +
             ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) +
             LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);

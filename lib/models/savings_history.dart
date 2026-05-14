@@ -19,16 +19,40 @@ class SavingsHistoryModel {
     required this.createdAt,
   });
 
+  SavingsHistoryModel copyWith({
+    String? id,
+    String? vendorId,
+    double? amount,
+    double? previousBalance,
+    double? newBalance,
+    String? actionType,
+    String? updatedBy,
+    DateTime? createdAt,
+  }) {
+    return SavingsHistoryModel(
+      id: id ?? this.id,
+      vendorId: vendorId ?? this.vendorId,
+      amount: amount ?? this.amount,
+      previousBalance: previousBalance ?? this.previousBalance,
+      newBalance: newBalance ?? this.newBalance,
+      actionType: actionType ?? this.actionType,
+      updatedBy: updatedBy ?? this.updatedBy,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
   factory SavingsHistoryModel.fromJson(Map<String, dynamic> json) {
     return SavingsHistoryModel(
-      id: json['id'],
-      vendorId: json['vendor_id'],
-      amount: (json['amount'] as num).toDouble(),
-      previousBalance: (json['previous_balance'] as num).toDouble(),
-      newBalance: (json['new_balance'] as num).toDouble(),
-      actionType: json['action_type'],
-      updatedBy: json['updated_by'],
-      createdAt: DateTime.parse(json['created_at']),
+      id: json['id'] ?? '',
+      vendorId: json['vendor_id'] ?? '',
+      amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
+      previousBalance: (json['previous_balance'] as num?)?.toDouble() ?? 0.0,
+      newBalance: (json['new_balance'] as num?)?.toDouble() ?? 0.0,
+      actionType: json['action_type'] ?? 'Unknown',
+      updatedBy: json['updated_by'] ?? 'System',
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
+          : DateTime.now(),
     );
   }
 

@@ -109,6 +109,38 @@ class CenterProvider with ChangeNotifier {
     }
   }
 
+  Future<void> updateCenterDF(String centerId, String? dfId, String? dfName) async {
+    try {
+      await _supabase.from('centers').update({
+        'df_id': dfId,
+        'df_name': dfName,
+      }).eq('id', centerId);
+
+      final index = _centers.indexWhere((c) => c.id == centerId);
+      if (index != -1) {
+        final c = _centers[index];
+        _centers[index] = CenterModel(
+          id: c.id,
+          name: c.name,
+          referenceNumber: c.referenceNumber,
+          createdAt: c.createdAt,
+          dfId: dfId,
+          dfName: dfName,
+        );
+      }
+      notifyListeners();
+
+      SystemAuditService.logAction(
+        actionType: 'UPDATE_CENTER_DF',
+        affectedEntity: 'Center ID: $centerId',
+        description: 'Assigned DF $dfName to Center.',
+      );
+    } catch (e) {
+      debugPrint('Error updating center DF: $e');
+      rethrow;
+    }
+  }
+
   Future<void> deleteCenter(String id) async {
     try {
       final center = _centers.firstWhere((c) => c.id == id);

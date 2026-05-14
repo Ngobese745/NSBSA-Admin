@@ -1,16 +1,44 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/savings_history.dart';
+import '../services/realtime_service.dart';
 
 class SavingsHistoryProvider with ChangeNotifier {
   final _supabase = Supabase.instance.client;
   List<SavingsHistoryModel> _history = [];
   bool _isLoading = false;
+  String? _currentVendorId;
 
   List<SavingsHistoryModel> get history => _history;
   bool get isLoading => _isLoading;
 
+  SavingsHistoryProvider() {
+    _initRealtime();
+  }
+
+  void _initRealtime() {
+    RealtimeService().subscribeToTable(
+      tableName: 'savings_history',
+      onData: (payload) {
+        final event = payload.eventType;
+        final data = payload.newRecord;
+
+        if (event == PostgresChangeEvent.insert) {
+          final newEntry = SavingsHistoryModel.fromJson(data);
+          // Only add if it's for the vendor we are currently looking at
+          if (_currentVendorId != null && newEntry.vendorId == _currentVendorId) {
+            if (!_history.any((e) => e.id == newEntry.id)) {
+              _history.insert(0, newEntry);
+              notifyListeners();
+            }
+          }
+        }
+      },
+    );
+  }
+
   Future<void> fetchHistoryByVendor(String vendorId) async {
+    _currentVendorId = vendorId;
     _isLoading = true;
     notifyListeners();
 
@@ -41,8 +69,10 @@ class SavingsHistoryProvider with ChangeNotifier {
           .single();
 
       final newEntry = SavingsHistoryModel.fromJson(response);
-      _history.insert(0, newEntry);
-      notifyListeners();
+      if (_currentVendorId == newEntry.vendorId) {
+        _history.insert(0, newEntry);
+        notifyListeners();
+      }
     } catch (e) {
       debugPrint('Error adding savings history: $e');
       rethrow;

@@ -54,12 +54,23 @@ class GroupProvider with ChangeNotifier {
     List<Map<String, dynamic>> members,
   ) async {
     try {
+      // Fetch Center to get DF
+      final centerRes = await _supabase
+          .from('centers')
+          .select('df_id, df_name')
+          .eq('id', centerId)
+          .single();
+      final dfId = centerRes['df_id'];
+      final dfName = centerRes['df_name'];
+
       final response = await _supabase
           .from('groups')
           .insert({
             'name': name,
             'reference_number': referenceNumber,
             'center_id': centerId,
+            'df_id': dfId,
+            'df_name': dfName,
           })
           .select()
           .single();
@@ -84,6 +95,8 @@ class GroupProvider with ChangeNotifier {
                 'savings_frequency': m['savings_frequency'],
                 'savings_start_date': m['savings_start_date'],
                 'reference_number': referenceNumber,
+                'df_id': dfId,
+                'df_name': dfName,
               },
             )
             .toList();

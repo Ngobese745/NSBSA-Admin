@@ -6,6 +6,8 @@ import 'package:flutter_web_plugins/url_strategy.dart';
 
 import 'core/app_config.dart';
 import 'app/app.dart';
+import 'services/offline_queue_service.dart';
+import 'services/background_sync_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -49,11 +51,14 @@ Future<void> main() async {
         url: supabaseUrl,
         anonKey: supabaseAnonKey,
         debug: kDebugMode,
-        // Ensure that if we have a code/token, we prioritize it over the persisted session
         authOptions: const FlutterAuthClientOptions(
           authFlowType: AuthFlowType.pkce,
         ),
       );
+
+      // Initialize Sync Services
+      await OfflineQueueService().init();
+      BackgroundSyncService().init();
     }
   } catch (e) {
     debugPrint('Initialization error: $e');

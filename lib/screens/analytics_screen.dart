@@ -14,6 +14,7 @@ import '../models/group.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'df_centre_reports_screen.dart';
 
 class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({super.key});
@@ -73,130 +74,156 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.black, Colors.grey.shade900],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: PreferredSize(
+          preferredSize: const Size.fromHeight(60),
+          child: Container(
+            color: Colors.black.withOpacity(0.3),
+            child: TabBar(
+              indicatorColor: theme.colorScheme.primary,
+              labelColor: theme.colorScheme.primary,
+              unselectedLabelColor: Colors.grey,
+              tabs: const [
+                Tab(text: 'Business Intelligence'),
+                Tab(text: 'DF & Centre Reports'),
+              ],
+            ),
           ),
         ),
-        child: SingleChildScrollView(
-          padding: EdgeInsets.all(isTablet ? 24 : 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        body: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.black, Colors.grey.shade900],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+          ),
+          child: TabBarView(
             children: [
-              const SizedBox(height: 24),
-              _buildHeader(theme, analyticsProvider),
-              const SizedBox(height: 32),
-              // Rest of content unchanged
-              // Top Section (Summary, Pie, Top Groups)
-              if (isDesktop)
-                Row(
+              // ── Tab 1: Business Intelligence ───────────────────────────
+              SingleChildScrollView(
+                padding: EdgeInsets.all(isTablet ? 24 : 16),
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      flex: 1,
-                      child: _buildSummaryCard(
-                        'No of Members',
-                        vendorProvider.vendors.length.toString(),
-                        'Total Registered',
-                        Icons.people_outline,
-                        theme,
-                      ),
-                    ),
-                    const SizedBox(width: 24),
-                    Expanded(
-                      flex: 2,
-                      child: _buildFinancialMixPie(analyticsProvider, theme),
-                    ),
-                    const SizedBox(width: 24),
-                    Expanded(
-                      flex: 2,
-                      child: _buildTopGroupsChart(analyticsProvider, theme),
-                    ),
-                  ],
-                )
-              else
-                Column(
-                  children: [
-                    _buildSummaryCard(
-                      'No of Members',
-                      vendorProvider.vendors.length.toString(),
-                      'Total Registered',
-                      Icons.people_outline,
-                      theme,
-                      height: 220,
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildFinancialMixPie(
-                            analyticsProvider,
-                            theme,
-                            height: 250,
-                          ),
-                        ),
-                        if (isTablet) ...[
-                          const SizedBox(width: 16),
+                    const SizedBox(height: 24),
+                    _buildHeader(theme, analyticsProvider),
+                    const SizedBox(height: 32),
+                    // Top Section (Summary, Pie, Top Groups)
+                    if (isDesktop)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Expanded(
-                            child: _buildTopGroupsChart(
-                              analyticsProvider,
+                            flex: 1,
+                            child: _buildSummaryCard(
+                              'No of Members',
+                              vendorProvider.vendors.length.toString(),
+                              'Total Registered',
+                              Icons.people_outline,
                               theme,
-                              height: 250,
+                            ),
+                          ),
+                          const SizedBox(width: 24),
+                          Expanded(
+                            flex: 2,
+                            child: _buildFinancialMixPie(analyticsProvider, theme),
+                          ),
+                          const SizedBox(width: 24),
+                          Expanded(
+                            flex: 2,
+                            child: _buildTopGroupsChart(analyticsProvider, theme),
+                          ),
+                        ],
+                      )
+                    else
+                      Column(
+                        children: [
+                          _buildSummaryCard(
+                            'No of Members',
+                            vendorProvider.vendors.length.toString(),
+                            'Total Registered',
+                            Icons.people_outline,
+                            theme,
+                            height: 220,
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildFinancialMixPie(
+                                  analyticsProvider,
+                                  theme,
+                                  height: 250,
+                                ),
+                              ),
+                              if (isTablet) ...[
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: _buildTopGroupsChart(
+                                    analyticsProvider,
+                                    theme,
+                                    height: 250,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          if (!isTablet) ...[
+                            const SizedBox(height: 16),
+                            _buildTopGroupsChart(analyticsProvider, theme, height: 250),
+                          ],
+                        ],
+                      ),
+                    const SizedBox(height: 24),
+                    // Bottom Section (Trend Chart, Risk Map)
+                    if (isDesktop)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: _buildSmoothTrendChart(analyticsProvider, theme),
+                          ),
+                          const SizedBox(width: 24),
+                          Expanded(
+                            flex: 2,
+                            child: _buildRiskGrid(
+                              analyticsProvider,
+                              groupProvider.groups,
+                              theme,
                             ),
                           ),
                         ],
-                      ],
-                    ),
-                    if (!isTablet) ...[
-                      const SizedBox(height: 16),
-                      _buildTopGroupsChart(analyticsProvider, theme, height: 250),
-                    ],
-                  ],
-                ),
-              const SizedBox(height: 24),
-              // Bottom Section (Trend Chart, Risk Map)
-              if (isDesktop)
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: _buildSmoothTrendChart(analyticsProvider, theme),
-                    ),
-                    const SizedBox(width: 24),
-                    Expanded(
-                      flex: 2,
-                      child: _buildRiskGrid(
-                        analyticsProvider,
-                        groupProvider.groups,
-                        theme,
+                      )
+                    else
+                      Column(
+                        children: [
+                          _buildSmoothTrendChart(analyticsProvider, theme),
+                          const SizedBox(height: 16),
+                          _buildRiskGrid(
+                            analyticsProvider,
+                            groupProvider.groups,
+                            theme,
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
-                )
-              else
-                Column(
-                  children: [
-                    _buildSmoothTrendChart(analyticsProvider, theme),
-                    const SizedBox(height: 16),
-                    _buildRiskGrid(
-                      analyticsProvider,
-                      groupProvider.groups,
-                      theme,
-                    ),
+                    const SizedBox(height: 32),
                   ],
                 ),
+              ),
+              // ── Tab 2: DF & Centre Reports ─────────────────────────────
+              const DFCentreReportsScreen(),
             ],
           ),
         ),
       ),
     );
   }
+
 
   Widget _buildHeader(ThemeData theme, AnalyticsProvider analyticsProvider) {
     return LayoutBuilder(

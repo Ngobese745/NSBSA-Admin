@@ -5,12 +5,17 @@ class GroupModel {
   final String? centerId;
   final DateTime createdAt;
 
+  final String? dfId;
+  final String? dfName;
+
   GroupModel({
     required this.id,
     required this.referenceNumber,
     required this.name,
     this.centerId,
     required this.createdAt,
+    this.dfId,
+    this.dfName,
   });
 
   /// Placeholder when a group cannot be resolved (lists, lookups).
@@ -30,6 +35,8 @@ class GroupModel {
       name: json['name'],
       centerId: json['center_id'],
       createdAt: DateTime.parse(json['created_at']),
+      dfId: json['df_id'],
+      dfName: json['df_name'],
     );
   }
 
@@ -39,6 +46,8 @@ class GroupModel {
       'name': name,
       'center_id': centerId,
       'created_at': createdAt.toIso8601String(),
+      'df_id': dfId,
+      'df_name': dfName,
     };
     if (id.isNotEmpty) {
       map['id'] = id;

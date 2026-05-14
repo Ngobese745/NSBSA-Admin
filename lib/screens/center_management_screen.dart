@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/providers.dart';
 import '../models/center.dart';
 import '../models/leadership.dart';
@@ -94,8 +95,49 @@ class _CenterManagementScreenState extends State<CenterManagementScreen> {
                                 ),
                             ],
                           ),
-                          subtitle: Text(
-                            'Ref: ${center.referenceNumber} • ${groupsInCenter.length} Groups',
+                          subtitle: Row(
+                            children: [
+                              Text(
+                                'Ref: ${center.referenceNumber} • ${groupsInCenter.length} Groups',
+                              ),
+                              const SizedBox(width: 8),
+                              if (center.dfName != null)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.primary
+                                        .withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(
+                                      color: theme.colorScheme.primary
+                                          .withOpacity(0.3),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'DF: ${center.dfName}',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: theme.colorScheme.primary,
+                                    ),
+                                  ),
+                                ),
+                              const Spacer(),
+                              TextButton.icon(
+                                onPressed: () =>
+                                    _showAssignDFDialog(context, center),
+                                icon: const Icon(Icons.person_outline, size: 14),
+                                label: Text(
+                                  center.dfName == null
+                                      ? 'Assign DF'
+                                      : 'Change DF',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                            ],
                           ),
                           children: [
                             Padding(
@@ -385,6 +427,61 @@ class _CenterManagementScreenState extends State<CenterManagementScreen> {
         }
       }
     }
+  }
+
+  void _showAssignDFDialog(BuildContext context, CenterModel center) async {
+    String? selectedProfileId = center.dfId;
+    // Fetch profiles with DF role
+    final response = await Supabase.instance.client
+        .from('profiles')
+        .select()
+        .eq('role', 'Development Facilitator');
+    final profiles = response as List;
+
+    if (!context.mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text('Assign DF to ${center.name}'),
+          content: DropdownButtonFormField<String>(
+            value: selectedProfileId,
+            hint: const Text('Select Development Facilitator'),
+            items: profiles
+                .map((p) => DropdownMenuItem(
+                      value: p['id'] as String,
+                      child: Text(p['full_name'] ?? p['email'] ?? 'Unknown'),
+                    ))
+                .toList(),
+            onChanged: (val) => setState(() => selectedProfileId = val),
+            decoration: const InputDecoration(labelText: 'Facilitator'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: selectedProfileId == null
+                  ? null
+                  : () async {
+                      final profile = profiles.firstWhere(
+                        (p) => p['id'] == selectedProfileId,
+                      );
+                      await context.read<CenterProvider>().updateCenterDF(
+                            center.id,
+                            selectedProfileId,
+                            profile['full_name'] ?? profile['email'],
+                          );
+                      if (context.mounted) Navigator.pop(context);
+                    },
+              child: const Text('Assign'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildCapacityIndicator(int count) {

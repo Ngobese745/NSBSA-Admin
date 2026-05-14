@@ -54,12 +54,17 @@ class LoanCalculationService {
     final totalPaid = payments.fold(0.0, (sum, p) => sum + p.amountPaid);
 
     final initiationFee = loan.initiationFee ?? 0.0;
+    
+    // Admin fee is charged monthly for the duration of the loan
     final totalAdminFee = (loan.monthlyAdminFee ?? 0.0) * loan.durationMonths;
+    
     final appliedPenalty = calculateAppliedPenalty(loan, payments);
     final openingAmount = loan.openingAmount ?? 0.0;
 
+    // Total liability is (Monthly Repayment * Term) + Fees + Penalties
+    // Note: loan.amount is the principal, but the monthly repayment includes interest.
     final totalLiability =
-        loan.amount +
+        (loan.monthlyPayment * loan.durationMonths) +
         openingAmount +
         initiationFee +
         totalAdminFee +
@@ -74,5 +79,48 @@ class LoanCalculationService {
   /// Checks if a loan is fully settled.
   static bool isSettled(LoanModel loan, List<PaymentModel> payments) {
     return calculateBalance(loan, payments) <= 0.01;
+  }
+
+  /// Calculates total arrears for a loan (amount overdue from missed/partial instalments).
+  static double calculateArrears(LoanModel loan, List<PaymentModel> payments) {
+    if (loan.firstInstalmentDate == null) return 0.0;
+    final now = DateTime.now();
+    final sortedPayments = List<PaymentModel>.from(payments)
+      ..sort((a, b) => a.datePaid.compareTo(b.datePaid));
+
+    // How many instalments should have been paid by now
+    int instalmentsDue = 0;
+    for (int i = 0; i < loan.durationMonths; i++) {
+      final dueDate = DateTime(
+        loan.firstInstalmentDate!.year,
+        loan.firstInstalmentDate!.month + i,
+        loan.firstInstalmentDate!.day,
+      );
+      if (now.isAfter(dueDate) || now.isAtSameMomentAs(dueDate)) {
+        instalmentsDue = i + 1;
+      } else {
+        break;
+      }
+    }
+
+    final expectedPaid = loan.monthlyPayment * instalmentsDue;
+    final totalPaid = sortedPayments.fold(0.0, (sum, p) => sum + p.amountPaid);
+    final arrears = expectedPaid - totalPaid;
+    return arrears > 0 ? arrears : 0.0;
+  }
+
+  /// Returns the next payment due date for a loan.
+  static DateTime? nextPaymentDate(LoanModel loan) {
+    if (loan.firstInstalmentDate == null) return null;
+    final now = DateTime.now();
+    for (int i = 0; i < loan.durationMonths; i++) {
+      final dueDate = DateTime(
+        loan.firstInstalmentDate!.year,
+        loan.firstInstalmentDate!.month + i,
+        loan.firstInstalmentDate!.day,
+      );
+      if (dueDate.isAfter(now)) return dueDate;
+    }
+    return null; // Loan term ended
   }
 }

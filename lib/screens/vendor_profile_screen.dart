@@ -26,6 +26,7 @@ import '../providers/savings_history_provider.dart';
 import '../services/vendor_pdf_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../services/excel_export_service.dart';
 
 import '../widgets/communication/communication_dialog.dart';
 
@@ -395,6 +396,38 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     }
   }
 
+  Future<void> _exportLoansToExcel() async {
+    final paymentProvider = context.read<PaymentProvider>();
+    List<Map<String, dynamic>> loanData = [];
+
+    for (var loan in _loans) {
+      final loanPayments = paymentProvider.payments.where((p) => p.loanId == loan.id).toList();
+      final totalPaid = loanPayments.fold(0.0, (sum, p) => sum + p.amountPaid);
+      final liability = loan.amount +
+          (loan.initiationFee ?? 0) +
+          ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) +
+          LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
+      final balance = liability - totalPaid;
+      final arrears = LoanCalculationService.calculateArrears(loan, loanPayments);
+
+      loanData.add({
+        'date': loan.createdAt.toString().substring(0, 10),
+        'amount': loan.amount,
+        'type': loan.loanType ?? 'Standard',
+        'duration': loan.durationMonths,
+        'status': loan.status,
+        'totalPaid': totalPaid,
+        'arrears': arrears,
+        'balance': balance,
+      });
+    }
+
+    await ExcelExportService.exportLoanHistory(
+      memberName: _currentVendor.name,
+      loanData: loanData,
+    );
+  }
+
   Widget _buildCommentsSection(ThemeData theme) {
     final commentProvider = context.watch<CommentProvider>();
     final TextEditingController _commentController = TextEditingController();
@@ -747,7 +780,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                 borderRadius: BorderRadius.circular(8),
                 child: _buildInfoRow(
                   'Savings Balance',
-                  'R ${_currentVendor.savingsAmount?.toStringAsFixed(0) ?? '0'} (${_currentVendor.savingsFrequency ?? 'Monthly'})',
+                  'R ${_currentVendor.savingsAmount?.toStringAsFixed(2) ?? '0.00'}',
                   Icons.savings_outlined,
                   trailing: const Icon(
                     Icons.edit_outlined,
@@ -758,12 +791,12 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
               ),
               if (context.watch<SavingsHistoryProvider>().history.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(top: 4, left: 30),
+                  padding: const EdgeInsets.only(top: 0, left: 30),
                   child: Text(
                     'Last updated: ${context.watch<SavingsHistoryProvider>().history.first.createdAt.toString().substring(0, 16)} by ${context.watch<SavingsHistoryProvider>().history.first.updatedBy}',
                     style: TextStyle(
                       color: Colors.grey[600],
-                      fontSize: 10,
+                      fontSize: 9,
                       fontStyle: FontStyle.italic,
                     ),
                   ),
@@ -903,6 +936,17 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     );
   }
 
+  Widget _buildDetailItem(String label, String value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 10)),
+        const SizedBox(height: 4),
+        Text(value, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13)),
+      ],
+    );
+  }
+
   Widget _buildHistorySection(
     ThemeData theme,
     String title,
@@ -912,9 +956,20 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+            if (isLoans && items.isNotEmpty)
+              IconButton(
+                icon: const Icon(Icons.download_for_offline, color: Colors.amber, size: 20),
+                onPressed: () => _exportLoansToExcel(),
+                tooltip: 'Export Loans to Excel',
+              ),
+          ],
         ),
         const SizedBox(height: 16),
         Container(
@@ -942,22 +997,35 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                     final item = items[index];
                     if (isLoans) {
                       final loan = item as LoanModel;
-                      return ListTile(
-                        dense: true,
+                      final paymentProvider = context.read<PaymentProvider>();
+                      final loanPayments = paymentProvider.payments.where((p) => p.loanId == loan.id).toList();
+                      
+                      final totalPaid = loanPayments.fold(0.0, (sum, p) => sum + p.amountPaid);
+                      final liability = loan.amount + (loan.initiationFee ?? 0) + ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) + LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
+                      final balance = liability - totalPaid;
+                      final arrears = LoanCalculationService.calculateArrears(loan, loanPayments);
+                      
+                      final isOverdue = loan.status == 'Overdue' || arrears > 0;
+                      
+                      return ExpansionTile(
                         title: Text(
                           'Loan R ${loan.amount}',
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                         subtitle: Text(
                           '${loan.durationMonths} Months • ${loan.status}',
+                          style: TextStyle(
+                            color: isOverdue ? Colors.redAccent : Colors.grey,
+                            fontWeight: isOverdue ? FontWeight.bold : FontWeight.normal,
+                          ),
                         ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              'R ${loan.monthlyPayment}/mo',
+                              'Bal: R ${balance.toStringAsFixed(0)}',
                               style: TextStyle(
-                                color: theme.primaryColor,
+                                color: balance <= 0 ? Colors.greenAccent : theme.primaryColor,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -974,6 +1042,41 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                             ),
                           ],
                         ),
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            color: Colors.black12,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    _buildDetailItem('Arrears', 'R ${arrears.toStringAsFixed(0)}', arrears > 0 ? Colors.redAccent : Colors.greenAccent),
+                                    _buildDetailItem('Next Due', LoanCalculationService.nextPaymentDate(loan)?.toString().substring(0, 10) ?? 'N/A', Colors.white70),
+                                    _buildDetailItem('Total Paid', 'R ${totalPaid.toStringAsFixed(0)}', Colors.greenAccent),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                const Text('Repayments', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                const SizedBox(height: 8),
+                                if (loanPayments.isEmpty)
+                                  const Text('No payments recorded.', style: TextStyle(color: Colors.grey, fontSize: 11))
+                                else
+                                  ...loanPayments.map((p) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 4),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(p.datePaid.toString().substring(0, 10), style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                        Text('R ${p.amountPaid.toStringAsFixed(0)}', style: const TextStyle(fontSize: 11, color: Colors.greenAccent)),
+                                      ],
+                                    ),
+                                  )),
+                              ],
+                            ),
+                          )
+                        ],
                       );
                     } else {
                       final payment = item as PaymentModel;
@@ -1021,164 +1124,124 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
   String _selectedActionFilter = 'All';
 
   Widget _buildSavingsHistorySection(ThemeData theme) {
-    final savingsHistoryProvider = context.watch<SavingsHistoryProvider>();
-    final history = savingsHistoryProvider.history.where((e) {
+    final historyProvider = context.watch<SavingsHistoryProvider>();
+    final history = historyProvider.history.where((e) {
       if (_selectedActionFilter == 'All') return true;
       return e.actionType == _selectedActionFilter;
     }).toList();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.dividerColor),
+      ),
+      child: ExpansionTile(
+        initiallyExpanded: false,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        collapsedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: const Text(
+          'Savings History Log',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'Savings History Log',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            DropdownButton<String>(
+              value: _selectedActionFilter,
+              underline: const SizedBox(),
+              dropdownColor: theme.cardColor,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+              icon: const Icon(Icons.filter_list, size: 16, color: Colors.grey),
+              items: ['All', 'Deposit', 'Withdrawal', 'Adjustment']
+                  .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                  .toList(),
+              onChanged: (val) => setState(() => _selectedActionFilter = val!),
             ),
-            Row(
-              children: [
-                DropdownButton<String>(
-                  value: _selectedActionFilter,
-                  dropdownColor: theme.cardColor,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                  underline: const SizedBox(),
-                  items: ['All', 'Deposit', 'Withdrawal', 'Adjustment']
-                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                      .toList(),
-                  onChanged: (val) =>
-                      setState(() => _selectedActionFilter = val!),
+            if (history.isNotEmpty)
+              IconButton(
+                onPressed: () => VendorPdfService.exportSavingsHistoryPDF(
+                  vendor: _currentVendor,
+                  history: history,
                 ),
-                if (history.isNotEmpty)
-                  IconButton(
-                    onPressed: () => VendorPdfService.exportSavingsHistoryPDF(
-                      vendor: _currentVendor,
-                      history: history,
-                    ),
-                    icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
-                    tooltip: 'Export PDF',
-                  ),
-              ],
-            ),
+                icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+                tooltip: 'Export PDF',
+              ),
           ],
         ),
-        const SizedBox(height: 16),
-        Container(
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: theme.cardColor,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: theme.dividerColor),
-          ),
-          child: history.isEmpty
-              ? const Padding(
-                  padding: EdgeInsets.all(32),
-                  child: Center(
-                    child: Text(
-                      'No matching history found.',
-                      style: TextStyle(color: Colors.grey),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            child: history.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Center(
+                      child: Text(
+                        'No matching history found.',
+                        style: TextStyle(color: Colors.grey),
+                      ),
                     ),
-                  ),
-                )
-              : SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: DataTable(
-                    columnSpacing: 24,
-                    horizontalMargin: 16,
-                    headingRowHeight: 40,
-                    dataRowHeight: 52,
-                    headingTextStyle: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                      color: Colors.amber,
-                    ),
-                    columns: const [
-                      DataColumn(label: Text('Date/Time')),
-                      DataColumn(label: Text('Action')),
-                      DataColumn(label: Text('Amount')),
-                      DataColumn(label: Text('New Balance')),
-                      DataColumn(label: Text('Operator')),
-                    ],
-                    rows: history.map((entry) {
-                      Color actionColor;
-                      switch (entry.actionType) {
-                        case 'Deposit':
-                          actionColor = Colors.greenAccent;
-                          break;
-                        case 'Withdrawal':
-                          actionColor = Colors.redAccent;
-                          break;
-                        default:
-                          actionColor = Colors.amberAccent;
-                      }
+                  )
+                : SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: DataTable(
+                      columnSpacing: 24,
+                      horizontalMargin: 16,
+                      headingRowHeight: 40,
+                      dataRowHeight: 52,
+                      headingTextStyle: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                        color: Colors.amber,
+                      ),
+                      columns: const [
+                        DataColumn(label: Text('Date/Time')),
+                        DataColumn(label: Text('Action')),
+                        DataColumn(label: Text('Amount')),
+                        DataColumn(label: Text('New Balance')),
+                        DataColumn(label: Text('Operator')),
+                      ],
+                      rows: history.map((entry) {
+                        Color actionColor;
+                        switch (entry.actionType) {
+                          case 'Deposit':
+                            actionColor = Colors.greenAccent;
+                            break;
+                          case 'Withdrawal':
+                            actionColor = Colors.redAccent;
+                            break;
+                          default:
+                            actionColor = Colors.amberAccent;
+                        }
 
-                      return DataRow(
-                        cells: [
-                          DataCell(
-                            Text(
-                              entry.createdAt.toString().substring(0, 16),
-                              style: const TextStyle(fontSize: 11),
-                            ),
-                          ),
-                          DataCell(
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: actionColor.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(4),
-                                border: Border.all(
-                                  color: actionColor.withOpacity(0.5),
+                        return DataRow(
+                          cells: [
+                            DataCell(Text(entry.createdAt.toString().substring(0, 16), style: const TextStyle(fontSize: 11))),
+                            DataCell(
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: actionColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: actionColor.withOpacity(0.5)),
                                 ),
-                              ),
-                              child: Text(
-                                entry.actionType,
-                                style: TextStyle(
-                                  color: actionColor,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
+                                child: Text(
+                                  entry.actionType,
+                                  style: TextStyle(color: actionColor, fontSize: 10, fontWeight: FontWeight.bold),
                                 ),
                               ),
                             ),
-                          ),
-                          DataCell(
-                            Text(
-                              'R ${entry.amount.toStringAsFixed(0)}',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          DataCell(
-                            Text(
-                              'R ${entry.newBalance.toStringAsFixed(0)}',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.amber,
-                              ),
-                            ),
-                          ),
-                          DataCell(
-                            Text(
-                              entry.updatedBy,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ),
-                        ],
-                      );
-                    }).toList(),
+                            DataCell(Text('R ${entry.amount.toStringAsFixed(2)}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold))),
+                            DataCell(Text('R ${entry.newBalance.toStringAsFixed(2)}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber))),
+                            DataCell(Text(entry.updatedBy, style: const TextStyle(fontSize: 11, color: Colors.grey))),
+                          ],
+                        );
+                      }).toList(),
+                    ),
                   ),
-                ),
-        ),
-      ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -1316,28 +1379,21 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                 }
 
                 try {
-                  await context.read<VendorProvider>().updateSavingsBalance(
-                    vendorId: _currentVendor.id,
-                    newBalance: newBalance,
-                    actionType: selectedAction,
-                    amount: amount,
-                  );
+                  final authProvider = context.read<AuthProvider>();
+                  final operatorEmail = authProvider.currentUser?.email ?? 'Admin';
 
-                  // Update history log
-                  await context.read<SavingsHistoryProvider>().addEntry(
+                  await context.read<VendorProvider>().recordSavingsTransaction(
                     vendorId: _currentVendor.id,
                     amount: amount,
-                    type: selectedAction,
-                    previousBalance: currentBalance,
-                    newBalance: newBalance,
-                    updatedBy:
-                        context.read<AuthProvider>().currentUser?.email ??
-                        'Admin',
+                    actionType: selectedAction,
+                    updatedBy: operatorEmail,
                   );
 
                   if (context.mounted) {
                     Navigator.pop(context);
-                    _loadData(); // Refresh vendor profile data
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Savings $selectedAction recorded successfully')),
+                    );
                   }
                 } catch (e) {
                   if (context.mounted) {

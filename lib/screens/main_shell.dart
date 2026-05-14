@@ -25,12 +25,15 @@ import 'user_profile_screen.dart';
 import 'analytics_screen.dart';
 import 'developer_management_screen.dart';
 import 'center_management_screen.dart';
+import '../widgets/sync_status_indicator.dart';
 import '../providers/developer_controls_provider.dart';
 import '../services/access_control_service.dart';
 import '../widgets/feature_disabled_placeholder.dart';
 import '../widgets/system_status_banner_strip.dart';
 import '../widgets/notification_bell.dart';
 import 'marketing/marketing_hub_screen.dart';
+import 'notification_history_screen.dart';
+import '../providers/shell_navigation_provider.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -40,12 +43,18 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
-  int _selectedIndex = 0;
+  // We'll use ShellNavigationProvider for the actual index
   String? _dismissedStripBannerId;
   bool _isSidebarVisible = true;
   final LayerLink _layerLink = LayerLink();
   OverlayEntry? _overlayEntry;
   final TextEditingController _searchController = TextEditingController();
+  final Set<int> _loadedIndices = {0}; // Dashboard is always loaded
+
+  final List<GlobalKey<NavigatorState>> _navigatorKeys = List.generate(
+    14,
+    (index) => GlobalKey<NavigatorState>(),
+  );
 
   final List<String> _titles = [
     'Dashboard',
@@ -60,6 +69,8 @@ class _MainShellState extends State<MainShell> {
     'Center Management',
     'User Management',
     'Developer Management',
+    'Account Preferences',
+    'Notification History',
   ];
 
   @override
@@ -72,41 +83,37 @@ class _MainShellState extends State<MainShell> {
   }
 
   Widget _shellBodyForIndex(int index) {
-    final dev = context.watch<DeveloperControlsProvider>();
-    Widget guard(String key, Widget child) {
-      if (!dev.isFeatureEnabled(key)) {
-        return FeatureDisabledPlaceholder(featureKey: key);
-      }
-      return child;
-    }
-
     switch (index) {
       case 0:
-        return guard('dashboard', const DashboardScreen());
+        return const FeatureGuard(featureKey: 'dashboard', child: DashboardScreen());
       case 1:
-        return guard('groups', const GroupsScreen());
+        return const FeatureGuard(featureKey: 'groups', child: GroupsScreen());
       case 2:
-        return guard('vendors', const VendorsScreen());
+        return const FeatureGuard(featureKey: 'vendors', child: VendorsScreen());
       case 3:
-        return guard('loans', const LoansScreen());
+        return const FeatureGuard(featureKey: 'loans', child: LoansScreen());
       case 4:
-        return guard('payments', const PaymentsScreen());
+        return const FeatureGuard(featureKey: 'payments', child: PaymentsScreen());
       case 5:
-        return guard('analytics', const AnalyticsScreen());
+        return const FeatureGuard(featureKey: 'analytics', child: AnalyticsScreen());
       case 6:
-        return guard('reports', const ReportsScreen());
+        return const FeatureGuard(featureKey: 'reports', child: ReportsScreen());
       case 7:
-        return guard('import', const ImportScreen());
+        return const FeatureGuard(featureKey: 'import', child: ImportScreen());
       case 8:
-        return guard('marketing', const MarketingHubScreen());
+        return const FeatureGuard(featureKey: 'marketing', child: MarketingHubScreen());
       case 9:
         return const CenterManagementScreen();
       case 10:
-        return guard('user_management', const UserManagementScreen());
+        return const FeatureGuard(featureKey: 'user_management', child: UserManagementScreen());
       case 11:
         return const DeveloperManagementScreen();
+      case 12:
+        return const UserProfileScreen();
+      case 13:
+        return const NotificationHistoryScreen();
       default:
-        return guard('dashboard', const DashboardScreen());
+        return const FeatureGuard(featureKey: 'dashboard', child: DashboardScreen());
     }
   }
 
@@ -118,7 +125,14 @@ class _MainShellState extends State<MainShell> {
     final isLight = theme.brightness == Brightness.light;
 
     return Scaffold(
-      appBar: isDesktop ? null : AppBar(title: Text(_titles[_selectedIndex])),
+      appBar: isDesktop
+          ? null
+          : AppBar(
+              title: Selector<ShellNavigationProvider, int>(
+                selector: (_, p) => p.selectedIndex,
+                builder: (_, index, __) => Text(_titles[index]),
+              ),
+            ),
       drawer: isDesktop ? null : _buildDrawer(theme),
       body: Column(
         children: [
@@ -190,16 +204,20 @@ class _MainShellState extends State<MainShell> {
                       ),
                     ),
                     const SizedBox(width: 20),
-                    Text(
-                      _titles[_selectedIndex].toUpperCase(),
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        letterSpacing: 1.2,
+                    Selector<ShellNavigationProvider, int>(
+                      selector: (_, p) => p.selectedIndex,
+                      builder: (_, index, __) => Text(
+                        _titles[index].toUpperCase(),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          letterSpacing: 1.2,
+                        ),
                       ),
                     ),
                     const Spacer(),
+                    const SyncStatusIndicator(),
                     IconButton(
                       tooltip: 'Refresh data & system banner',
                       icon: const Icon(
@@ -275,7 +293,8 @@ class _MainShellState extends State<MainShell> {
                         ),
                         onChanged: (value) {
                           String contextType = 'global';
-                          switch (_selectedIndex) {
+                          final selectedIndex = context.read<ShellNavigationProvider>().selectedIndex;
+                          switch (selectedIndex) {
                             case 1:
                               contextType = 'groups';
                               break;
@@ -373,12 +392,7 @@ class _MainShellState extends State<MainShell> {
                         if (value == 'logout') {
                           context.read<AuthProvider>().logout();
                         } else if (value == 'preferences') {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const UserProfileScreen(),
-                            ),
-                          );
+                          context.read<ShellNavigationProvider>().setSelectedIndex(12);
                         } else if (value == 'theme') {
                           context.read<ThemeProvider>().toggleTheme();
                         }
@@ -456,7 +470,33 @@ class _MainShellState extends State<MainShell> {
             child: Row(
               children: [
                 if (isDesktop && _isSidebarVisible) _buildSidebar(theme),
-                Expanded(child: _shellBodyForIndex(_selectedIndex)),
+                Expanded(
+                  child: Selector<ShellNavigationProvider, int>(
+                    selector: (_, p) => p.selectedIndex,
+                    builder: (context, selectedIndex, _) {
+                      // Ensure current index is marked as loaded
+                      if (!_loadedIndices.contains(selectedIndex)) {
+                        _loadedIndices.add(selectedIndex);
+                      }
+
+                      return IndexedStack(
+                        index: selectedIndex,
+                        children: List.generate(_titles.length, (index) {
+                          if (!_loadedIndices.contains(index)) {
+                            return const SizedBox.shrink();
+                          }
+
+                          return Navigator(
+                            key: _navigatorKeys[index],
+                            onGenerateRoute: (settings) => MaterialPageRoute(
+                              builder: (context) => _shellBodyForIndex(index),
+                            ),
+                          );
+                        }),
+                      );
+                    },
+                  ),
+                ),
               ],
             ),
           ),
@@ -486,7 +526,9 @@ class _MainShellState extends State<MainShell> {
 
   Widget _buildNavigationContent(ThemeData theme) {
     final isLight = theme.brightness == Brightness.light;
-    final profile = context.watch<AuthProvider>().userProfile;
+    final profile = context.select<AuthProvider, dynamic>((p) => p.userProfile);
+    final navIndex = context.select<ShellNavigationProvider, int>((p) => p.selectedIndex);
+    final dev = context.watch<DeveloperControlsProvider>();
 
     return Column(
       children: [
@@ -499,45 +541,57 @@ class _MainShellState extends State<MainShell> {
                 Icons.dashboard,
                 'Dashboard',
                 0,
+                navIndex,
+                dev,
                 featureKey: 'dashboard',
               ),
-              if (!profile!.isMarketing || profile.isSuperAdmin) ...[
-                _buildNavItem(Icons.group, 'Groups', 1, featureKey: 'groups'),
-                _buildNavItem(Icons.person, 'Vendors', 2, featureKey: 'vendors'),
+              if (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false)) ...[
+                _buildNavItem(Icons.group, 'Groups', 1, navIndex, dev, featureKey: 'groups'),
+                _buildNavItem(Icons.person, 'Vendors', 2, navIndex, dev, featureKey: 'vendors'),
               ],
-              if (AccessControlService.canProcessPayments(profile) && (!profile.isMarketing || profile.isSuperAdmin)) ...[
+              if (AccessControlService.canProcessPayments(profile) && (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false))) ...[
                 _buildNavItem(
                   Icons.account_balance,
                   'Loans',
                   3,
+                  navIndex,
+                  dev,
                   featureKey: 'loans',
                 ),
                 _buildNavItem(
                   Icons.payment,
                   'Payments',
                   4,
+                  navIndex,
+                  dev,
                   featureKey: 'payments',
                 ),
               ],
-              if (AccessControlService.canViewReports(profile) && (!profile.isMarketing || profile.isSuperAdmin))
+              if (AccessControlService.canViewReports(profile) && (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false)))
                 _buildNavItem(
                   Icons.insights,
                   'Analytics',
                   5,
+                  navIndex,
+                  dev,
                   featureKey: 'analytics',
                 ),
-              if (AccessControlService.canViewReports(profile) && (!profile.isMarketing || profile.isSuperAdmin))
+              if (AccessControlService.canViewReports(profile) && (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false)))
                 _buildNavItem(
                   Icons.assessment,
                   'Reports',
                   6,
+                  navIndex,
+                  dev,
                   featureKey: 'reports',
                 ),
-              if (!AccessControlService.isFieldAgent(profile) && (!profile.isMarketing || profile.isSuperAdmin))
+              if (!AccessControlService.isFieldAgent(profile) && (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false)))
                 _buildNavItem(
                   Icons.upload_file,
                   'Import Data',
                   7,
+                  navIndex,
+                  dev,
                   featureKey: 'import',
                 ),
 
@@ -546,11 +600,13 @@ class _MainShellState extends State<MainShell> {
                   Icons.campaign,
                   'Marketing',
                   8,
+                  navIndex,
+                  dev,
                   featureKey: 'marketing',
                 ),
 
-              if (!profile.isMarketing || profile.isSuperAdmin)
-                _buildNavItem(Icons.business, 'Centers', 9),
+              if (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false))
+                _buildNavItem(Icons.business, 'Centers', 9, navIndex, dev),
 
               if (AccessControlService.canManageUsers(profile)) ...[
                 const Divider(
@@ -563,6 +619,8 @@ class _MainShellState extends State<MainShell> {
                   Icons.manage_accounts,
                   'User Management',
                   10,
+                  navIndex,
+                  dev,
                   featureKey: 'user_management',
                 ),
               ],
@@ -573,7 +631,7 @@ class _MainShellState extends State<MainShell> {
                   indent: 16,
                   endIndent: 16,
                 ),
-                _buildNavItem(Icons.developer_mode, 'Developer Management', 11),
+                _buildNavItem(Icons.developer_mode, 'Developer Management', 11, navIndex, dev),
               ],
             ],
           ),
@@ -594,13 +652,14 @@ class _MainShellState extends State<MainShell> {
   Widget _buildNavItem(
     IconData icon,
     String title,
-    int index, {
+    int index,
+    int selectedIndex,
+    DeveloperControlsProvider dev, {
     String? featureKey,
   }) {
-    final isSelected = _selectedIndex == index;
+    final isSelected = selectedIndex == index;
     final theme = Theme.of(context);
     final isLight = theme.brightness == Brightness.light;
-    final dev = context.watch<DeveloperControlsProvider>();
     final featureOn = featureKey == null || dev.isFeatureEnabled(featureKey);
 
     // In Light mode, sidebar is gold, so we need strong black contrast.
@@ -630,18 +689,21 @@ class _MainShellState extends State<MainShell> {
         onTap: () {
           if (!featureOn) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('This feature is temporarily unavailable.'),
-              ),
+              SnackBar(content: Text('$title is currently disabled')),
             );
             return;
           }
-          setState(() {
-            _selectedIndex = index;
-          });
-          if (MediaQuery.of(context).size.width <
-              AppBreakpoints.shellDesktopMin) {
-            Navigator.pop(context); // Close drawer
+          if (selectedIndex == index) {
+            // Pop to root if already selected
+            _navigatorKeys[index].currentState?.popUntil((route) => route.isFirst);
+          } else {
+            context.read<ShellNavigationProvider>().setSelectedIndex(index);
+          }
+          // Close drawer on mobile if open
+          if (MediaQuery.of(context).size.width < AppBreakpoints.shellDesktopMin) {
+            if (Scaffold.of(context).isDrawerOpen) {
+              Navigator.pop(context);
+            }
           }
         },
       ),
@@ -729,8 +791,8 @@ class _MainShellState extends State<MainShell> {
                               _hideOverlay();
                               _searchController.clear();
                               searchProvider.clearSearch();
-                              Navigator.push(
-                                context,
+                              context.read<ShellNavigationProvider>().setSelectedIndex(1); // Groups Tab
+                              _navigatorKeys[1].currentState?.push(
                                 MaterialPageRoute(
                                   builder: (context) =>
                                       GroupDetailsScreen(group: group),
@@ -765,8 +827,8 @@ class _MainShellState extends State<MainShell> {
                               _hideOverlay();
                               _searchController.clear();
                               searchProvider.clearSearch();
-                              Navigator.push(
-                                context,
+                              context.read<ShellNavigationProvider>().setSelectedIndex(2); // Vendors Tab
+                              _navigatorKeys[2].currentState?.push(
                                 MaterialPageRoute(
                                   builder: (context) =>
                                       VendorProfileScreen(vendor: vendor),
@@ -799,8 +861,8 @@ class _MainShellState extends State<MainShell> {
                               _hideOverlay();
                               _searchController.clear();
                               searchProvider.clearSearch();
-                              Navigator.push(
-                                context,
+                              context.read<ShellNavigationProvider>().setSelectedIndex(3); // Loans Tab
+                              _navigatorKeys[3].currentState?.push(
                                 MaterialPageRoute(
                                   builder: (context) =>
                                       LoanDetailsScreen(loan: loan),
@@ -855,5 +917,28 @@ class _MainShellState extends State<MainShell> {
         ),
       ),
     );
+  }
+}
+class FeatureGuard extends StatelessWidget {
+  final String featureKey;
+  final Widget child;
+
+  const FeatureGuard({
+    super.key,
+    required this.featureKey,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isEnabled = context.select<DeveloperControlsProvider, bool>(
+      (dev) => dev.isFeatureEnabled(featureKey),
+    );
+
+    if (!isEnabled) {
+      return FeatureDisabledPlaceholder(featureKey: featureKey);
+    }
+
+    return child;
   }
 }

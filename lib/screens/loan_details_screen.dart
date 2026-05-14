@@ -13,6 +13,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../services/loan_calculation_service.dart';
+import '../theme/app_theme.dart';
 
 class LoanDetailsScreen extends StatelessWidget {
   final LoanModel loan;
@@ -446,11 +447,24 @@ class LoanDetailsScreen extends StatelessWidget {
             'R ${loan.monthlyAdminFee?.toStringAsFixed(0) ?? '0'}',
           ),
           _buildInfoRow(
+            'Total Term Admin Fee',
+            'R ${((loan.monthlyAdminFee ?? 0) * loan.durationMonths).toStringAsFixed(0)}',
+            valueColor: AppTheme.primaryGold,
+          ),
+          _buildInfoRow(
             'Applied Penalty',
             'R ${appliedPenalty.toStringAsFixed(0)}',
             isValueBold: appliedPenalty > 0,
             valueColor: appliedPenalty > 0 ? Colors.redAccent : null,
           ),
+          const Divider(height: 24, thickness: 0.5),
+          _buildInfoRow(
+            'Total Loan Liability',
+            'R ${((loan.monthlyPayment * loan.durationMonths) + (loan.initiationFee ?? 0) + ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) + appliedPenalty).toStringAsFixed(0)}',
+            isValueBold: true,
+            valueColor: AppTheme.primaryGold,
+          ),
+          const SizedBox(height: 12),
           _buildInfoRow(
             'Opening Amount',
             'R ${loan.openingAmount?.toStringAsFixed(0) ?? '0'}',
@@ -877,9 +891,9 @@ class LoanDetailsScreen extends StatelessWidget {
             ),
             pw.SizedBox(height: 30),
 
-            // Financial Summary
+            // Financial Breakdown
             pw.Text(
-              'Financial Summary',
+              'Financial Breakdown',
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 16),
             ),
             pw.SizedBox(height: 10),
@@ -889,34 +903,17 @@ class LoanDetailsScreen extends StatelessWidget {
                 border: pw.Border.all(color: PdfColors.grey300),
                 borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
               ),
-              child: pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              child: pw.Column(
                 children: [
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text('Principal: R ${loan.amount.toStringAsFixed(0)}'),
-                      pw.Text(
-                        'Monthly: R ${loan.monthlyPayment.toStringAsFixed(0)}',
-                      ),
-                    ],
-                  ),
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text(
-                        'Total Paid: R ${totalPaid.toStringAsFixed(0)}',
-                        style: const pw.TextStyle(color: PdfColors.green700),
-                      ),
-                      pw.Text(
-                        'Balance: R ${balance.toStringAsFixed(0)}',
-                        style: pw.TextStyle(
-                          color: PdfColors.orange700,
-                          fontWeight: pw.FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
+                  _pdfBreakdownRow('Principal Amount', 'R ${loan.amount.toStringAsFixed(2)}'),
+                  _pdfBreakdownRow('Monthly Instalment', 'R ${loan.monthlyPayment.toStringAsFixed(2)}'),
+                  _pdfBreakdownRow('Initiation Fee', 'R ${loan.initiationFee?.toStringAsFixed(2) ?? '0.00'}'),
+                  _pdfBreakdownRow('Total Admin Fees (${loan.durationMonths} months)', 'R ${((loan.monthlyAdminFee ?? 0) * loan.durationMonths).toStringAsFixed(2)}'),
+                  _pdfBreakdownRow('Applied Penalties', 'R ${LoanCalculationService.calculateAppliedPenalty(loan, payments).toStringAsFixed(2)}'),
+                  pw.Divider(color: PdfColors.grey300),
+                  _pdfBreakdownRow('Total Loan Liability', 'R ${((loan.monthlyPayment * loan.durationMonths) + (loan.initiationFee ?? 0) + ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) + LoanCalculationService.calculateAppliedPenalty(loan, payments)).toStringAsFixed(2)}', isBold: true),
+                  _pdfBreakdownRow('Total Amount Paid', 'R ${totalPaid.toStringAsFixed(2)}'),
+                  _pdfBreakdownRow('Outstanding Balance', 'R ${balance.toStringAsFixed(2)}', isBold: true, color: PdfColors.orange700),
                 ],
               ),
             ),
@@ -958,6 +955,19 @@ class LoanDetailsScreen extends StatelessWidget {
       bytes: await pdf.save(),
       filename:
           'Loan_Statement_${vendor?.name.replaceAll(" ", "_") ?? "Unknown"}.pdf',
+    );
+  }
+
+  pw.Widget _pdfBreakdownRow(String label, String value, {bool isBold = false, PdfColor? color}) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 4),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text(label, style: pw.TextStyle(fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal)),
+          pw.Text(value, style: pw.TextStyle(fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal, color: color)),
+        ],
+      ),
     );
   }
 }

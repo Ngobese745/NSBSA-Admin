@@ -7,6 +7,9 @@ import '../services/cache_service.dart';
 import '../services/loan_calculation_service.dart';
 import '../services/system_audit_service.dart';
 import '../services/notification_service.dart';
+import '../services/realtime_service.dart';
+import '../services/offline_queue_service.dart';
+import '../services/connectivity_service.dart';
 
 import 'package:intl/intl.dart';
 import '../services/communication_service.dart';
@@ -18,6 +21,45 @@ class PaymentProvider with ChangeNotifier {
 
   List<PaymentModel> get payments => _payments;
   bool get isLoading => _isLoading;
+
+  PaymentProvider() {
+    _initRealtime();
+  }
+
+  void _initRealtime() {
+    RealtimeService().subscribeToTable(
+      tableName: 'payments',
+      onData: (payload) {
+        final event = payload.eventType;
+        final data = payload.newRecord;
+        final oldData = payload.oldRecord;
+
+        if (event == PostgresChangeEvent.insert) {
+          final newPayment = PaymentModel.fromJson(data);
+          if (!_payments.any((p) => p.id == newPayment.id)) {
+            _payments.insert(0, newPayment);
+            _syncCacheAndNotify();
+          }
+        } else if (event == PostgresChangeEvent.update) {
+          final updatedPayment = PaymentModel.fromJson(data);
+          final index = _payments.indexWhere((p) => p.id == updatedPayment.id);
+          if (index != -1) {
+            _payments[index] = updatedPayment;
+            _syncCacheAndNotify();
+          }
+        } else if (event == PostgresChangeEvent.delete) {
+          final id = oldData['id'];
+          _payments.removeWhere((p) => p.id == id);
+          _syncCacheAndNotify();
+        }
+      },
+    );
+  }
+
+  void _syncCacheAndNotify() {
+    CacheService.saveCache('payments_cache', _payments.map((e) => e.toJson()).toList());
+    notifyListeners();
+  }
 
   Future<void> fetchPayments({bool forceRefresh = false}) async {
     if (!forceRefresh) {
@@ -37,14 +79,8 @@ class PaymentProvider with ChangeNotifier {
           .from('payments')
           .select()
           .order('created_at', ascending: false);
-      _payments = (response as List)
-          .map((e) => PaymentModel.fromJson(e))
-          .toList();
-
-      await CacheService.saveCache(
-        'payments_cache',
-        _payments.map((e) => e.toJson()).toList(),
-      );
+      _payments = (response as List).map((e) => PaymentModel.fromJson(e)).toList();
+      _syncCacheAndNotify();
     } catch (e) {
       debugPrint('Error fetching payments: $e');
     } finally {
@@ -53,71 +89,73 @@ class PaymentProvider with ChangeNotifier {
     }
   }
 
-  Future<PaymentModel> addPayment(
-    PaymentModel payment, {
-    LoanModel? loan,
-  }) async {
+  Future<PaymentModel> addPayment(PaymentModel payment, {LoanModel? loan}) async {
+    // Optimistic Update
+    _payments.insert(0, payment);
+    notifyListeners();
+
+    if (ConnectivityService().currentStatus == AppConnectivityStatus.offline) {
+      await OfflineQueueService().queueAction(OfflineAction(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        table: 'payments',
+        type: OfflineActionType.create,
+        data: payment.toJson(),
+        timestamp: DateTime.now(),
+      ));
+      return payment;
+    }
+
     try {
-      final response = await _supabase
-          .from('payments')
-          .insert(payment.toJson())
-          .select()
-          .single();
+      final response = await _supabase.from('payments').insert(payment.toJson()).select().single();
       final newPayment = PaymentModel.fromJson(response);
 
-      _payments.insert(0, newPayment);
+      // Replace optimistic entry
+      final index = _payments.indexWhere((p) => p.id == payment.id || p.id == '');
+      if (index != -1) _payments[index] = newPayment;
 
-      // Check for loan settlement if loan model is provided
+      // Settlement check
       if (loan != null) {
-        final loanPayments = _payments
-            .where((p) => p.loanId == loan.id)
-            .toList();
+        final loanPayments = _payments.where((p) => p.loanId == loan.id).toList();
         if (LoanCalculationService.isSettled(loan, loanPayments)) {
-          await _supabase
-              .from('loans')
-              .update({'status': 'Settled'})
-              .eq('id', loan.id);
+          await _supabase.from('loans').update({'status': 'Settled'}).eq('id', loan.id);
         }
       }
 
-      notifyListeners();
-      CacheService.saveCache(
-        'payments_cache',
-        _payments.map((e) => e.toJson()).toList(),
-      );
-      SystemAuditService.logAction(
-        actionType: 'RECORD_PAYMENT',
-        affectedEntity: 'Loan ID: ${payment.loanId}',
-        description: 'Recorded payment of R${payment.amountPaid}.',
-      );
-
-      await NotificationService.notifyAdmins(
-        'Payment Received',
-        'A payment of R${payment.amountPaid} has been recorded.',
-        type: 'FINANCIAL',
-      );
-
-      // Trigger Automated Payment Confirmation
-      _triggerPaymentConfirmation(newPayment, loan);
-
+      _syncCacheAndNotify();
+      _logAndNotify(newPayment, loan);
       return newPayment;
     } catch (e) {
+      _payments.removeWhere((p) => p.id == payment.id);
+      notifyListeners();
       debugPrint('Error adding payment: $e');
       rethrow;
     }
+  }
+
+  void _logAndNotify(PaymentModel payment, LoanModel? loan) {
+    SystemAuditService.logAction(
+      actionType: 'RECORD_PAYMENT',
+      affectedEntity: 'Loan ID: ${payment.loanId}',
+      description: 'Recorded payment of R${payment.amountPaid}.',
+    );
+    NotificationService.notifyAdmins(
+      'Payment Received',
+      'A payment of R${payment.amountPaid} has been recorded.',
+      type: 'FINANCIAL',
+    );
+    _triggerPaymentConfirmation(payment, loan);
   }
 
   Future<void> _triggerPaymentConfirmation(PaymentModel payment, LoanModel? loan) async {
     try {
       String? vendorId = loan?.vendorId;
       if (vendorId == null) {
-         final loanData = await _supabase.from('loans').select('vendor_id').eq('id', payment.loanId).single();
-         vendorId = loanData['vendor_id']?.toString();
+        final loanData = await _supabase.from('loans').select('vendor_id').eq('id', payment.loanId).single();
+        vendorId = loanData['vendor_id']?.toString();
       }
       
       if (vendorId != null) {
         final vendorData = await _supabase.from('vendors').select('name, email, phone, whatsapp_number').eq('id', vendorId).single();
-        
         final commService = CommunicationService();
         final formattedDate = DateFormat('MMMM dd, yyyy').format(payment.datePaid);
         
@@ -138,46 +176,45 @@ class PaymentProvider with ChangeNotifier {
     }
   }
 
-  Future<void> addGroupPayment(
-    String groupId,
-    List<PaymentModel> memberPayments, {
-    List<LoanModel>? loans,
-  }) async {
+  Future<void> addGroupPayment(String groupId, List<PaymentModel> memberPayments, {List<LoanModel>? loans}) async {
+    // Note: Optimistic updates for group payments are complex because of IDs.
+    // For now, we perform real-time sync when online.
+    if (ConnectivityService().currentStatus == AppConnectivityStatus.offline) {
+      // In offline mode, we'd need to queue each payment individually or as a batch.
+      // Batching is better.
+      await OfflineQueueService().queueAction(OfflineAction(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        table: 'group_payments_batch', // Special table handled by sync service
+        type: OfflineActionType.create,
+        data: {
+          'group_id': groupId,
+          'payments': memberPayments.map((p) => p.toJson()).toList(),
+        },
+        timestamp: DateTime.now(),
+      ));
+      return;
+    }
+
     try {
-      final totalAmount = memberPayments.fold(
-        0.0,
-        (sum, p) => sum + p.amountPaid,
-      );
+      final totalAmount = memberPayments.fold(0.0, (sum, p) => sum + p.amountPaid);
+      final gpResp = await _supabase.from('group_payments').insert({
+        'group_id': groupId,
+        'total_amount': totalAmount,
+        'payment_date': DateTime.now().toIso8601String(),
+        'created_at': DateTime.now().toIso8601String(),
+      }).select().single();
 
-      // 1. Create Group Payment Record
-      final groupPaymentResponse = await _supabase
-          .from('group_payments')
-          .insert({
-            'group_id': groupId,
-            'total_amount': totalAmount,
-            'payment_date': DateTime.now().toIso8601String(),
-            'created_at': DateTime.now().toIso8601String(),
-          })
-          .select()
-          .single();
-
-      final groupPaymentId = groupPaymentResponse['id'];
-
-      // 2. Prepare individual payments with the group_payment_id
+      final groupPaymentId = gpResp['id'];
       final paymentsToInsert = memberPayments.map((p) {
         final json = p.toJson();
         json['group_payment_id'] = groupPaymentId;
         return json;
       }).toList();
 
-      // 3. Bulk insert individual payments
       final insertedData = await _supabase.from('payments').insert(paymentsToInsert).select();
       final insertedPayments = (insertedData as List).map((e) => PaymentModel.fromJson(e)).toList();
 
-      // Refresh payments list locally
-      await fetchPayments(forceRefresh: true);
-
-      // Trigger Automated Payment Confirmations for each member in the group payment
+      // Individual confirmations
       for (final payment in insertedPayments) {
         LoanModel? loan;
         try {
@@ -186,35 +223,7 @@ class PaymentProvider with ChangeNotifier {
         _triggerPaymentConfirmation(payment, loan);
       }
 
-      // 4. Check for loan settlements
-      if (loans != null) {
-        for (final loan in loans) {
-          final loanPayments = _payments
-              .where((p) => p.loanId == loan.id)
-              .toList();
-          if (LoanCalculationService.isSettled(loan, loanPayments)) {
-            await _supabase
-                .from('loans')
-                .update({'status': 'Settled'})
-                .eq('id', loan.id);
-          }
-        }
-      }
-
-      SystemAuditService.logAction(
-        actionType: 'RECORD_GROUP_PAYMENT',
-        affectedEntity: 'Group ID: $groupId',
-        description:
-            'Recorded group payment totaling R$totalAmount for ${memberPayments.length} members.',
-      );
-
-      await NotificationService.notifyAdmins(
-        'Group Payment Received',
-        'Total R$totalAmount received from ${memberPayments.length} members.',
-        type: 'FINANCIAL',
-      );
-
-      notifyListeners();
+      await fetchPayments(forceRefresh: true);
     } catch (e) {
       debugPrint('Error adding group payment: $e');
       rethrow;
@@ -222,22 +231,28 @@ class PaymentProvider with ChangeNotifier {
   }
 
   Future<void> deletePayment(String id) async {
+    final oldIndex = _payments.indexWhere((p) => p.id == id);
+    if (oldIndex == -1) return;
+    final deleted = _payments.removeAt(oldIndex);
+    notifyListeners();
+
+    if (ConnectivityService().currentStatus == AppConnectivityStatus.offline) {
+      await OfflineQueueService().queueAction(OfflineAction(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        table: 'payments',
+        type: OfflineActionType.delete,
+        data: {'id': id},
+        timestamp: DateTime.now(),
+      ));
+      return;
+    }
+
     try {
       await _supabase.from('payments').delete().eq('id', id);
-
-      _payments.removeWhere((p) => p.id == id);
-      notifyListeners();
-      CacheService.saveCache(
-        'payments_cache',
-        _payments.map((e) => e.toJson()).toList(),
-      );
-
-      SystemAuditService.logAction(
-        actionType: 'DELETE_PAYMENT',
-        affectedEntity: 'Payment ID: $id',
-        description: 'Deleted payment record from the system.',
-      );
+      _syncCacheAndNotify();
     } catch (e) {
+      _payments.insert(oldIndex, deleted);
+      notifyListeners();
       debugPrint('Error deleting payment: $e');
       rethrow;
     }

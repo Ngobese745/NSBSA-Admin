@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/vendor.dart';
+import '../models/savings_history.dart';
 
 import '../services/cache_service.dart';
 import '../services/system_audit_service.dart';
+import '../services/realtime_service.dart';
+import '../services/offline_queue_service.dart';
+import '../services/connectivity_service.dart';
 
 class VendorProvider with ChangeNotifier {
   final _supabase = Supabase.instance.client;
@@ -12,6 +16,45 @@ class VendorProvider with ChangeNotifier {
 
   List<VendorModel> get vendors => _vendors;
   bool get isLoading => _isLoading;
+
+  VendorProvider() {
+    _initRealtime();
+  }
+
+  void _initRealtime() {
+    RealtimeService().subscribeToTable(
+      tableName: 'vendors',
+      onData: (payload) {
+        final event = payload.eventType;
+        final data = payload.newRecord;
+        final oldData = payload.oldRecord;
+
+        if (event == PostgresChangeEvent.insert) {
+          final newVendor = VendorModel.fromJson(data);
+          if (!_vendors.any((v) => v.id == newVendor.id)) {
+            _vendors.insert(0, newVendor);
+            _syncCacheAndNotify();
+          }
+        } else if (event == PostgresChangeEvent.update) {
+          final updatedVendor = VendorModel.fromJson(data);
+          final index = _vendors.indexWhere((v) => v.id == updatedVendor.id);
+          if (index != -1) {
+            _vendors[index] = updatedVendor;
+            _syncCacheAndNotify();
+          }
+        } else if (event == PostgresChangeEvent.delete) {
+          final id = oldData['id'];
+          _vendors.removeWhere((v) => v.id == id);
+          _syncCacheAndNotify();
+        }
+      },
+    );
+  }
+
+  void _syncCacheAndNotify() {
+    CacheService.saveCache('vendors_cache', _vendors.map((e) => e.toJson()).toList());
+    notifyListeners();
+  }
 
   Future<void> fetchVendors({bool forceRefresh = false}) async {
     if (!forceRefresh) {
@@ -31,14 +74,8 @@ class VendorProvider with ChangeNotifier {
           .from('vendors')
           .select()
           .order('created_at', ascending: false);
-      _vendors = (response as List)
-          .map((e) => VendorModel.fromJson(e))
-          .toList();
-
-      await CacheService.saveCache(
-        'vendors_cache',
-        _vendors.map((e) => e.toJson()).toList(),
-      );
+      _vendors = (response as List).map((e) => VendorModel.fromJson(e)).toList();
+      _syncCacheAndNotify();
     } catch (e) {
       debugPrint('Error fetching vendors: $e');
     } finally {
@@ -48,32 +85,150 @@ class VendorProvider with ChangeNotifier {
   }
 
   Future<VendorModel> addVendor(VendorModel vendor) async {
+    // Optimistic
+    _vendors.insert(0, vendor);
+    notifyListeners();
+
+    if (ConnectivityService().currentStatus == AppConnectivityStatus.offline) {
+      await OfflineQueueService().queueAction(OfflineAction(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        table: 'vendors',
+        type: OfflineActionType.create,
+        data: vendor.toJson(),
+        timestamp: DateTime.now(),
+      ));
+      return vendor;
+    }
+
     try {
-      final response = await _supabase
-          .from('vendors')
-          .insert(vendor.toJson())
-          .select()
-          .single();
+      String? dfId = vendor.dfId;
+      String? dfName = vendor.dfName;
+
+      if (dfId == null || dfName == null) {
+        final groupRes = await _supabase.from('groups').select('df_id, df_name').eq('id', vendor.groupId).single();
+        dfId ??= groupRes['df_id'];
+        dfName ??= groupRes['df_name'];
+      }
+
+      final data = vendor.toJson();
+      data['df_id'] = dfId;
+      data['df_name'] = dfName;
+
+      final response = await _supabase.from('vendors').insert(data).select().single();
       final newVendor = VendorModel.fromJson(response);
 
-      _vendors.insert(0, newVendor);
-      notifyListeners();
-      CacheService.saveCache(
-        'vendors_cache',
-        _vendors.map((e) => e.toJson()).toList(),
-      );
+      final index = _vendors.indexWhere((v) => v.id == vendor.id || v.id == '');
+      if (index != -1) _vendors[index] = newVendor;
 
-      SystemAuditService.logAction(
-        actionType: 'CREATE_VENDOR',
-        affectedEntity:
-            'Vendor: ${vendor.name} (${vendor.idNumber ?? vendor.phone})',
-        description: 'Created a new vendor/member.',
-      );
-
+      _syncCacheAndNotify();
+      _logAction(newVendor);
       return newVendor;
     } catch (e) {
+      _vendors.removeWhere((v) => v.id == vendor.id);
+      notifyListeners();
       debugPrint('Error adding vendor: $e');
       rethrow;
+    }
+  }
+
+  void _logAction(VendorModel vendor) {
+    SystemAuditService.logAction(
+      actionType: 'CREATE_VENDOR',
+      affectedEntity: 'Vendor: ${vendor.name} (${vendor.idNumber ?? vendor.phone})',
+      description: 'Created a new vendor/member.',
+    );
+  }
+
+  Future<void> updateVendor(String id, Map<String, dynamic> data) async {
+    final index = _vendors.indexWhere((v) => v.id == id);
+    if (index == -1) return;
+
+    if (ConnectivityService().currentStatus == AppConnectivityStatus.offline) {
+      await OfflineQueueService().queueAction(OfflineAction(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        table: 'vendors',
+        type: OfflineActionType.update,
+        data: {'id': id, ...data},
+        timestamp: DateTime.now(),
+      ));
+      return;
+    }
+
+    try {
+      final response = await _supabase.from('vendors').update(data).eq('id', id).select().single();
+      _vendors[index] = VendorModel.fromJson(response);
+      _syncCacheAndNotify();
+      
+      SystemAuditService.logAction(
+        actionType: 'UPDATE_VENDOR',
+        affectedEntity: 'Vendor ID: $id',
+        description: 'Updated vendor profile details.',
+      );
+    } catch (e) {
+      debugPrint('Error updating vendor: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteVendor(String id) async {
+    final index = _vendors.indexWhere((v) => v.id == id);
+    if (index == -1) return;
+    final deleted = _vendors.removeAt(index);
+    notifyListeners();
+
+    if (ConnectivityService().currentStatus == AppConnectivityStatus.offline) {
+      await OfflineQueueService().queueAction(OfflineAction(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        table: 'vendors',
+        type: OfflineActionType.delete,
+        data: {'id': id},
+        timestamp: DateTime.now(),
+      ));
+      return;
+    }
+
+    try {
+      await _supabase.from('vendors').delete().eq('id', id);
+      _syncCacheAndNotify();
+      SystemAuditService.logAction(
+        actionType: 'DELETE_VENDOR',
+        affectedEntity: 'Vendor ID: $id',
+        description: 'Deleted vendor from the system.',
+      );
+    } catch (e) {
+      _vendors.insert(index, deleted);
+      notifyListeners();
+      debugPrint('Error deleting vendor: $e');
+      rethrow;
+    }
+  }
+
+  Future<VendorModel?> checkDuplicateVendor({
+    required String? idNumber,
+    required String? phone,
+    String? excludeId,
+  }) async {
+    final hasId = idNumber != null && idNumber.trim().isNotEmpty;
+    final hasPhone = phone != null && phone.trim().isNotEmpty;
+    if (!hasId && !hasPhone) return null;
+
+    try {
+      if (hasId) {
+        var query = _supabase.from('vendors').select().eq('id_number', idNumber!.trim());
+        if (excludeId != null && excludeId.isNotEmpty) query = query.neq('id', excludeId);
+        final results = await query;
+        if ((results as List).isNotEmpty) return VendorModel.fromJson(results.first);
+      }
+      if (hasPhone) {
+        var query = _supabase.from('vendors').select().eq('phone', phone!.trim());
+        if (excludeId != null && excludeId.isNotEmpty) query = query.neq('id', excludeId);
+        final results = await query;
+        if ((results as List).isNotEmpty) return VendorModel.fromJson(results.first);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error checking duplicate vendor: $e');
+      return null;
     }
   }
 
@@ -91,109 +246,77 @@ class VendorProvider with ChangeNotifier {
     }
   }
 
-  Future<void> updateVendor(String id, Map<String, dynamic> data) async {
-    try {
-      await _supabase.from('vendors').update(data).eq('id', id);
-      SystemAuditService.logAction(
-        actionType: 'UPDATE_VENDOR',
-        affectedEntity: 'Vendor ID: $id',
-        description: 'Updated vendor profile details.',
-      );
-      await fetchVendors(forceRefresh: true);
-    } catch (e) {
-      debugPrint('Error updating vendor: $e');
-      rethrow;
-    }
-  }
-
-  Future<void> deleteVendor(String id) async {
-    try {
-      await _supabase.from('vendors').delete().eq('id', id);
-      SystemAuditService.logAction(
-        actionType: 'DELETE_VENDOR',
-        affectedEntity: 'Vendor ID: $id',
-        description: 'Deleted vendor from the system.',
-      );
-      await fetchVendors(forceRefresh: true);
-    } catch (e) {
-      debugPrint('Error deleting vendor: $e');
-      rethrow;
-    }
-  }
-
-  /// Checks if a vendor with the same [idNumber] or [phone] already exists.
-  /// Pass [excludeId] when editing so the current record is not flagged.
-  /// Returns the conflicting [VendorModel] if a duplicate is found, or null.
-  Future<VendorModel?> checkDuplicateVendor({
-    required String? idNumber,
-    required String? phone,
-    String? excludeId,
-  }) async {
-    final hasId = idNumber != null && idNumber.trim().isNotEmpty;
-    final hasPhone = phone != null && phone.trim().isNotEmpty;
-
-    if (!hasId && !hasPhone) return null;
-
-    try {
-      // Check by ID number first (stronger identifier)
-      if (hasId) {
-        var query = _supabase
-            .from('vendors')
-            .select()
-            .eq('id_number', idNumber!.trim());
-        if (excludeId != null && excludeId.isNotEmpty) {
-          query = query.neq('id', excludeId);
-        }
-        final results = await query;
-        if ((results as List).isNotEmpty) {
-          return VendorModel.fromJson(results.first);
-        }
-      }
-
-      // Then check by phone number
-      if (hasPhone) {
-        var query = _supabase
-            .from('vendors')
-            .select()
-            .eq('phone', phone!.trim());
-        if (excludeId != null && excludeId.isNotEmpty) {
-          query = query.neq('id', excludeId);
-        }
-        final results = await query;
-        if ((results as List).isNotEmpty) {
-          return VendorModel.fromJson(results.first);
-        }
-      }
-
-      return null;
-    } catch (e) {
-      debugPrint('Error checking duplicate vendor: $e');
-      return null;
-    }
-  }
-
-  Future<void> updateSavingsBalance({
+  Future<void> recordSavingsTransaction({
     required String vendorId,
-    required double newBalance,
-    required String actionType,
     required double amount,
+    required String actionType,
+    required String updatedBy,
   }) async {
+    final index = _vendors.indexWhere((v) => v.id == vendorId);
+    if (index == -1) return;
+
+    final vendor = _vendors[index];
+    final double previousBalance = vendor.savingsAmount ?? 0.0;
+    double newBalance;
+
+    if (actionType == 'Deposit') {
+      newBalance = previousBalance + amount;
+    } else if (actionType == 'Withdrawal') {
+      newBalance = previousBalance - amount;
+    } else {
+      // Adjustment
+      newBalance = amount;
+    }
+
+    // Optimistic Update
+    final updatedVendor = vendor.copyWith(savingsAmount: newBalance);
+    _vendors[index] = updatedVendor;
+    notifyListeners();
+
+    if (ConnectivityService().currentStatus == AppConnectivityStatus.offline) {
+      await OfflineQueueService().queueAction(OfflineAction(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        table: 'savings_transaction_batch', // Logic handled in background sync
+        type: OfflineActionType.create,
+        data: {
+          'vendor_id': vendorId,
+          'amount': amount,
+          'previous_balance': previousBalance,
+          'new_balance': newBalance,
+          'action_type': actionType,
+          'updated_by': updatedBy,
+        },
+        timestamp: DateTime.now(),
+      ));
+      return;
+    }
+
     try {
-      await _supabase
-          .from('vendors')
-          .update({'savings_amount': newBalance})
-          .eq('id', vendorId);
+      // 1. Update vendor balance
+      await _supabase.from('vendors').update({'savings_amount': newBalance}).eq('id', vendorId);
+
+      // 2. Record history
+      await _supabase.from('savings_history').insert({
+        'vendor_id': vendorId,
+        'amount': amount,
+        'previous_balance': previousBalance,
+        'new_balance': newBalance,
+        'action_type': actionType,
+        'updated_by': updatedBy,
+      });
 
       SystemAuditService.logAction(
         actionType: 'SAVINGS_TRANSACTION',
         affectedEntity: 'Vendor ID: $vendorId',
-        description:
-            'Recorded $actionType of R $amount. New balance: R $newBalance.',
+        description: 'Recorded $actionType of R $amount. New balance: R $newBalance.',
       );
-
-      await fetchVendors(forceRefresh: true);
+      
+      _syncCacheAndNotify();
     } catch (e) {
-      debugPrint('Error updating savings balance: $e');
+      // Rollback optimistic update
+      _vendors[index] = vendor;
+      notifyListeners();
+      debugPrint('Error recording savings transaction: $e');
       rethrow;
     }
   }
