@@ -553,14 +553,31 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               ),
               const SizedBox(height: 4),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'REF: ${widget.group.referenceNumber}',
-                    style: TextStyle(
-                      color: Colors.grey[500],
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'REF: ${widget.group.referenceNumber}',
+                        style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (widget.group.creatorName != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Created by ${widget.group.creatorName}',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 11,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                   const SizedBox(width: 16),
                   Expanded(child: _buildLeadershipBadges(theme)),
@@ -589,21 +606,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           widget.group.createdAt.toString().substring(0, 10),
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
-        if (widget.group.creatorName != null) ...[
-          const SizedBox(height: 12),
-          Text(
-            'CREATED BY',
-            style: TextStyle(
-              color: Colors.grey[600],
-              fontSize: 10,
-              letterSpacing: 1,
-            ),
-          ),
-          Text(
-            widget.group.creatorName!,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-          ),
-        ],
         const SizedBox(height: 12),
         ElevatedButton.icon(
           onPressed: () => _downloadGroupStatement(members),
@@ -617,8 +619,15 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: theme.cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.dividerColor),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: theme.dividerColor.withOpacity(0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: isDesktop
           ? Row(
