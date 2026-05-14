@@ -613,7 +613,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     VoidCallback? onDoubleTap,
   }) {
     Widget content = Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
       child: Text(
         text,
         style: TextStyle(
@@ -626,7 +626,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
 
     if (onTap != null || onDoubleTap != null) {
-      return InkWell(onTap: onTap, onDoubleTap: onDoubleTap, child: content);
+      return InkWell(
+        onTap: onTap,
+        onDoubleTap: onDoubleTap,
+        mouseCursor: SystemMouseCursors.click,
+        hoverColor: AppTheme.primaryGold.withOpacity(0.05),
+        child: content,
+      );
     }
 
     return content;
@@ -645,32 +651,62 @@ class _ReportsScreenState extends State<ReportsScreen> {
     if (isEditing) {
       return Padding(
         padding: const EdgeInsets.all(4.0),
-        child: TextField(
-          controller: _controllers[key],
-          autofocus: true,
-          style: const TextStyle(fontSize: 11, color: Colors.white),
-          decoration: InputDecoration(
-            isDense: true,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 4,
-              vertical: 8,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(4),
-              borderSide: const BorderSide(color: AppTheme.primaryGold),
-            ),
-            prefixText: prefix,
-            suffixText: suffix,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(4),
           ),
-          onSubmitted: (_) => _saveEdit(loanId, fieldName),
-          onTapOutside: (_) => _saveEdit(loanId, fieldName),
+          child: TextField(
+            controller: _controllers[key],
+            autofocus: true,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
+            decoration: InputDecoration(
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 12,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(4),
+                borderSide: const BorderSide(color: AppTheme.primaryGold, width: 2),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(4),
+                borderSide: const BorderSide(color: AppTheme.primaryGold, width: 2),
+              ),
+              prefixText: prefix,
+              prefixStyle: const TextStyle(color: AppTheme.primaryGold, fontSize: 10),
+              suffixText: suffix,
+              suffixStyle: const TextStyle(color: AppTheme.primaryGold, fontSize: 10),
+            ),
+            onSubmitted: (_) => _saveEdit(loanId, fieldName),
+            onTapOutside: (_) => _saveEdit(loanId, fieldName),
+          ),
         ),
       );
     }
 
-    return _buildTableCell(
-      "$prefix$value$suffix",
-      onTap: () => _onCellTap(loanId, fieldName, value),
+    return Stack(
+      children: [
+        _buildTableCell(
+          "$prefix$value$suffix",
+          onTap: () => _onCellTap(loanId, fieldName, value),
+        ),
+        Positioned(
+          top: 2,
+          right: 2,
+          child: Icon(
+            Icons.edit_note,
+            size: 10,
+            color: AppTheme.primaryGold.withOpacity(0.3),
+          ),
+        ),
+      ],
     );
   }
 

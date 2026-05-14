@@ -160,13 +160,13 @@ class _MainShellState extends State<MainShell> {
                     // Left section: Menu and Logo (Aligned to Sidebar width)
                     SizedBox(
                       width:
-                          200, // Matching sidebar width (220) - padding adjustments
+                          _isSidebarVisible ? 200 : 50, // Dynamic header section width
                       child: Row(
                         children: [
                           IconButton(
                             tooltip: _isSidebarVisible
-                                ? 'Hide sidebar'
-                                : 'Show sidebar',
+                                ? 'Collapse sidebar'
+                                : 'Expand sidebar',
                             icon: Icon(
                               _isSidebarVisible ? Icons.menu_open : Icons.menu,
                               color: Colors.white,
@@ -177,19 +177,21 @@ class _MainShellState extends State<MainShell> {
                               });
                             },
                           ),
-                          const SizedBox(width: 8),
-                          // Header Logo
-                          Image.asset(
-                            AppAssets.logo,
-                            height: 58,
-                            fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) =>
-                                const Icon(
-                                  Icons.account_balance_wallet,
-                                  color: Colors.white,
-                                  size: 36,
-                                ),
-                          ),
+                          if (_isSidebarVisible) ...[
+                            const SizedBox(width: 8),
+                            // Header Logo
+                            Image.asset(
+                              AppAssets.logo,
+                              height: 58,
+                              fit: BoxFit.contain,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  const Icon(
+                                    Icons.account_balance_wallet,
+                                    color: Colors.white,
+                                    size: 36,
+                                  ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -469,7 +471,7 @@ class _MainShellState extends State<MainShell> {
           Expanded(
             child: Row(
               children: [
-                if (isDesktop && _isSidebarVisible) _buildSidebar(theme),
+                if (isDesktop) _buildSidebar(theme),
                 Expanded(
                   child: Selector<ShellNavigationProvider, int>(
                     selector: (_, p) => p.selectedIndex,
@@ -510,8 +512,9 @@ class _MainShellState extends State<MainShell> {
   }
 
   Widget _buildSidebar(ThemeData theme) {
-    return Container(
-      width: 220,
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      width: _isSidebarVisible ? 220 : 70,
       decoration: BoxDecoration(
         color: theme.brightness == Brightness.light
             ? theme.primaryColor
@@ -520,11 +523,11 @@ class _MainShellState extends State<MainShell> {
           right: BorderSide(color: theme.dividerColor.withOpacity(0.1)),
         ),
       ),
-      child: _buildNavigationContent(theme),
+      child: _buildNavigationContent(theme, isCollapsed: !_isSidebarVisible),
     );
   }
 
-  Widget _buildNavigationContent(ThemeData theme) {
+  Widget _buildNavigationContent(ThemeData theme, {bool isCollapsed = false}) {
     final isLight = theme.brightness == Brightness.light;
     final profile = context.select<AuthProvider, dynamic>((p) => p.userProfile);
     final navIndex = context.select<ShellNavigationProvider, int>((p) => p.selectedIndex);
@@ -544,10 +547,11 @@ class _MainShellState extends State<MainShell> {
                 navIndex,
                 dev,
                 featureKey: 'dashboard',
+                isCollapsed: isCollapsed,
               ),
               if (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false)) ...[
-                _buildNavItem(Icons.group, 'Groups', 1, navIndex, dev, featureKey: 'groups'),
-                _buildNavItem(Icons.person, 'Vendors', 2, navIndex, dev, featureKey: 'vendors'),
+                _buildNavItem(Icons.group, 'Groups', 1, navIndex, dev, featureKey: 'groups', isCollapsed: isCollapsed),
+                _buildNavItem(Icons.person, 'Vendors', 2, navIndex, dev, featureKey: 'vendors', isCollapsed: isCollapsed),
               ],
               if (AccessControlService.canProcessPayments(profile) && (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false))) ...[
                 _buildNavItem(
@@ -557,6 +561,7 @@ class _MainShellState extends State<MainShell> {
                   navIndex,
                   dev,
                   featureKey: 'loans',
+                  isCollapsed: isCollapsed,
                 ),
                 _buildNavItem(
                   Icons.payment,
@@ -565,6 +570,7 @@ class _MainShellState extends State<MainShell> {
                   navIndex,
                   dev,
                   featureKey: 'payments',
+                  isCollapsed: isCollapsed,
                 ),
               ],
               if (AccessControlService.canViewReports(profile) && (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false)))
@@ -575,6 +581,7 @@ class _MainShellState extends State<MainShell> {
                   navIndex,
                   dev,
                   featureKey: 'analytics',
+                  isCollapsed: isCollapsed,
                 ),
               if (AccessControlService.canViewReports(profile) && (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false)))
                 _buildNavItem(
@@ -584,6 +591,7 @@ class _MainShellState extends State<MainShell> {
                   navIndex,
                   dev,
                   featureKey: 'reports',
+                  isCollapsed: isCollapsed,
                 ),
               if (!AccessControlService.isFieldAgent(profile) && (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false)))
                 _buildNavItem(
@@ -593,6 +601,7 @@ class _MainShellState extends State<MainShell> {
                   navIndex,
                   dev,
                   featureKey: 'import',
+                  isCollapsed: isCollapsed,
                 ),
 
               if (profile?.isMarketing ?? false)
@@ -603,10 +612,11 @@ class _MainShellState extends State<MainShell> {
                   navIndex,
                   dev,
                   featureKey: 'marketing',
+                  isCollapsed: isCollapsed,
                 ),
 
               if (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false))
-                _buildNavItem(Icons.business, 'Centers', 9, navIndex, dev),
+                _buildNavItem(Icons.business, 'Centers', 9, navIndex, dev, isCollapsed: isCollapsed),
 
               if (AccessControlService.canManageUsers(profile)) ...[
                 const Divider(
@@ -622,6 +632,7 @@ class _MainShellState extends State<MainShell> {
                   navIndex,
                   dev,
                   featureKey: 'user_management',
+                  isCollapsed: isCollapsed,
                 ),
               ],
               if (AccessControlService.canAccessDeveloperTools(profile)) ...[
@@ -631,20 +642,21 @@ class _MainShellState extends State<MainShell> {
                   indent: 16,
                   endIndent: 16,
                 ),
-                _buildNavItem(Icons.developer_mode, 'Developer Management', 11, navIndex, dev),
+                _buildNavItem(Icons.developer_mode, 'Developer Management', 11, navIndex, dev, isCollapsed: isCollapsed),
               ],
             ],
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Text(
-            'Version 1.0.0',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: isLight ? Colors.black54 : Colors.grey,
+        if (!isCollapsed)
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Text(
+              'Version 1.0.0',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: isLight ? Colors.black54 : Colors.grey,
+              ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -656,6 +668,7 @@ class _MainShellState extends State<MainShell> {
     int selectedIndex,
     DeveloperControlsProvider dev, {
     String? featureKey,
+    bool isCollapsed = false,
   }) {
     final isSelected = selectedIndex == index;
     final theme = Theme.of(context);
@@ -673,15 +686,19 @@ class _MainShellState extends State<MainShell> {
       child: ListTile(
         dense: true,
         visualDensity: VisualDensity.compact,
-        leading: Icon(icon, size: 18, color: color),
-        title: Text(
-          title,
-          style: TextStyle(
-            fontSize: 13,
-            color: color,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-          ),
-        ),
+        leading: isCollapsed
+            ? null
+            : Icon(icon, size: 18, color: color),
+        title: isCollapsed
+            ? Center(child: Icon(icon, size: 20, color: color))
+            : Text(
+                title,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: color,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                ),
+              ),
         selected: isSelected,
         selectedTileColor: isLight
             ? Colors.white.withOpacity(0.3)

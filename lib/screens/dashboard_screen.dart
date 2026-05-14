@@ -212,7 +212,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   ) {
     final theme = Theme.of(context);
     return Container(
-      height: 100,
+      height: 50,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: gradient,
@@ -231,31 +231,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Stack(
         children: [
           Positioned(
-            right: -10,
-            bottom: -10,
-            child: Icon(icon, size: 60, color: Colors.black.withOpacity(0.05)),
+            right: -5,
+            bottom: -5,
+            child: Icon(icon, size: 40, color: Colors.black.withOpacity(0.05)),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Row(
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.black54,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    color: Colors.black,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+                Icon(icon, size: 20, color: Colors.black45),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          color: Colors.black54,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        value,
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
                 ),
               ],

@@ -104,6 +104,13 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     final theme = Theme.of(context);
     final groupProvider = context.read<GroupProvider>();
     final paymentProvider = context.watch<PaymentProvider>();
+    final vendorProvider = context.watch<VendorProvider>();
+
+    // Derive current vendor from provider reactively
+    final currentVendor = vendorProvider.vendors.firstWhere(
+      (v) => v.id == widget.vendor.id,
+      orElse: () => _currentVendor,
+    );
 
     // Filter payments for this vendor's loans reactively
     final loanIds = _loans.map((l) => l.id).toSet();
@@ -113,7 +120,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
 
     double totalPaid = vendorPayments.fold(0, (sum, p) => sum + p.amountPaid);
     final group = groupProvider.groups.firstWhere(
-      (g) => g.id == _currentVendor.groupId,
+      (g) => g.id == currentVendor.groupId,
       orElse: GroupModel.unknown,
     );
 
@@ -135,7 +142,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             onPressed: () {
               showDialog(
                 context: context,
-                builder: (context) => CommunicationDialog(vendor: _currentVendor),
+                builder: (context) => CommunicationDialog(vendor: currentVendor),
               );
             },
             tooltip: 'Send Message',
@@ -149,7 +156,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
             onPressed: () => VendorPdfService.generateProfilePDF(
               context: context,
-              vendor: _currentVendor,
+              vendor: currentVendor,
               group: group,
               loans: _loans,
             ),
@@ -176,9 +183,9 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildMainHeader(theme, group, isDesktop),
+                        _buildMainHeader(theme, group, isDesktop, currentVendor),
                         const SizedBox(height: 24),
-                        _buildInformationSection(theme, isTablet),
+                        _buildInformationSection(theme, isTablet, currentVendor),
                         const SizedBox(height: 24),
                         _buildFinancialSummary(theme, totalPaid, isTablet),
                         if (!isDesktop) const SizedBox(height: 32),
@@ -193,25 +200,15 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildHistorySection(
-                          theme,
-                          'My Loan History',
-                          _loans,
-                          true,
-                        ),
+                        _buildHistorySection(theme, 'Active Loans', _loans.where((l) => l.status == 'Active').toList(), true, currentVendor),
                         const SizedBox(height: 24),
-                        _buildHistorySection(
-                          theme,
-                          'My Payment History',
-                          vendorPayments,
-                          false,
-                        ),
+                        _buildHistorySection(theme, 'Payment History', vendorPayments, false, currentVendor),
                         const SizedBox(height: 24),
-                        _buildSavingsHistorySection(theme),
+                        _buildSavingsHistorySection(theme, currentVendor),
                         const SizedBox(height: 24),
-                        _buildCommentsSection(theme),
+                        _buildCommentsSection(theme, currentVendor),
                         const SizedBox(height: 24),
-                        _buildDocumentsSection(theme),
+                        _buildDocumentsSection(theme, currentVendor),
                       ],
                     ),
                   ),
@@ -221,7 +218,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     );
   }
 
-  Widget _buildDocumentsSection(ThemeData theme) {
+  Widget _buildDocumentsSection(ThemeData theme, VendorModel currentVendor) {
     final docProvider = context.watch<DocumentProvider>();
 
     return Column(
@@ -257,7 +254,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                           for (var file in result.files) {
                             if (file.bytes != null) {
                               await docProvider.uploadDocument(
-                                vendorId: _currentVendor.id,
+                                vendorId: currentVendor.id,
                                 fileName: file.name,
                                 fileBytes: file.bytes!,
                               );
@@ -396,7 +393,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     }
   }
 
-  Future<void> _exportLoansToExcel() async {
+  Future<void> _exportLoansToExcel(VendorModel currentVendor) async {
     final paymentProvider = context.read<PaymentProvider>();
     List<Map<String, dynamic>> loanData = [];
 
@@ -423,12 +420,12 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     }
 
     await ExcelExportService.exportLoanHistory(
-      memberName: _currentVendor.name,
+      memberName: currentVendor.name,
       loanData: loanData,
     );
   }
 
-  Widget _buildCommentsSection(ThemeData theme) {
+  Widget _buildCommentsSection(ThemeData theme, VendorModel currentVendor) {
     final commentProvider = context.watch<CommentProvider>();
     final TextEditingController _commentController = TextEditingController();
 
@@ -479,7 +476,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                           final authProvider = context.read<AuthProvider>();
                           final comment = CommentModel(
                             id: '',
-                            vendorId: _currentVendor.id,
+                            vendorId: currentVendor.id,
                             authorName:
                                 authProvider.currentUser?.email ?? 'Admin',
                             authorRole: 'Staff',
@@ -528,7 +525,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                     );
 
                     return InkWell(
-                      onTap: () => _showCommentDetailsDialog(comment),
+                      onTap: () => _showCommentDetailsDialog(comment, currentVendor),
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Column(
@@ -595,10 +592,10 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     );
   }
 
-  Widget _buildMainHeader(ThemeData theme, GroupModel group, bool isDesktop) {
+  Widget _buildMainHeader(ThemeData theme, GroupModel group, bool isDesktop, VendorModel currentVendor) {
     final analyticsProvider = context.watch<AnalyticsProvider>();
     final score =
-        analyticsProvider.vendorCreditScores[_currentVendor.id] ?? 0.0;
+        analyticsProvider.vendorCreditScores[currentVendor.id] ?? 0.0;
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -611,7 +608,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
               children: [
                 _buildVendorAvatar(theme),
                 const SizedBox(width: 24),
-                Expanded(child: _buildVendorTitle(theme, group, isDesktop)),
+                Expanded(child: _buildVendorTitle(theme, group, isDesktop, currentVendor)),
                 const SizedBox(width: 24),
                 _buildCreditBadge(score),
               ],
@@ -622,7 +619,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                   children: [
                     _buildVendorAvatar(theme, radius: 25),
                     const SizedBox(width: 16),
-                    Expanded(child: _buildVendorTitle(theme, group, isDesktop)),
+                    Expanded(child: _buildVendorTitle(theme, group, isDesktop, currentVendor)),
                   ],
                 ),
                 const SizedBox(height: 20),
@@ -640,12 +637,12 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     );
   }
 
-  Widget _buildVendorTitle(ThemeData theme, GroupModel group, bool isDesktop) {
+  Widget _buildVendorTitle(ThemeData theme, GroupModel group, bool isDesktop, VendorModel currentVendor) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          _currentVendor.name,
+          currentVendor.name,
           style: theme.textTheme.headlineSmall?.copyWith(
             fontWeight: FontWeight.bold,
             fontSize: isDesktop ? 24 : 18,
@@ -728,7 +725,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     );
   }
 
-  Widget _buildInformationSection(ThemeData theme, bool isTablet) {
+  Widget _buildInformationSection(ThemeData theme, bool isTablet, VendorModel currentVendor) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -747,40 +744,40 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             children: [
               _buildInfoRow(
                 'Role',
-                _currentVendor.role ?? 'Member',
+                currentVendor.role ?? 'Member',
                 Icons.stars_outlined,
               ),
               _buildInfoRow(
                 'Home Address',
-                _currentVendor.address ?? 'N/A',
+                currentVendor.address ?? 'N/A',
                 Icons.location_on_outlined,
               ),
               _buildInfoRow(
                 'Phone',
-                _currentVendor.phone ?? 'N/A',
+                currentVendor.phone ?? 'N/A',
                 Icons.phone_outlined,
               ),
               _buildInfoRow(
                 'ID Number',
-                _currentVendor.idNumber ?? 'N/A',
+                currentVendor.idNumber ?? 'N/A',
                 Icons.badge_outlined,
               ),
               _buildInfoRow(
                 'Business',
-                _currentVendor.businessType ?? 'N/A',
+                currentVendor.businessType ?? 'N/A',
                 Icons.business_center_outlined,
               ),
               _buildInfoRow(
                 'Email',
-                _currentVendor.email ?? 'N/A',
+                currentVendor.email ?? 'N/A',
                 Icons.email_outlined,
               ),
               InkWell(
-                onTap: () => _showUpdateSavingsDialog(context),
+                onTap: () => _showUpdateSavingsDialog(context, currentVendor),
                 borderRadius: BorderRadius.circular(8),
                 child: _buildInfoRow(
                   'Savings Balance',
-                  'R ${_currentVendor.savingsAmount?.toStringAsFixed(2) ?? '0.00'}',
+                  'R ${currentVendor.savingsAmount?.toStringAsFixed(2) ?? '0.00'}',
                   Icons.savings_outlined,
                   trailing: const Icon(
                     Icons.edit_outlined,
@@ -952,6 +949,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     String title,
     List items,
     bool isLoans,
+    VendorModel currentVendor,
   ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -966,7 +964,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             if (isLoans && items.isNotEmpty)
               IconButton(
                 icon: const Icon(Icons.download_for_offline, color: Colors.amber, size: 20),
-                onPressed: () => _exportLoansToExcel(),
+                onPressed: () => _exportLoansToExcel(currentVendor),
                 tooltip: 'Export Loans to Excel',
               ),
           ],
@@ -1089,7 +1087,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                               .where((l) => l.id == payment.loanId)
                               .firstOrNull;
                           final group = groupProvider.groups
-                              .where((g) => g.id == _currentVendor.groupId)
+                              .where((g) => g.id == currentVendor.groupId)
                               .firstOrNull;
 
                           if (loan != null && group != null) {
@@ -1123,7 +1121,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
 
   String _selectedActionFilter = 'All';
 
-  Widget _buildSavingsHistorySection(ThemeData theme) {
+  Widget _buildSavingsHistorySection(ThemeData theme, VendorModel currentVendor) {
     final historyProvider = context.watch<SavingsHistoryProvider>();
     final history = historyProvider.history.where((e) {
       if (_selectedActionFilter == 'All') return true;
@@ -1246,7 +1244,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
   }
 
 
-  void _showUpdateSavingsDialog(BuildContext context) {
+  void _showUpdateSavingsDialog(BuildContext context, VendorModel currentVendor) {
     final controller = TextEditingController(text: '0');
     String selectedAction = 'Deposit';
 
@@ -1270,7 +1268,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Current Balance: R ${_currentVendor.savingsAmount?.toStringAsFixed(0) ?? '0'}',
+                'Current Balance: R ${currentVendor.savingsAmount?.toStringAsFixed(0) ?? '0'}',
                 style: const TextStyle(
                   color: Colors.amber,
                   fontWeight: FontWeight.bold,
@@ -1356,7 +1354,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                   return;
                 }
 
-                double currentBalance = _currentVendor.savingsAmount ?? 0.0;
+                double currentBalance = currentVendor.savingsAmount ?? 0.0;
                 double newBalance;
 
                 if (selectedAction == 'Deposit') {
@@ -1383,7 +1381,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                   final operatorEmail = authProvider.currentUser?.email ?? 'Admin';
 
                   await context.read<VendorProvider>().recordSavingsTransaction(
-                    vendorId: _currentVendor.id,
+                    vendorId: currentVendor.id,
                     amount: amount,
                     actionType: selectedAction,
                     updatedBy: operatorEmail,
@@ -2274,7 +2272,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     );
   }
 
-  void _showCommentDetailsDialog(CommentModel comment) {
+  void _showCommentDetailsDialog(CommentModel comment, VendorModel currentVendor) {
     final theme = Theme.of(context);
     final commentProvider = context.read<CommentProvider>();
     final TextEditingController _editController = TextEditingController(
