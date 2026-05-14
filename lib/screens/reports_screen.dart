@@ -10,6 +10,7 @@ import '../providers/vendor_provider.dart';
 import '../providers/loan_provider.dart';
 import '../providers/payment_provider.dart';
 import '../theme/app_theme.dart';
+import '../providers/analytics_provider.dart';
 import 'loan_details_screen.dart';
 import '../services/loan_calculation_service.dart';
 import '../services/excel_export_service.dart';
@@ -532,6 +533,80 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 40),
+          const Divider(),
+          const SizedBox(height: 40),
+
+          // Advanced Insights Section
+          Text(
+            'Advanced Insights & Aging Analysis',
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Monthly Breakdown & Aging Row
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Monthly Financial Breakdown
+              Expanded(
+                flex: 3,
+                child: _buildInsightCard(
+                  theme,
+                  'Monthly Financial Breakdown',
+                  _buildMonthlyBreakdownTable(context),
+                ),
+              ),
+              const SizedBox(width: 24),
+              // Arrears Aging
+              Expanded(
+                flex: 2,
+                child: _buildInsightCard(
+                  theme,
+                  'Arrears Aging Analysis',
+                  _buildAgingTable(context),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          // Loan Book Breakdown Row
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // By DF
+              Expanded(
+                child: _buildInsightCard(
+                  theme,
+                  'Loan Book by Facilitator (DF)',
+                  _buildBreakdownTable(context, 'DF'),
+                ),
+              ),
+              const SizedBox(width: 24),
+              // By Center
+              Expanded(
+                child: _buildInsightCard(
+                  theme,
+                  'Loan Book by Center',
+                  _buildBreakdownTable(context, 'Center'),
+                ),
+              ),
+              const SizedBox(width: 24),
+              // By Loan Type
+              Expanded(
+                child: _buildInsightCard(
+                  theme,
+                  'Loan Book by Type',
+                  _buildBreakdownTable(context, 'Type'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 60),
         ],
       ),
     );
@@ -1043,6 +1118,122 @@ class _ReportsScreenState extends State<ReportsScreen> {
         'collectionRate': collectionRate,
       },
       ledgerData: data,
+    );
+  }
+
+  Widget _buildInsightCard(ThemeData theme, String title, Widget child) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 20),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMonthlyBreakdownTable(BuildContext context) {
+    final trend = context.watch<AnalyticsProvider>().monthlyTrend;
+    final theme = Theme.of(context);
+
+    return Table(
+      border: TableBorder.all(color: theme.dividerColor, width: 0.5),
+      children: [
+        TableRow(
+          decoration: BoxDecoration(color: theme.dividerColor.withOpacity(0.05)),
+          children: [
+            _buildTableHeader('Month'),
+            _buildTableHeader('Principal'),
+            _buildTableHeader('Interest'),
+            _buildTableHeader('Admin Fee'),
+            _buildTableHeader('Init Fee'),
+            _buildTableHeader('Actual Coll'),
+          ],
+        ),
+        ...trend.map((t) => TableRow(
+          children: [
+            _buildTableCell(t.month),
+            _buildTableCell('R ${t.disbursed.toStringAsFixed(0)}'),
+            _buildTableCell('R ${t.interest.toStringAsFixed(0)}'),
+            _buildTableCell('R ${t.adminFees.toStringAsFixed(0)}'),
+            _buildTableCell('R ${t.initiationFees.toStringAsFixed(0)}'),
+            _buildTableCell('R ${t.collected.toStringAsFixed(0)}', color: Colors.greenAccent),
+          ],
+        )).toList(),
+      ],
+    );
+  }
+
+  Widget _buildAgingTable(BuildContext context) {
+    final aging = context.watch<AnalyticsProvider>().arrearsAging;
+    final theme = Theme.of(context);
+
+    return Table(
+      border: TableBorder.all(color: theme.dividerColor, width: 0.5),
+      children: [
+        TableRow(
+          decoration: BoxDecoration(color: theme.dividerColor.withOpacity(0.05)),
+          children: [
+            _buildTableHeader('Aging Bracket'),
+            _buildTableHeader('Amount'),
+          ],
+        ),
+        _buildAgingRow('30 Days', aging.m30, Colors.yellowAccent),
+        _buildAgingRow('60 Days', aging.m60, Colors.orangeAccent),
+        _buildAgingRow('90 Days', aging.m90, Colors.redAccent),
+        _buildAgingRow('90+ Days', aging.m90Plus, Colors.red[900]!),
+        TableRow(
+          decoration: BoxDecoration(color: theme.dividerColor.withOpacity(0.1)),
+          children: [
+            _buildTableHeader('Total Arrears'),
+            _buildTableHeader('R ${aging.totalArrears.toStringAsFixed(0)}'),
+          ],
+        ),
+      ],
+    );
+  }
+
+  TableRow _buildAgingRow(String label, double amount, Color color) {
+    return TableRow(
+      children: [
+        _buildTableCell(label),
+        _buildTableCell('R ${amount.toStringAsFixed(0)}', color: color, isBold: true),
+      ],
+    );
+  }
+
+  Widget _buildBreakdownTable(BuildContext context, String mode) {
+    final breakdown = context.watch<AnalyticsProvider>().loanBookBreakdown;
+    final theme = Theme.of(context);
+    final Map<String, double> data = mode == 'DF' 
+        ? breakdown.byDF 
+        : (mode == 'Center' ? breakdown.byCenter : breakdown.byType);
+
+    return Table(
+      border: TableBorder.all(color: theme.dividerColor, width: 0.5),
+      children: [
+        TableRow(
+          decoration: BoxDecoration(color: theme.dividerColor.withOpacity(0.05)),
+          children: [
+            _buildTableHeader(mode),
+            _buildTableHeader('Balance'),
+          ],
+        ),
+        ...data.entries.map((e) => TableRow(
+          children: [
+            _buildTableCell(e.key),
+            _buildTableCell('R ${e.value.toStringAsFixed(0)}', isBold: true),
+          ],
+        )).toList(),
+      ],
     );
   }
 }

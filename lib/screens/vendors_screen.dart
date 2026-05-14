@@ -8,6 +8,7 @@ import 'package:printing/printing.dart';
 import '../providers/vendor_provider.dart';
 import '../providers/group_provider.dart';
 import '../providers/center_provider.dart';
+import '../providers/auth_provider.dart';
 import '../models/vendor.dart';
 import '../models/group.dart';
 import 'vendor_profile_screen.dart';
@@ -570,12 +571,15 @@ class _VendorsScreenState extends State<VendorsScreen> {
                         }
                         final newRef =
                             'GRP-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+                        final authProvider = context.read<AuthProvider>();
                         final newGroup = await groupProvider
                             .addGroupWithMembers(
                               newGroupNameController.text,
                               newRef,
                               selectedCenterId!,
                               [],
+                              creatorId: authProvider.userProfile?.id,
+                              creatorName: authProvider.userProfile?.fullName,
                             );
                         groupId = newGroup.id;
                         ref = newRef;

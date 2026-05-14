@@ -5,6 +5,7 @@ import '../providers/center_provider.dart';
 import '../providers/loan_provider.dart';
 import '../providers/vendor_provider.dart';
 import '../providers/payment_provider.dart';
+import '../providers/auth_provider.dart';
 import 'group_details_screen.dart';
 
 class GroupsScreen extends StatelessWidget {
@@ -630,6 +631,10 @@ class GroupsScreen extends StatelessWidget {
                   onPressed: () async {
                     if (nameController.text.isNotEmpty &&
                         selectedCenterId != null) {
+                      final authProvider = Provider.of<AuthProvider>(
+                        context,
+                        listen: false,
+                      );
                       final provider = Provider.of<GroupProvider>(
                         context,
                         listen: false,
@@ -668,6 +673,8 @@ class GroupsScreen extends StatelessWidget {
                         ref,
                         selectedCenterId!,
                         members,
+                        creatorId: authProvider.userProfile?.id,
+                        creatorName: authProvider.userProfile?.fullName,
                       );
                       if (context.mounted) Navigator.pop(context);
                     } else if (selectedCenterId == null) {

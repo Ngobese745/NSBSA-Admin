@@ -664,6 +664,17 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             fontSize: 10,
           ),
         ),
+        if (group.creatorName != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Group Created by: ${group.creatorName}',
+            style: TextStyle(
+              color: Colors.grey[500],
+              fontSize: 11,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
       ],
     );
   }

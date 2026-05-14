@@ -7,6 +7,8 @@ class GroupModel {
 
   final String? dfId;
   final String? dfName;
+  final String? creatorId;
+  final String? creatorName;
 
   GroupModel({
     required this.id,
@@ -16,6 +18,8 @@ class GroupModel {
     required this.createdAt,
     this.dfId,
     this.dfName,
+    this.creatorId,
+    this.creatorName,
   });
 
   /// Placeholder when a group cannot be resolved (lists, lookups).
@@ -37,6 +41,8 @@ class GroupModel {
       createdAt: DateTime.parse(json['created_at']),
       dfId: json['df_id'],
       dfName: json['df_name'],
+      creatorId: json['creator_id'],
+      creatorName: json['creator_name'],
     );
   }
 
@@ -48,6 +54,8 @@ class GroupModel {
       'created_at': createdAt.toIso8601String(),
       'df_id': dfId,
       'df_name': dfName,
+      'creator_id': creatorId,
+      'creator_name': creatorName,
     };
     if (id.isNotEmpty) {
       map['id'] = id;

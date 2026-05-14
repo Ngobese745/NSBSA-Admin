@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/app_assets.dart';
 import '../core/app_breakpoints.dart';
 import 'dashboard_screen.dart';
+import 'super_admin_dashboard_screen.dart';
 import 'groups_screen.dart';
 import 'vendors_screen.dart';
 import 'loans_screen.dart';
@@ -85,6 +86,10 @@ class _MainShellState extends State<MainShell> {
   Widget _shellBodyForIndex(int index) {
     switch (index) {
       case 0:
+        final authProvider = context.read<AuthProvider>();
+        if (authProvider.userProfile?.role == 'Super Admin') {
+          return const FeatureGuard(featureKey: 'dashboard', child: SuperAdminDashboardScreen());
+        }
         return const FeatureGuard(featureKey: 'dashboard', child: DashboardScreen());
       case 1:
         return const FeatureGuard(featureKey: 'groups', child: GroupsScreen());
@@ -113,6 +118,10 @@ class _MainShellState extends State<MainShell> {
       case 13:
         return const NotificationHistoryScreen();
       default:
+        final authProvider = context.read<AuthProvider>();
+        if (authProvider.userProfile?.role == 'Super Admin') {
+          return const FeatureGuard(featureKey: 'dashboard', child: SuperAdminDashboardScreen());
+        }
         return const FeatureGuard(featureKey: 'dashboard', child: DashboardScreen());
     }
   }

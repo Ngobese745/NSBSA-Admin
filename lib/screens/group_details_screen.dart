@@ -589,6 +589,21 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           widget.group.createdAt.toString().substring(0, 10),
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
+        if (widget.group.creatorName != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            'CREATED BY',
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontSize: 10,
+              letterSpacing: 1,
+            ),
+          ),
+          Text(
+            widget.group.creatorName!,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          ),
+        ],
         const SizedBox(height: 12),
         ElevatedButton.icon(
           onPressed: () => _downloadGroupStatement(members),

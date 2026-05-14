@@ -51,8 +51,10 @@ class GroupProvider with ChangeNotifier {
     String name,
     String referenceNumber,
     String centerId,
-    List<Map<String, dynamic>> members,
-  ) async {
+    List<Map<String, dynamic>> members, {
+    String? creatorId,
+    String? creatorName,
+  }) async {
     try {
       // Fetch Center to get DF
       final centerRes = await _supabase
@@ -71,6 +73,8 @@ class GroupProvider with ChangeNotifier {
             'center_id': centerId,
             'df_id': dfId,
             'df_name': dfName,
+            'creator_id': creatorId,
+            'creator_name': creatorName,
           })
           .select()
           .single();

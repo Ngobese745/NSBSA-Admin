@@ -110,9 +110,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       Expanded(
                         child: _buildPremiumStatCard(
                           context,
-                          'Disbursed',
-                          'R ${totalDisbursed.toStringAsFixed(0)}',
-                          Icons.account_balance_outlined,
+                          'Interest Generated',
+                          'R ${analyticsProvider.monthlyTrend.fold(0.0, (sum, t) => sum + t.interest).toStringAsFixed(0)}',
+                          Icons.trending_up_outlined,
                           [const Color(0xFFC5A028), const Color(0xFF8B6B01)],
                         ),
                       ),
@@ -120,9 +120,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       Expanded(
                         child: _buildPremiumStatCard(
                           context,
-                          'Collected',
-                          'R ${totalCollected.toStringAsFixed(0)}',
-                          Icons.payments_outlined,
+                          'Admin Fees',
+                          'R ${analyticsProvider.monthlyTrend.fold(0.0, (sum, t) => sum + t.adminFees).toStringAsFixed(0)}',
+                          Icons.admin_panel_settings_outlined,
                           [const Color(0xFFE5B942), const Color(0xFF996515)],
                         ),
                       ),
@@ -130,10 +130,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       Expanded(
                         child: _buildPremiumStatCard(
                           context,
-                          'Total Savings',
-                          'R ${totalSavings.toStringAsFixed(0)}',
-                          Icons.savings_outlined,
-                          [const Color(0xFFF1C40F), const Color(0xFFF39C12)],
+                          'Disbursed',
+                          'R ${totalDisbursed.toStringAsFixed(0)}',
+                          Icons.account_balance_outlined,
+                          [const Color(0xFFFDC830), const Color(0xFFF37335)],
                         ),
                       ),
                     ],
@@ -151,25 +151,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       const SizedBox(height: 12),
                       _buildPremiumStatCard(
                         context,
-                        'Total Disbursed',
-                        'R ${totalDisbursed.toStringAsFixed(0)}',
-                        Icons.account_balance_outlined,
+                        'Interest Generated',
+                        'R ${analyticsProvider.monthlyTrend.fold(0.0, (sum, t) => sum + t.interest).toStringAsFixed(0)}',
+                        Icons.trending_up_outlined,
                         [const Color(0xFFC5A028), const Color(0xFF8B6B01)],
                       ),
                       const SizedBox(height: 12),
                       _buildPremiumStatCard(
                         context,
-                        'Total Collected',
-                        'R ${totalCollected.toStringAsFixed(0)}',
-                        Icons.payments_outlined,
+                        'Admin Fees',
+                        'R ${analyticsProvider.monthlyTrend.fold(0.0, (sum, t) => sum + t.adminFees).toStringAsFixed(0)}',
+                        Icons.admin_panel_settings_outlined,
                         [const Color(0xFFE5B942), const Color(0xFF996515)],
                       ),
                       const SizedBox(height: 12),
                       _buildPremiumStatCard(
                         context,
-                        'Total Savings',
-                        'R ${totalSavings.toStringAsFixed(0)}',
-                        Icons.savings_outlined,
+                        'Disbursed',
+                        'R ${totalDisbursed.toStringAsFixed(0)}',
+                        Icons.account_balance_outlined,
                         [const Color(0xFFF1C40F), const Color(0xFFF39C12)],
                       ),
                     ],
@@ -189,10 +189,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
             delegate: SliverChildListDelegate([
               _buildChartCard(
                 theme,
-                'Collection Performance',
-                _buildLineChart(analyticsProvider.monthlyTrend, totalDisbursed),
+                'Expected vs Actual Collections',
+                _buildCollectionsBarChart(analyticsProvider.monthlyTrend),
               ),
-              _buildRecentActivityCard(theme, loanProvider),
+              _buildChartCard(
+                theme,
+                'Loan Disbursement Trend',
+                _buildDisbursementLineChart(analyticsProvider.monthlyTrend),
+              ),
+              _buildChartCard(
+                theme,
+                'Arrears Aging Analysis',
+                _buildArrearsPieChart(analyticsProvider.arrearsAging),
+              ),
               _buildRiskHeatmapCard(theme, groupRisks),
               _buildCreditProfileCard(theme, groupRisks),
             ]),
@@ -299,184 +308,206 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildLineChart(List<MonthlyTrend> trend, double maxDisbursed) {
-    const red = Color(0xFFE35D5B);
-    const green = Color(0xFF38EF7D);
-    const gold = Color(0xFFD4AF37);
+  Widget _buildCollectionsBarChart(List<MonthlyTrend> trend) {
+    if (trend.isEmpty) return const Center(child: Text('No data'));
 
-    if (trend.isEmpty) {
-      return const Center(child: Text('No trend data available'));
-    }
-
-    final totalDisbursedYTD = trend.fold(0.0, (sum, t) => sum + t.disbursed);
-    final totalCollectedYTD = trend.fold(0.0, (sum, t) => sum + t.collected);
+    final avgVariance = trend.fold(0.0, (sum, t) => sum + t.variancePercentage) / trend.length;
 
     return Column(
       children: [
-        // Summary Header
-        Padding(
-          padding: const EdgeInsets.only(bottom: 24.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildChartSummary('Disbursed YTD', 'R ${totalDisbursedYTD.toStringAsFixed(0)}', red),
-              _buildChartSummary('Collected YTD', 'R ${totalCollectedYTD.toStringAsFixed(0)}', green),
-            ],
-          ),
-        ),
-        // Legend
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _buildLegendItem('Disbursed Capital', red),
-            const SizedBox(width: 24),
-            _buildLegendItem('Payments Received', green),
+            _buildLegendItem('Expected', Colors.blueAccent),
+            const SizedBox(width: 16),
+            _buildLegendItem('Actual', Colors.greenAccent),
+            const SizedBox(width: 16),
+            Text(
+              'Avg Variance: ${avgVariance.toStringAsFixed(1)}%',
+              style: TextStyle(
+                color: avgVariance >= 0 ? Colors.greenAccent : Colors.redAccent,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ],
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         Expanded(
-          child: LineChart(
-            LineChartData(
-              minY: 0,
-              gridData: FlGridData(
-                show: true,
-                drawVerticalLine: false,
-                getDrawingHorizontalLine: (value) => FlLine(
-                  color: Colors.white.withOpacity(0.03),
-                  strokeWidth: 1,
-                ),
-              ),
+          child: BarChart(
+            BarChartData(
+              alignment: BarChartAlignment.spaceAround,
+              maxY: trend.fold(0.0, (max, t) => t.expectedCollections > max ? t.expectedCollections : max) * 1.2,
+              barTouchData: BarTouchData(enabled: true),
               titlesData: FlTitlesData(
                 show: true,
-                rightTitles: const AxisTitles(
-                  sideTitles: SideTitles(showTitles: false),
-                ),
-                topTitles: const AxisTitles(
-                  sideTitles: SideTitles(showTitles: false),
-                ),
                 bottomTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
-                    reservedSize: 30,
-                    interval: 1,
                     getTitlesWidget: (value, meta) {
                       final index = value.toInt();
-                      if (index < 0 || index >= trend.length) {
-                        return const SizedBox.shrink();
-                      }
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 8.0),
-                        child: Text(
-                          trend[index].month,
-                          style: TextStyle(
-                            color: Colors.grey.withOpacity(0.7),
-                            fontSize: 10,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      );
+                      if (index < 0 || index >= trend.length) return const SizedBox.shrink();
+                      return Text(trend[index].month, style: const TextStyle(fontSize: 10, color: Colors.grey));
                     },
                   ),
                 ),
                 leftTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
-                    interval: maxDisbursed > 0 ? maxDisbursed / 4 : 10000,
-                    reservedSize: 42,
-                    getTitlesWidget: (value, meta) => Text(
-                      'R ${(value / 1000).toStringAsFixed(0)}k',
-                      style: TextStyle(
-                        color: Colors.grey.withOpacity(0.7),
-                        fontSize: 10,
-                      ),
-                    ),
+                    reservedSize: 40,
+                    getTitlesWidget: (value, meta) => Text('R${(value / 1000).toStringAsFixed(0)}k', style: const TextStyle(fontSize: 9)),
                   ),
                 ),
+                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
               ),
+              gridData: const FlGridData(show: false),
               borderData: FlBorderData(show: false),
-              lineTouchData: LineTouchData(
-                touchTooltipData: LineTouchTooltipData(
-                  getTooltipColor: (spot) => const Color(0xFF1A1A1A),
-                  getTooltipItems: (List<LineBarSpot> touchedSpots) {
-                    return touchedSpots.map((spot) {
-                      return LineTooltipItem(
-                        'R ${spot.y.toStringAsFixed(0)}',
-                        TextStyle(
-                          color: spot.bar.color ?? Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      );
-                    }).toList();
-                  },
+              barGroups: trend.asMap().entries.map((e) {
+                return BarChartGroupData(
+                  x: e.key,
+                  barRods: [
+                    BarChartRodData(
+                      toY: e.value.expectedCollections,
+                      color: Colors.blueAccent.withOpacity(0.7),
+                      width: 12,
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                    ),
+                    BarChartRodData(
+                      toY: e.value.collected,
+                      color: Colors.greenAccent,
+                      width: 12,
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                    ),
+                  ],
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildArrearsPieChart(ArrearsAging aging) {
+    if (aging.totalArrears == 0) return const Center(child: Text('No active arrears'));
+
+    return Row(
+      children: [
+        Expanded(
+          flex: 2,
+          child: PieChart(
+            PieChartData(
+              sectionsSpace: 4,
+              centerSpaceRadius: 40,
+              sections: [
+                PieChartSectionData(
+                  value: aging.m30,
+                  title: '30d',
+                  color: Colors.yellowAccent,
+                  radius: 50,
+                  titleStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black),
                 ),
-              ),
-              lineBarsData: [
-                LineChartBarData(
-                  spots: trend.asMap().entries.map((e) {
-                    return FlSpot(e.key.toDouble(), e.value.disbursed);
-                  }).toList(),
-                  isCurved: true,
-                  curveSmoothness: 0.3, // Lower smoothness to prevent dips
-                  color: red,
-                  barWidth: 3,
-                  dotData: FlDotData(
-                    show: true,
-                    getDotPainter: (spot, percent, barData, index) =>
-                        FlDotCirclePainter(
-                      radius: 3,
-                      color: red,
-                      strokeWidth: 1,
-                      strokeColor: Colors.black,
-                    ),
-                  ),
-                  belowBarData: BarAreaData(
-                    show: true,
-                    gradient: LinearGradient(
-                      colors: [
-                        red.withOpacity(0.15),
-                        red.withOpacity(0.0),
-                      ],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                    ),
-                  ),
+                PieChartSectionData(
+                  value: aging.m60,
+                  title: '60d',
+                  color: Colors.orangeAccent,
+                  radius: 50,
+                  titleStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black),
                 ),
-                LineChartBarData(
-                  spots: trend.asMap().entries.map((e) {
-                    return FlSpot(e.key.toDouble(), e.value.collected);
-                  }).toList(),
-                  isCurved: true,
-                  curveSmoothness: 0.3,
-                  color: green,
-                  barWidth: 3,
-                  dotData: FlDotData(
-                    show: true,
-                    getDotPainter: (spot, percent, barData, index) =>
-                        FlDotCirclePainter(
-                      radius: 3,
-                      color: green,
-                      strokeWidth: 1,
-                      strokeColor: Colors.black,
-                    ),
-                  ),
-                  belowBarData: BarAreaData(
-                    show: true,
-                    gradient: LinearGradient(
-                      colors: [
-                        green.withOpacity(0.15),
-                        green.withOpacity(0.0),
-                      ],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                    ),
-                  ),
+                PieChartSectionData(
+                  value: aging.m90,
+                  title: '90d',
+                  color: Colors.redAccent,
+                  radius: 50,
+                  titleStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black),
+                ),
+                PieChartSectionData(
+                  value: aging.m90Plus,
+                  title: '90d+',
+                  color: Colors.red[900],
+                  radius: 50,
+                  titleStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
                 ),
               ],
             ),
           ),
         ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildLegendItem('30 Days', Colors.yellowAccent),
+              const SizedBox(height: 8),
+              _buildLegendItem('60 Days', Colors.orangeAccent),
+              const SizedBox(height: 8),
+              _buildLegendItem('90 Days', Colors.redAccent),
+              const SizedBox(height: 8),
+              _buildLegendItem('90+ Days', Colors.red[900]!),
+              const SizedBox(height: 16),
+              Text(
+                'Total Arrears:\nR ${aging.totalArrears.toStringAsFixed(0)}',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+            ],
+          ),
+        ),
       ],
+    );
+  }
+
+  Widget _buildDisbursementLineChart(List<MonthlyTrend> trend) {
+    if (trend.isEmpty) return const Center(child: Text('No data'));
+
+    final maxDisbursed = trend.fold(0.0, (max, t) => t.disbursed > max ? t.disbursed : max);
+
+    return LineChart(
+      LineChartData(
+        minY: 0,
+        maxY: (maxDisbursed > 0 ? maxDisbursed : 1000) * 1.2,
+        gridData: const FlGridData(show: false),
+        borderData: FlBorderData(show: false),
+        titlesData: FlTitlesData(
+          show: true,
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              getTitlesWidget: (value, meta) {
+                final index = value.toInt();
+                if (index < 0 || index >= trend.length) return const SizedBox.shrink();
+                return Text(trend[index].month, style: const TextStyle(fontSize: 10, color: Colors.grey));
+              },
+            ),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 40,
+              getTitlesWidget: (value, meta) => Text('R${(value / 1000).toStringAsFixed(0)}k', style: const TextStyle(fontSize: 9)),
+            ),
+          ),
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        ),
+        lineBarsData: [
+          LineChartBarData(
+            spots: trend.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value.disbursed)).toList(),
+            isCurved: true,
+            color: AppTheme.primaryGold,
+            barWidth: 3,
+            belowBarData: BarAreaData(
+              show: true,
+              gradient: LinearGradient(
+                colors: [AppTheme.primaryGold.withOpacity(0.3), AppTheme.primaryGold.withOpacity(0)],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

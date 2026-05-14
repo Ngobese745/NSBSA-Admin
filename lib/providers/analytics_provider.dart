@@ -40,6 +40,12 @@ class AnalyticsProvider with ChangeNotifier {
   double _globalTotalPaid = 0.0;
   double get globalTotalPaid => _globalTotalPaid;
 
+  ArrearsAging _arrearsAging = ArrearsAging();
+  ArrearsAging get arrearsAging => _arrearsAging;
+
+  LoanBookBreakdown _loanBookBreakdown = LoanBookBreakdown();
+  LoanBookBreakdown get loanBookBreakdown => _loanBookBreakdown;
+
   void calculateAnalytics({
     required List<GroupModel> groups,
     required List<VendorModel> vendors,
@@ -59,6 +65,9 @@ class AnalyticsProvider with ChangeNotifier {
 
     // 4. DF & Centre Performance
     _calculateDFCentrePerformance(groups, vendors, loans, payments);
+
+    // 5. Arrears Aging & Loan Book Breakdown
+    _calculateAgingAndBreakdown(groups, vendors, loans, payments);
 
     _isLoading = false;
     notifyListeners();
@@ -193,12 +202,99 @@ class AnalyticsProvider with ChangeNotifier {
 
     return List.generate(now.month, (index) {
       final m = index + 1;
+      
+      // Calculate Interest, Fees, and Expected for this month
+      double interest = 0;
+      double initiationFees = 0;
+      double adminFees = 0;
+      double expectedCollections = 0;
+
+      for (var l in loans) {
+        // Initiation Fees for loans issued this month
+        if (l.createdAt.year == now.year && l.createdAt.month == m) {
+          initiationFees += (l.initiationFee ?? 150.0);
+          
+          // Interest is calculated as (monthlyPayment * duration) - principal
+          final totalInterest = (l.monthlyPayment * l.durationMonths) - l.amount;
+          interest += totalInterest; // This is a simplistic allocation, but fits the "Total Interest Generated" requirement
+        }
+
+        // Expected Collections & Admin Fees for active loans this month
+        if (l.firstInstalmentDate != null) {
+          for (int i = 0; i < l.durationMonths; i++) {
+            final dueDate = DateTime(
+              l.firstInstalmentDate!.year,
+              l.firstInstalmentDate!.month + i,
+              l.firstInstalmentDate!.day,
+            );
+            if (dueDate.year == now.year && dueDate.month == m) {
+              expectedCollections += l.monthlyPayment;
+              adminFees += (l.monthlyAdminFee ?? 65.0);
+            }
+          }
+        }
+      }
+
       return MonthlyTrend(
         monthNames[m],
         monthlyDisbursed[m] ?? 0.0,
         monthlyCollected[m] ?? 0.0,
+        interest: interest,
+        adminFees: adminFees,
+        initiationFees: initiationFees,
+        expectedCollections: expectedCollections,
       );
     });
+  }
+
+  void _calculateAgingAndBreakdown(
+    List<GroupModel> groups,
+    List<VendorModel> vendors,
+    List<LoanModel> loans,
+    List<PaymentModel> payments,
+  ) {
+    _arrearsAging = ArrearsAging();
+    _loanBookBreakdown = LoanBookBreakdown();
+
+    final Map<String, GroupModel> groupMap = {for (var g in groups) g.id: g};
+    final Map<String, String> vendorToGroup = {for (var v in vendors) v.id: v.groupId};
+
+    for (var loan in loans) {
+      final loanPayments = payments.where((p) => p.loanId == loan.id).toList();
+      final balance = LoanCalculationService.calculateBalance(loan, loanPayments);
+      
+      if (balance <= 0) continue;
+
+      final group = groupMap[loan.groupId];
+      final dfName = group?.dfName ?? 'Unassigned';
+      final centerId = group?.centerId ?? 'Unassigned';
+      final loanType = loan.loanType ?? 'Standard';
+
+      // Outstanding Loan Book Breakdown
+      _loanBookBreakdown.totalOutstanding += balance;
+      _loanBookBreakdown.byDF[dfName] = (_loanBookBreakdown.byDF[dfName] ?? 0) + balance;
+      _loanBookBreakdown.byCenter[centerId] = (_loanBookBreakdown.byCenter[centerId] ?? 0) + balance;
+      _loanBookBreakdown.byType[loanType] = (_loanBookBreakdown.byType[loanType] ?? 0) + balance;
+
+      // Arrears Aging
+      final arrears = LoanCalculationService.calculateArrears(loan, loanPayments);
+      if (arrears > 0) {
+        // Find how many days since the first missed payment
+        // We'll estimate based on the current arrears vs monthly payment
+        final monthsOverdue = (arrears / (loan.monthlyPayment > 0 ? loan.monthlyPayment : 1)).ceil();
+        final daysOverdue = monthsOverdue * 30;
+
+        if (daysOverdue <= 30) {
+          _arrearsAging.m30 += arrears;
+        } else if (daysOverdue <= 60) {
+          _arrearsAging.m60 += arrears;
+        } else if (daysOverdue <= 90) {
+          _arrearsAging.m90 += arrears;
+        } else {
+          _arrearsAging.m90Plus += arrears;
+        }
+      }
+    }
   }
 
   void _calculateTopGroups(
@@ -309,7 +405,39 @@ class MonthlyTrend {
   final String month;
   final double disbursed;
   final double collected;
-  MonthlyTrend(this.month, this.disbursed, this.collected);
+  final double interest;
+  final double adminFees;
+  final double initiationFees;
+  final double expectedCollections;
+  final double variancePercentage;
+
+  MonthlyTrend(
+    this.month,
+    this.disbursed,
+    this.collected, {
+    this.interest = 0,
+    this.adminFees = 0,
+    this.initiationFees = 0,
+    this.expectedCollections = 0,
+  }) : variancePercentage = expectedCollections > 0 
+          ? ((collected - expectedCollections) / expectedCollections) * 100 
+          : 0;
+}
+
+class ArrearsAging {
+  double m30 = 0; // 30 days
+  double m60 = 0; // 60 days
+  double m90 = 0; // 90 days
+  double m90Plus = 0; // 90+ days
+  
+  double get totalArrears => m30 + m60 + m90 + m90Plus;
+}
+
+class LoanBookBreakdown {
+  double totalOutstanding = 0;
+  Map<String, double> byDF = {};
+  Map<String, double> byCenter = {};
+  Map<String, double> byType = {};
 }
 
 class GroupPerformance {
