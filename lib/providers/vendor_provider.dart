@@ -342,6 +342,9 @@ class VendorProvider with ChangeNotifier {
     required String actionType,
     required String updatedBy,
   }) async {
+    // Small delay to ensure DB indexing is complete
+    await Future.delayed(const Duration(seconds: 2));
+
     try {
       final vendor = _vendors.firstWhere((v) => v.id == vendorId);
       
