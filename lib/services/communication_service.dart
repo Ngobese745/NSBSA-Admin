@@ -858,7 +858,7 @@ class CommunicationService {
     debugPrint('Queuing savings notification for ${vendor.name} (R${history.amount})');
 
     final date = history.createdAt;
-    final dateStr = '${date.day} ${_getMonthName(date.month)} ${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.min.toString().padLeft(2, '0')}';
+    final dateStr = '${date.day} ${_getMonthName(date.month)} ${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
     final fileName = 'profile_${vendor.id}_${DateTime.now().millisecondsSinceEpoch}.pdf';
     final filePath = 'profiles/$fileName';
 
