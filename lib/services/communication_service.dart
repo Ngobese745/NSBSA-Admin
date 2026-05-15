@@ -1,5 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/vendor.dart';
+import '../models/savings_history.dart';
+import 'pdf_service.dart';
 import 'smsworx_service.dart';
 import 'wesender_service.dart';
 
@@ -843,6 +846,128 @@ class CommunicationService {
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
     ];
     return months[month];
+  }
+
+  Future<void> sendSavingsTransactionNotification({
+    required VendorModel vendor,
+    required SavingsHistoryModel history,
+    required String groupName,
+    required String centerName,
+    required List<SavingsHistoryModel> recentHistory,
+  }) async {
+    debugPrint('Queuing savings notification for ${vendor.name} (R${history.amount})');
+
+    final date = history.createdAt;
+    final dateStr = '${date.day} ${_getMonthName(date.month)} ${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.min.toString().padLeft(2, '0')}';
+    final fileName = 'profile_${vendor.id}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+    final filePath = 'profiles/$fileName';
+
+    // 1. Generate PDF Profile
+    Uint8List? pdfBytes;
+    String? pdfUrl;
+    try {
+      pdfBytes = await PdfService.generateVendorProfilePdf(
+        memberName: vendor.name,
+        idNumber: vendor.idNumber ?? '-',
+        phone: vendor.phone ?? '-',
+        email: vendor.email ?? '-',
+        address: vendor.address ?? '-',
+        groupName: groupName,
+        centerName: centerName,
+        currentBalance: history.newBalance,
+        savingsHistory: recentHistory.map((h) => {
+          'createdAt': h.createdAt,
+          'actionType': h.actionType,
+          'amount': h.amount,
+          'newBalance': h.newBalance,
+        }).toList(),
+      );
+
+      // Upload to storage
+      await _client.storage.from('documents').uploadBinary(filePath, pdfBytes);
+      pdfUrl = _client.storage.from('documents').getPublicUrl(filePath);
+    } catch (e) {
+      debugPrint('Error generating/uploading vendor profile PDF: $e');
+    }
+
+    // 2. Prepare Messages
+    final whatsappNumber = vendor.whatsappNumber ?? vendor.phone ?? '';
+    final toPhone = vendor.phone ?? '';
+    final toEmail = vendor.email ?? '';
+
+    final amountStr = 'R${history.amount.toStringAsFixed(2)}';
+    final balanceStr = 'R${history.newBalance.toStringAsFixed(2)}';
+
+    // 2a. SMS (Concise <= 160 chars)
+    if (toPhone.isNotEmpty) {
+      final smsContent = 'NSBSA: Your savings balance updated (R${history.amount} ${history.actionType}). New Balance: $balanceStr. Ref#${history.id.substring(0, 8)}. Check profile for details.';
+      await sendManualSMS(vendorId: vendor.id, toPhone: toPhone, content: smsContent);
+    }
+
+    // 2b. WhatsApp (Document + Caption)
+    if (whatsappNumber.isNotEmpty) {
+      final whatsappCaption = 
+          'Dear *${vendor.name}*,\n\n'
+          'Your savings account has been updated with a *${history.actionType}*.\n\n'
+          '💰 *Amount:* $amountStr\n'
+          '📈 *Updated Balance:* $balanceStr\n'
+          '📅 *Date:* $dateStr\n'
+          '🏢 *Center:* $centerName\n\n'
+          'Please find your updated profile and history attached.\n\n'
+          'Thank you for your continued partnership with NSBSA.';
+
+      if (pdfUrl != null) {
+        await sendManualWhatsAppDocument(
+          vendorId: vendor.id,
+          toWhatsApp: whatsappNumber,
+          documentUrl: pdfUrl,
+          filename: 'NSBSA_Profile_${vendor.name.replaceAll(' ', '_')}.pdf',
+          caption: whatsappCaption,
+        );
+      } else {
+        await sendManualWhatsApp(
+          vendorId: vendor.id,
+          toWhatsApp: whatsappNumber,
+          content: whatsappCaption,
+        );
+      }
+    }
+
+    // 2c. Email (Branded HTML + PDF link)
+    if (toEmail.isNotEmpty) {
+      final emailContent = '''
+        <p>Dear <strong>${vendor.name}</strong>,</p>
+        <p>This notification confirms a new transaction on your NSBSA savings account.</p>
+        <div style="background-color: #0D1117; border: 1px solid #30363D; border-radius: 12px; padding: 25px; margin: 25px 0;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr><td style="color: #8B949E; padding: 5px 0;">Transaction Type:</td><td style="color: #FFFFFF; font-weight: bold; text-align: right;">${history.actionType}</td></tr>
+                <tr><td style="color: #8B949E; padding: 5px 0;">Amount:</td><td style="color: #FFFFFF; font-weight: bold; text-align: right;">$amountStr</td></tr>
+                <tr><td style="color: #8B949E; padding: 5px 0;">Updated Balance:</td><td style="color: #D4AF37; font-weight: bold; text-align: right; font-size: 18px;">$balanceStr</td></tr>
+                <tr><td style="color: #8B949E; padding: 5px 0;">Date/Time:</td><td style="color: #FFFFFF; text-align: right;">$dateStr</td></tr>
+            </table>
+        </div>
+        ${pdfUrl != null ? '<p>You can download your full vendor profile and savings history report using the button below:</p><div style="text-align: center; margin: 30px 0;"><a href="$pdfUrl" style="display: inline-block; padding: 15px 30px; background-color: #D4AF37; color: #000000; text-decoration: none; border-radius: 8px; font-weight: bold;">Download Profile Report (PDF)</a></div>' : ''}
+        <p style="font-size: 12px; color: #8B949E; margin-top: 30px;">This is an automated notification. For any discrepancies, please contact your group administrator or center manager.</p>
+      ''';
+
+      await sendManualEmail(
+        vendorId: vendor.id,
+        toEmail: toEmail,
+        subject: 'Savings Transaction Notification - ${history.actionType}',
+        content: emailContent,
+        isRawHtml: true,
+      );
+    }
+
+    // 3. Cleanup: Remove PDF after 10 minutes
+    Future.delayed(const Duration(minutes: 10), () async {
+      try {
+        await _client.storage.from('documents').remove([filePath]);
+        debugPrint('Cleaned up vendor profile PDF: $filePath');
+      } catch (e) {
+        debugPrint('Error cleaning up profile PDF: $e');
+      }
+    });
   }
 
   String _wrapInBrandedTemplate(String content) {

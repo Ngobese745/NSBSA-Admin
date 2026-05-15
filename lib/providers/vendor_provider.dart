@@ -8,6 +8,7 @@ import '../services/system_audit_service.dart';
 import '../services/realtime_service.dart';
 import '../services/offline_queue_service.dart';
 import '../services/connectivity_service.dart';
+import '../services/communication_service.dart';
 import 'dart:typed_data';
 import 'package:image/image.dart' as img;
 
@@ -314,12 +315,83 @@ class VendorProvider with ChangeNotifier {
       );
       
       _syncCacheAndNotify();
+
+      // 3. Trigger Automated Notification
+      _triggerSavingsNotification(
+        vendorId: vendorId,
+        amount: amount,
+        previousBalance: previousBalance,
+        newBalance: newBalance,
+        actionType: actionType,
+        updatedBy: updatedBy,
+      );
     } catch (e) {
       // Rollback optimistic update
       _vendors[index] = vendor;
       notifyListeners();
       debugPrint('Error recording savings transaction: $e');
       rethrow;
+    }
+  }
+
+  Future<void> _triggerSavingsNotification({
+    required String vendorId,
+    required double amount,
+    required double previousBalance,
+    required double newBalance,
+    required String actionType,
+    required String updatedBy,
+  }) async {
+    try {
+      final vendor = _vendors.firstWhere((v) => v.id == vendorId);
+      
+      // 1. Fetch Group/Center Info
+      final groupRes = await _supabase
+          .from('groups')
+          .select('name, center_name')
+          .eq('id', vendor.groupId)
+          .single();
+      
+      final groupName = groupRes['name'] ?? 'Unknown Group';
+      final centerName = groupRes['center_name'] ?? 'Unknown Center';
+
+      // 2. Fetch Recent History (for PDF)
+      final historyRes = await _supabase
+          .from('savings_history')
+          .select()
+          .eq('vendor_id', vendorId)
+          .order('created_at', ascending: false)
+          .limit(10);
+      
+      final recentHistory = (historyRes as List)
+          .map((e) => SavingsHistoryModel.fromJson(e))
+          .toList();
+
+      // Find the current transaction in history to get its ID
+      final currentHistory = recentHistory.firstWhere(
+        (h) => h.amount == amount && h.newBalance == newBalance && h.actionType == actionType,
+        orElse: () => SavingsHistoryModel(
+          id: 'SAV-${DateTime.now().millisecondsSinceEpoch}',
+          vendorId: vendorId,
+          amount: amount,
+          previousBalance: previousBalance,
+          newBalance: newBalance,
+          actionType: actionType,
+          updatedBy: updatedBy,
+          createdAt: DateTime.now(),
+        ),
+      );
+
+      // 3. Send Notification
+      await CommunicationService().sendSavingsTransactionNotification(
+        vendor: vendor,
+        history: currentHistory,
+        groupName: groupName,
+        centerName: centerName,
+        recentHistory: recentHistory,
+      );
+    } catch (e) {
+      debugPrint('Error triggering savings notification: $e');
     }
   }
 
