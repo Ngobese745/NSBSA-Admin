@@ -46,6 +46,46 @@ class CommunicationService {
     }
   }
 
+  /// Sends a manual WhatsApp document to a vendor and logs it.
+  Future<bool> sendManualWhatsAppDocument({
+    required String vendorId,
+    required String toWhatsApp,
+    required String documentUrl,
+    String? filename,
+    String? caption,
+    bool includeFooter = true,
+  }) async {
+    try {
+      final logResponse = await _client.from('communication_logs').insert({
+        'vendor_id': vendorId,
+        'channel': 'WhatsApp (Document)',
+        'recipient': toWhatsApp,
+        'content': caption ?? 'PDF Document: ${filename ?? documentUrl}',
+        'status': 'pending',
+      }).select().single();
+
+      final logId = logResponse['id'];
+
+      final success = await _whatsappService.sendWhatsAppDocument(
+        to: toWhatsApp,
+        documentUrl: documentUrl,
+        filename: filename,
+        caption: caption,
+        includeFooter: includeFooter,
+      );
+
+      await _client.from('communication_logs').update({
+        'status': success ? 'sent' : 'failed',
+        if (!success) 'error_message': 'WhatsApp document delivery failed',
+      }).eq('id', logId);
+
+      return success;
+    } catch (e) {
+      debugPrint('Error sending manual WhatsApp document: $e');
+      return false;
+    }
+  }
+
   /// Sends a manual WhatsApp to a vendor and logs it.
   ///
   /// Set [includeFooter] to `false` to suppress the NSBSA contact footer
@@ -619,7 +659,7 @@ class CommunicationService {
       );
     }
 
-    // 3. WhatsApp (Branded + Link to PDF)
+    // 3. WhatsApp (Document if PDF exists, otherwise message)
     final whatsappNumber = toWhatsApp.isNotEmpty ? toWhatsApp : toPhone;
     if (whatsappNumber.isNotEmpty) {
       final whatsappContent =
@@ -628,13 +668,23 @@ class CommunicationService {
           '📉 *New Balance:* R$balanceRemaining\n'
           '📅 *Date:* $dateStr\n'
           '👥 *Group:* $groupName\n\n'
-          '${pdfUrl != null ? '📄 *Payment Slip:* $pdfUrl\n\n' : ''}'
           'Thank you for your payment. NSBSA | Empowering Communities';
-      await sendManualWhatsApp(
-        vendorId: vendorId,
-        toWhatsApp: whatsappNumber,
-        content: whatsappContent,
-      );
+
+      if (pdfUrl != null) {
+        await sendManualWhatsAppDocument(
+          vendorId: vendorId,
+          toWhatsApp: whatsappNumber,
+          documentUrl: pdfUrl,
+          filename: fileName,
+          caption: whatsappContent,
+        );
+      } else {
+        await sendManualWhatsApp(
+          vendorId: vendorId,
+          toWhatsApp: whatsappNumber,
+          content: whatsappContent,
+        );
+      }
     }
 
     // 4. SMS (Concise ≤ 160 chars)

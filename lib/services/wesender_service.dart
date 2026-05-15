@@ -44,6 +44,44 @@ class WeSenderService {
   // Public API
   // ---------------------------------------------------------------------------
 
+  /// Sends a WhatsApp document (PDF, etc) using a publicly accessible URL.
+  Future<bool> sendWhatsAppDocument({
+    required String to,
+    required String documentUrl,
+    String? filename,
+    String? caption,
+    bool includeFooter = true,
+  }) async {
+    try {
+      final apiKey = await _getApiKey();
+      if (apiKey == null) return false;
+
+      final formattedCaption = caption != null 
+          ? formatMessage(caption, includeFooter: includeFooter)
+          : null;
+
+      final response = await http.post(
+        Uri.parse('$_baseUrl/send-message'),
+        headers: {
+          'Authorization': 'Bearer $apiKey',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode({
+          'to': _formatPhoneNumber(to),
+          'documentUrl': documentUrl,
+          'filename': filename,
+          if (formattedCaption != null) 'text': formattedCaption,
+        }),
+      );
+
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      debugPrint('WeSender Document Exception: $e');
+      return false;
+    }
+  }
+
   /// Sends a WhatsApp message using the stored WeSender API credentials.
   ///
   /// The NSBSA header and footer are automatically applied to [message].
