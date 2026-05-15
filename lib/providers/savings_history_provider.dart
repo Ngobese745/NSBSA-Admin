@@ -29,7 +29,9 @@ class SavingsHistoryProvider with ChangeNotifier {
           if (_currentVendorId != null && newEntry.vendorId == _currentVendorId) {
             if (!_history.any((e) => e.id == newEntry.id)) {
               _history.insert(0, newEntry);
-              notifyListeners();
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                notifyListeners();
+              });
             }
           }
         }

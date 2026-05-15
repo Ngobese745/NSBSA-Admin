@@ -351,12 +351,12 @@ class VendorProvider with ChangeNotifier {
       // 1. Fetch Group/Center Info
       final groupRes = await _supabase
           .from('groups')
-          .select('name, center_name')
+          .select('name, center_id, centers(name)')
           .eq('id', vendor.groupId)
           .single();
       
       final groupName = groupRes['name'] ?? 'Unknown Group';
-      final centerName = groupRes['center_name'] ?? 'Unknown Center';
+      final centerName = groupRes['centers']?['name'] ?? 'Unknown Center';
 
       // 2. Fetch Recent History (for PDF)
       final historyRes = await _supabase
