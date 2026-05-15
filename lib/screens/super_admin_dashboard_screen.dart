@@ -104,86 +104,108 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
                 const SizedBox(height: 16),
                 
                 // Top Financial Overview Cards
-                if (isTablet)
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildPremiumStatCard(
-                          context,
-                          'Groups',
-                          totalGroups.toString(),
-                          Icons.group_outlined,
-                          [const Color(0xFFD4AF37), const Color(0xFFB8860B)],
-                        ),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final useExpanded = constraints.maxWidth > 800;
+                    if (useExpanded) {
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: _buildPremiumStatCard(
+                              context,
+                              'Groups',
+                              totalGroups.toString(),
+                              Icons.group_outlined,
+                              [const Color(0xFFD4AF37), const Color(0xFFB8860B)],
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _buildPremiumStatCard(
+                              context,
+                              'Interest Generated',
+                              'R ${analyticsProvider.monthlyTrend.fold(0.0, (sum, t) => sum + t.interest).toStringAsFixed(0)}',
+                              Icons.trending_up_outlined,
+                              [const Color(0xFFC5A028), const Color(0xFF8B6B01)],
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _buildPremiumStatCard(
+                              context,
+                              'Admin Fees',
+                              'R ${analyticsProvider.monthlyTrend.fold(0.0, (sum, t) => sum + t.adminFees).toStringAsFixed(0)}',
+                              Icons.admin_panel_settings_outlined,
+                              [const Color(0xFFE5B942), const Color(0xFF996515)],
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _buildPremiumStatCard(
+                              context,
+                              'Disbursed',
+                              'R ${totalDisbursed.toStringAsFixed(0)}',
+                              Icons.account_balance_outlined,
+                              [const Color(0xFFFDC830), const Color(0xFFF37335)],
+                            ),
+                          ),
+                        ],
+                      );
+                    }
+                    
+                    return SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 260,
+                            child: _buildPremiumStatCard(
+                              context,
+                              'Groups',
+                              totalGroups.toString(),
+                              Icons.group_outlined,
+                              [const Color(0xFFD4AF37), const Color(0xFFB8860B)],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          SizedBox(
+                            width: 260,
+                            child: _buildPremiumStatCard(
+                              context,
+                              'Interest Generated',
+                              'R ${analyticsProvider.monthlyTrend.fold(0.0, (sum, t) => sum + t.interest).toStringAsFixed(0)}',
+                              Icons.trending_up_outlined,
+                              [const Color(0xFFC5A028), const Color(0xFF8B6B01)],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          SizedBox(
+                            width: 260,
+                            child: _buildPremiumStatCard(
+                              context,
+                              'Admin Fees',
+                              'R ${analyticsProvider.monthlyTrend.fold(0.0, (sum, t) => sum + t.adminFees).toStringAsFixed(0)}',
+                              Icons.admin_panel_settings_outlined,
+                              [const Color(0xFFE5B942), const Color(0xFF996515)],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          SizedBox(
+                            width: 260,
+                            child: _buildPremiumStatCard(
+                              context,
+                              'Disbursed',
+                              'R ${totalDisbursed.toStringAsFixed(0)}',
+                              Icons.account_balance_outlined,
+                              [const Color(0xFFFDC830), const Color(0xFFF37335)],
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildPremiumStatCard(
-                          context,
-                          'Interest Generated',
-                          'R ${analyticsProvider.monthlyTrend.fold(0.0, (sum, t) => sum + t.interest).toStringAsFixed(0)}',
-                          Icons.trending_up_outlined,
-                          [const Color(0xFFC5A028), const Color(0xFF8B6B01)],
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildPremiumStatCard(
-                          context,
-                          'Admin Fees',
-                          'R ${analyticsProvider.monthlyTrend.fold(0.0, (sum, t) => sum + t.adminFees).toStringAsFixed(0)}',
-                          Icons.admin_panel_settings_outlined,
-                          [const Color(0xFFE5B942), const Color(0xFF996515)],
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildPremiumStatCard(
-                          context,
-                          'Disbursed',
-                          'R ${totalDisbursed.toStringAsFixed(0)}',
-                          Icons.account_balance_outlined,
-                          [const Color(0xFFFDC830), const Color(0xFFF37335)],
-                        ),
-                      ),
-                    ],
-                  )
-                else
-                  Column(
-                    children: [
-                      _buildPremiumStatCard(
-                        context,
-                        'Total Groups',
-                        totalGroups.toString(),
-                        Icons.group_outlined,
-                        [const Color(0xFFD4AF37), const Color(0xFFB8860B)],
-                      ),
-                      const SizedBox(height: 12),
-                      _buildPremiumStatCard(
-                        context,
-                        'Interest Generated',
-                        'R ${analyticsProvider.monthlyTrend.fold(0.0, (sum, t) => sum + t.interest).toStringAsFixed(0)}',
-                        Icons.trending_up_outlined,
-                        [const Color(0xFFC5A028), const Color(0xFF8B6B01)],
-                      ),
-                      const SizedBox(height: 12),
-                      _buildPremiumStatCard(
-                        context,
-                        'Admin Fees',
-                        'R ${analyticsProvider.monthlyTrend.fold(0.0, (sum, t) => sum + t.adminFees).toStringAsFixed(0)}',
-                        Icons.admin_panel_settings_outlined,
-                        [const Color(0xFFE5B942), const Color(0xFF996515)],
-                      ),
-                      const SizedBox(height: 12),
-                      _buildPremiumStatCard(
-                        context,
-                        'Disbursed',
-                        'R ${totalDisbursed.toStringAsFixed(0)}',
-                        Icons.account_balance_outlined,
-                        [const Color(0xFFF1C40F), const Color(0xFFF39C12)],
-                      ),
-                    ],
-                  ),
+                    );
+                  },
+                ),
                 const SizedBox(height: 24),
 
                 // Charts Section
@@ -288,28 +310,36 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.5,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                value,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
+                const SizedBox(height: 4),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    value,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           Icon(icon, color: Colors.white.withOpacity(0.2), size: 48),
         ],
@@ -532,6 +562,7 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
                       DataCell(Text('R ${staff.loansDisbursedValue.toStringAsFixed(0)}')),
                       DataCell(
                         Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
                               staff.collectionRate >= 90 ? Icons.check_circle : Icons.warning,

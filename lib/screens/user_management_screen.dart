@@ -343,6 +343,7 @@ class _UserManagementScreenState extends State<UserManagementScreen>
         ],
         bottom: TabBar(
           controller: _tabController,
+          isScrollable: true,
           indicatorColor: AppTheme.primaryGold,
           labelColor: AppTheme.primaryGold,
           unselectedLabelColor: Colors.grey,
@@ -522,106 +523,176 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                                 color: Colors.grey,
                               ),
                             ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: isBlocked
-                                        ? Colors.red.withOpacity(0.12)
-                                        : Colors.green.withOpacity(0.12),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(
-                                      color: isBlocked
-                                          ? Colors.redAccent.withOpacity(0.4)
-                                          : Colors.green.withOpacity(0.35),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    profile.status,
-                                    style: TextStyle(
-                                      color: isBlocked
-                                          ? Colors.redAccent
-                                          : Colors.green,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: (config['color'] as Color)
-                                        .withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(
-                                      color: (config['color'] as Color)
-                                          .withOpacity(0.3),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    profile.role,
-                                    style: TextStyle(
-                                      color: config['color'] as Color,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                IconButton(
-                                  icon: const Icon(Icons.edit, size: 18),
-                                  color: canManage
-                                      ? Colors.grey
-                                      : Colors.grey.withOpacity(0.35),
-                                  tooltip: canManage
-                                      ? 'Edit user details'
-                                      : 'Only Admins can edit user details.',
-                                  onPressed: canManage
-                                      ? () => _showEditUserDialog(
-                                          profile,
-                                          canAdminister,
-                                        )
-                                      : null,
-                                ),
-                                _restrictedIconButton(
-                                  icon: Icons.admin_panel_settings,
-                                  tooltip: 'Change role',
-                                  enabled: canAdminister && !isCurrentUser,
-                                  onPressed: () => _showRoleDialog(profile),
-                                ),
-                                _restrictedIconButton(
-                                  icon: isBlocked
-                                      ? Icons.lock_open
-                                      : Icons.block,
-                                  tooltip: isBlocked
-                                      ? 'Unblock user'
-                                      : 'Block user',
-                                  enabled: canAdminister && !isCurrentUser,
-                                  onPressed: () => isBlocked
-                                      ? _unblockUser(profile, authProvider)
-                                      : _confirmBlockUser(
-                                          profile,
-                                          authProvider,
+                            trailing: Builder(
+                              builder: (context) {
+                                final isSmall = MediaQuery.of(context).size.width < 1100;
+                                if (isSmall) {
+                                  return PopupMenuButton<String>(
+                                    icon: const Icon(Icons.more_vert),
+                                    onSelected: (value) {
+                                      if (value == 'edit') {
+                                        _showEditUserDialog(profile, canAdminister);
+                                      } else if (value == 'role') {
+                                        _showRoleDialog(profile);
+                                      } else if (value == 'block') {
+                                        if (isBlocked) {
+                                          _unblockUser(profile, authProvider);
+                                        } else {
+                                          _confirmBlockUser(profile, authProvider);
+                                        }
+                                      } else if (value == 'delete') {
+                                        _confirmDeleteUser(profile, authProvider);
+                                      }
+                                    },
+                                    itemBuilder: (context) => [
+                                      PopupMenuItem(
+                                        value: 'edit',
+                                        enabled: canManage,
+                                        child: const ListTile(
+                                          leading: Icon(Icons.edit, size: 20),
+                                          title: Text('Edit Details'),
+                                          dense: true,
+                                          contentPadding: EdgeInsets.zero,
                                         ),
-                                ),
-                                _restrictedIconButton(
-                                  icon: Icons.delete_outline,
-                                  tooltip: 'Delete user',
-                                  enabled: canAdminister && !isCurrentUser,
-                                  color: Colors.redAccent,
-                                  onPressed: () =>
-                                      _confirmDeleteUser(profile, authProvider),
-                                ),
-                              ],
+                                      ),
+                                      if (canAdminister && !isCurrentUser) ...[
+                                        const PopupMenuItem(
+                                          value: 'role',
+                                          child: ListTile(
+                                            leading: Icon(Icons.admin_panel_settings, size: 20),
+                                            title: Text('Change Role'),
+                                            dense: true,
+                                            contentPadding: EdgeInsets.zero,
+                                          ),
+                                        ),
+                                        PopupMenuItem(
+                                          value: 'block',
+                                          child: ListTile(
+                                            leading: Icon(
+                                              isBlocked ? Icons.lock_open : Icons.block,
+                                              size: 20,
+                                            ),
+                                            title: Text(isBlocked ? 'Unblock User' : 'Block User'),
+                                            dense: true,
+                                            contentPadding: EdgeInsets.zero,
+                                          ),
+                                        ),
+                                        const PopupMenuItem(
+                                          value: 'delete',
+                                          child: ListTile(
+                                            leading: Icon(Icons.delete_outline, size: 20, color: Colors.redAccent),
+                                            title: Text('Delete User', style: TextStyle(color: Colors.redAccent)),
+                                            dense: true,
+                                            contentPadding: EdgeInsets.zero,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  );
+                                }
+
+                                return Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: isBlocked
+                                            ? Colors.red.withOpacity(0.12)
+                                            : Colors.green.withOpacity(0.12),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: isBlocked
+                                              ? Colors.redAccent.withOpacity(0.4)
+                                              : Colors.green.withOpacity(0.35),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        profile.status,
+                                        style: TextStyle(
+                                          color: isBlocked
+                                              ? Colors.redAccent
+                                              : Colors.green,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: (config['color'] as Color)
+                                            .withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: (config['color'] as Color)
+                                              .withOpacity(0.3),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        profile.role,
+                                        style: TextStyle(
+                                          color: config['color'] as Color,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    IconButton(
+                                      icon: const Icon(Icons.edit, size: 18),
+                                      color: canManage
+                                          ? Colors.grey
+                                          : Colors.grey.withOpacity(0.35),
+                                      tooltip: canManage
+                                          ? 'Edit user details'
+                                          : 'Only Admins can edit user details.',
+                                      onPressed: canManage
+                                          ? () => _showEditUserDialog(
+                                              profile,
+                                              canAdminister,
+                                            )
+                                          : null,
+                                    ),
+                                    _restrictedIconButton(
+                                      icon: Icons.admin_panel_settings,
+                                      tooltip: 'Change role',
+                                      enabled: canAdminister && !isCurrentUser,
+                                      onPressed: () => _showRoleDialog(profile),
+                                    ),
+                                    _restrictedIconButton(
+                                      icon: isBlocked
+                                          ? Icons.lock_open
+                                          : Icons.block,
+                                      tooltip: isBlocked
+                                          ? 'Unblock user'
+                                          : 'Block user',
+                                      enabled: canAdminister && !isCurrentUser,
+                                      onPressed: () => isBlocked
+                                          ? _unblockUser(profile, authProvider)
+                                          : _confirmBlockUser(
+                                              profile,
+                                              authProvider,
+                                            ),
+                                    ),
+                                    _restrictedIconButton(
+                                      icon: Icons.delete_outline,
+                                      tooltip: 'Delete user',
+                                      enabled: canAdminister && !isCurrentUser,
+                                      color: Colors.redAccent,
+                                      onPressed: () =>
+                                          _confirmDeleteUser(profile, authProvider),
+                                    ),
+                                  ],
+                                );
+                              },
                             ),
                           ),
                           if (!isLast)
@@ -962,61 +1033,54 @@ class _UserManagementScreenState extends State<UserManagementScreen>
       roleCounts[p.role] = (roleCounts[p.role] ?? 0) + 1;
     }
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final crossAxisCount = constraints.maxWidth > 900
-            ? 6
-            : (constraints.maxWidth > 600 ? 3 : 2);
-        return GridView.count(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisCount: crossAxisCount,
-          mainAxisSpacing: 12,
-          crossAxisSpacing: 12,
-          childAspectRatio: 1.4,
-          children: _roles.map((role) {
-            final config = _roleConfig[role]!;
-            final count = roleCounts[role] ?? 0;
-            return Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: theme.cardColor,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: (config['color'] as Color).withOpacity(0.2),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: _roles.map((role) {
+          final config = _roleConfig[role]!;
+          final count = roleCounts[role] ?? 0;
+          return Container(
+            width: 160,
+            margin: const EdgeInsets.only(right: 12),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: (config['color'] as Color).withOpacity(0.2),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  config['icon'] as IconData,
+                  color: config['color'] as Color,
+                  size: 20,
                 ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    config['icon'] as IconData,
+                const SizedBox(height: 8),
+                Text(
+                  count.toString(),
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
                     color: config['color'] as Color,
-                    size: 20,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    count.toString(),
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: config['color'] as Color,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    role,
-                    style: const TextStyle(fontSize: 10, color: Colors.grey),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            );
-          }).toList(),
-        );
-      },
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  role,
+                  style: const TextStyle(fontSize: 10, color: Colors.grey),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
     );
   }
 

@@ -47,10 +47,14 @@ class CommunicationService {
   }
 
   /// Sends a manual WhatsApp to a vendor and logs it.
+  ///
+  /// Set [includeFooter] to `false` to suppress the NSBSA contact footer
+  /// for very short transactional messages.
   Future<bool> sendManualWhatsApp({
     required String vendorId,
     required String toWhatsApp,
     required String content,
+    bool includeFooter = true,
   }) async {
     try {
       final logResponse = await _client.from('communication_logs').insert({
@@ -63,12 +67,11 @@ class CommunicationService {
 
       final logId = logResponse['id'];
 
-      // WhatsApp disclaimer as requested
-      final fullContent = '$content\n\n_This message is automated. Please do not reply._';
-
+      // Header/footer are applied automatically by WeSenderService.
       final success = await _whatsappService.sendWhatsApp(
         to: toWhatsApp,
-        message: fullContent,
+        message: content,
+        includeFooter: includeFooter,
       );
 
       await _client.from('communication_logs').update({
@@ -223,7 +226,12 @@ class CommunicationService {
     // 2. WhatsApp (WeSenderAPI)
     final whatsappNumber = toWhatsApp.isNotEmpty ? toWhatsApp : toPhone;
     if (whatsappNumber.isNotEmpty) {
-      final whatsappContent = 'Dear $vendorName, your payment of R$amount has been received on $date. Reference: $transactionId.';
+      final whatsappContent =
+          'Dear *$vendorName*,\n\n'
+          'Your payment of *R$amount* has been successfully received on *$date*.\n\n'
+          '🧾 *Reference:* $transactionId\n'
+          '💳 *Payment Method:* $paymentMethod\n\n'
+          'Thank you for your continued partnership with NSBSA.';
       await sendManualWhatsApp(
         vendorId: vendorId,
         toWhatsApp: whatsappNumber,
@@ -266,6 +274,123 @@ class CommunicationService {
         vendorId: vendorId,
         toPhone: toPhone,
         content: 'Dear Member, reminder for your NSBSA payment of $amount. Please ensure funds are available. Thank you.',
+      );
+    }
+  }
+
+  Future<void> sendGroupWelcomeNotification({
+    required String vendorId,
+    required String vendorName,
+    required String toEmail,
+    required String toPhone,
+    required String toWhatsApp,
+    required String groupName,
+    required String groupRef,
+    required String centerName,
+    required String memberRole,
+  }) async {
+    debugPrint('Queuing group welcome notification for $vendorName (Group: $groupName)');
+
+    final emailHtml = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0A0E14; color: #E6E6E6; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 40px auto; background-color: #161B22; border-radius: 16px; overflow: hidden; border: 1px solid #30363D; }
+        .header { background-color: #0D1117; padding: 40px; text-align: center; border-bottom: 2px solid #D4AF37; }
+        .logo { max-width: 120px; }
+        .tagline { font-size: 12px; color: #D4AF37; letter-spacing: 1px; margin-top: 10px; text-transform: uppercase; }
+        .content { padding: 40px 50px; line-height: 1.8; color: #B1BAC4; }
+        .info-table { width: 100%; border-collapse: collapse; margin: 25px 0; background-color: #0D1117; border-radius: 8px; overflow: hidden; border: 1px solid #30363D; }
+        .info-table th, .info-table td { padding: 15px 20px; text-align: left; border-bottom: 1px solid #1F242D; }
+        .info-table th { color: #8B949E; font-weight: normal; font-size: 14px; width: 40%; }
+        .info-table td { color: #FFFFFF; font-weight: bold; font-size: 14px; }
+        .info-table tr:last-child th, .info-table tr:last-child td { border-bottom: none; }
+        .footer { padding: 30px; text-align: center; color: #484F58; font-size: 12px; background-color: #0D1117; border-top: 1px solid #30363D; }
+        .footer a { color: #D4AF37; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="https://www.stokvelbody.org.za/wp-content/uploads/2019/05/logo02.png" alt="NSBSA Logo" class="logo">
+            <div class="tagline">Empowering Communities</div>
+        </div>
+        <div class="content">
+            <p>Dear <strong>$vendorName</strong>,</p>
+            <p>You have been successfully added to a new NSBSA Group. Please find your group details below.</p>
+            
+            <table class="info-table">
+                <tr>
+                    <th>Group Name</th>
+                    <td>$groupName</td>
+                </tr>
+                <tr>
+                    <th>Group Ref</th>
+                    <td>$groupRef</td>
+                </tr>
+                <tr>
+                    <th>Center</th>
+                    <td>$centerName</td>
+                </tr>
+                <tr>
+                    <th>Your Role</th>
+                    <td>$memberRole</td>
+                </tr>
+            </table>
+
+            <p>Welcome to the group! Together, we strive to build stronger financial futures.</p>
+        </div>
+        <div class="footer">
+            <p><strong>Contact NSBSA</strong><br>Email: info@nsbsa.org.za<br>Phone: 087 107 7524<br>WhatsApp: 087 107 7524<br>Website: <a href="https://www.stokvelbody.org.za">https://www.stokvelbody.org.za</a></p>
+        </div>
+    </div>
+</body>
+</html>
+''';
+
+    if (toEmail.isNotEmpty) {
+      await sendManualEmail(
+        vendorId: vendorId,
+        toEmail: toEmail,
+        subject: 'You have been added to a new NSBSA Group',
+        content: emailHtml,
+        isRawHtml: true,
+      );
+    }
+
+    // WhatsApp
+    final whatsappNumber = toWhatsApp.isNotEmpty ? toWhatsApp : toPhone;
+    if (whatsappNumber.isNotEmpty) {
+      final whatsappContent =
+          'Dear *$vendorName*,\n\n'
+          'You have been successfully added to a new NSBSA Group.\n\n'
+          '📌 *Group Name:* $groupName\n'
+          '🧾 *Group Ref:* $groupRef\n'
+          '🏢 *Center:* $centerName\n'
+          '👤 *Your Role:* $memberRole\n\n'
+          'Welcome to the group!';
+      await sendManualWhatsApp(
+        vendorId: vendorId,
+        toWhatsApp: whatsappNumber,
+        content: whatsappContent,
+      );
+    }
+
+    // SMS
+    if (toPhone.isNotEmpty) {
+      final smsContent =
+          'NSBSA: Welcome $vendorName! You are added to Group $groupName ($groupRef) at Center $centerName. Role: $memberRole.\n\n'
+          'Contact NSBSA\n'
+          'Email: info@nsbsa.org.za\n'
+          'Phone/WA: 087 107 7524\n'
+          'Web: www.stokvelbody.org.za';
+      await sendManualSMS(
+        vendorId: vendorId,
+        toPhone: toPhone,
+        content: smsContent,
       );
     }
   }
@@ -402,7 +527,273 @@ class CommunicationService {
     }
   }
 
+  Future<void> sendPaymentNotification({
+    required String vendorId,
+    required String vendorName,
+    required String toEmail,
+    required String toPhone,
+    required String toWhatsApp,
+    required String loanRef,
+    required double amountPaid,
+    required double balanceRemaining,
+    required String groupName,
+    required String centerName,
+    required DateTime date,
+    required Uint8List pdfBytes,
+  }) async {
+    final dateStr = '${date.day} ${_getMonthName(date.month)} ${date.year}';
+    final fileName = 'receipt_${loanRef}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+    final filePath = 'receipts/$fileName';
+
+    debugPrint('Queuing payment notification for $vendorName (Loan: $loanRef)');
+
+    // 1. Upload PDF to Supabase Storage (temporarily)
+    String? pdfUrl;
+    try {
+      await _client.storage.from('documents').uploadBinary(filePath, pdfBytes);
+      pdfUrl = _client.storage.from('documents').getPublicUrl(filePath);
+    } catch (e) {
+      debugPrint('Error uploading PDF receipt: $e');
+    }
+
+    // 2. Email (Branded HTML + PDF attachment via link or manual logic)
+    final emailHtml = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0A0E14; color: #E6E6E6; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 40px auto; background-color: #161B22; border-radius: 16px; overflow: hidden; border: 1px solid #30363D; }
+        .header { background-color: #0D1117; padding: 40px; text-align: center; border-bottom: 2px solid #D4AF37; }
+        .logo { max-width: 120px; }
+        .tagline { font-size: 12px; color: #D4AF37; letter-spacing: 1px; margin-top: 10px; text-transform: uppercase; }
+        .content { padding: 40px 50px; line-height: 1.8; color: #B1BAC4; }
+        .info-table { width: 100%; border-collapse: collapse; margin: 25px 0; background-color: #0D1117; border-radius: 8px; overflow: hidden; border: 1px solid #30363D; }
+        .info-table th, .info-table td { padding: 15px 20px; text-align: left; border-bottom: 1px solid #1F242D; }
+        .info-table th { color: #8B949E; font-weight: normal; font-size: 14px; width: 45%; }
+        .info-table td { color: #FFFFFF; font-weight: bold; font-size: 14px; }
+        .info-table tr:last-child th, .info-table tr:last-child td { border-bottom: none; }
+        .receipt-btn { display: inline-block; padding: 15px 30px; background-color: #D4AF37; color: #000000 !important; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px; }
+        .footer { padding: 30px; text-align: center; color: #484F58; font-size: 12px; background-color: #0D1117; border-top: 1px solid #30363D; }
+        .footer a { color: #D4AF37; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="https://www.stokvelbody.org.za/wp-content/uploads/2019/05/logo02.png" alt="NSBSA Logo" class="logo">
+            <div class="tagline">Empowering Communities</div>
+        </div>
+        <div class="content">
+            <p>Dear <strong>$vendorName</strong>,</p>
+            <p>Your payment has been successfully recorded. Thank you for your payment towards your NSBSA loan.</p>
+            
+            <table class="info-table">
+                <tr><th>Loan Ref</th><td>$loanRef</td></tr>
+                <tr><th>Amount Paid</th><td>R$amountPaid</td></tr>
+                <tr><th>Remaining Balance</th><td>R$balanceRemaining</td></tr>
+                <tr><th>Payment Date</th><td>$dateStr</td></tr>
+                <tr><th>Group / Center</th><td>$groupName / $centerName</td></tr>
+            </table>
+
+            ${pdfUrl != null ? '<p>Please find your official payment receipt below:</p><a href="$pdfUrl" class="receipt-btn">Download Payment Slip (PDF)</a>' : ''}
+
+            <p style="margin-top: 30px; font-size: 12px; color: #8B949E;">* Please note: Initiation Fee (R150) and Admin Fee (R65) apply. A penalty is applied if payment is missed by 20 days.</p>
+        </div>
+        <div class="footer">
+            <p><strong>Contact NSBSA</strong><br>Email: info@nsbsa.org.za<br>Phone: 087 107 7524<br>WhatsApp: 087 107 7524<br>Website: <a href="https://www.stokvelbody.org.za">https://www.stokvelbody.org.za</a></p>
+        </div>
+    </div>
+</body>
+</html>
+''';
+
+    if (toEmail.isNotEmpty) {
+      await sendManualEmail(
+        vendorId: vendorId,
+        toEmail: toEmail,
+        subject: 'Payment Received - $loanRef',
+        content: emailHtml,
+        isRawHtml: true,
+      );
+    }
+
+    // 3. WhatsApp (Branded + Link to PDF)
+    final whatsappNumber = toWhatsApp.isNotEmpty ? toWhatsApp : toPhone;
+    if (whatsappNumber.isNotEmpty) {
+      final whatsappContent =
+          'Dear *$vendorName*,\n\n'
+          'Your payment of *R$amountPaid* has been successfully received for Loan *$loanRef*.\n\n'
+          '📉 *New Balance:* R$balanceRemaining\n'
+          '📅 *Date:* $dateStr\n'
+          '👥 *Group:* $groupName\n\n'
+          '${pdfUrl != null ? '📄 *Payment Slip:* $pdfUrl\n\n' : ''}'
+          'Thank you for your payment. NSBSA | Empowering Communities';
+      await sendManualWhatsApp(
+        vendorId: vendorId,
+        toWhatsApp: whatsappNumber,
+        content: whatsappContent,
+      );
+    }
+
+    // 4. SMS (Concise ≤ 160 chars)
+    if (toPhone.isNotEmpty) {
+      final smsContent =
+          'NSBSA: Payment of R$amountPaid received for Loan Ref#$loanRef. New Balance: R$balanceRemaining. Thank you.';
+      await sendManualSMS(
+        vendorId: vendorId,
+        toPhone: toPhone,
+        content: smsContent,
+      );
+    }
+
+    // 5. Cleanup: Remove PDF after small delay to allow for delivery
+    Future.delayed(const Duration(minutes: 10), () async {
+      try {
+        await _client.storage.from('documents').remove([filePath]);
+        debugPrint('Cleaned up payment receipt: $filePath');
+      } catch (e) {
+        debugPrint('Error cleaning up receipt: $e');
+      }
+    });
+  }
+
+  Future<void> sendLoanCreationNotification({
+    required String vendorId,
+    required String vendorName,
+    required String toEmail,
+    required String toPhone,
+    required String toWhatsApp,
+    required String loanRef,
+    required double amount,
+    required String groupName,
+    required String centerName,
+    required DateTime date,
+    required int durationMonths,
+    DateTime? nextPaymentDate,
+    double? initiationFee,
+    double? monthlyAdminFee,
+  }) async {
+    final dateStr = '${date.day} ${_getMonthName(date.month)} ${date.year}';
+    final nextPayStr = nextPaymentDate != null
+        ? '${nextPaymentDate.day} ${_getMonthName(nextPaymentDate.month)} ${nextPaymentDate.year}'
+        : 'To be confirmed';
+
+    debugPrint('Queuing loan creation notification for $vendorName (Loan: $loanRef)');
+
+    // 1. Email (Branded HTML)
+    final emailHtml = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0A0E14; color: #E6E6E6; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 40px auto; background-color: #161B22; border-radius: 16px; overflow: hidden; border: 1px solid #30363D; }
+        .header { background-color: #0D1117; padding: 40px; text-align: center; border-bottom: 2px solid #D4AF37; }
+        .logo { max-width: 120px; }
+        .tagline { font-size: 12px; color: #D4AF37; letter-spacing: 1px; margin-top: 10px; text-transform: uppercase; }
+        .content { padding: 40px 50px; line-height: 1.8; color: #B1BAC4; }
+        .info-table { width: 100%; border-collapse: collapse; margin: 25px 0; background-color: #0D1117; border-radius: 8px; overflow: hidden; border: 1px solid #30363D; }
+        .info-table th, .info-table td { padding: 15px 20px; text-align: left; border-bottom: 1px solid #1F242D; }
+        .info-table th { color: #8B949E; font-weight: normal; font-size: 14px; width: 45%; }
+        .info-table td { color: #FFFFFF; font-weight: bold; font-size: 14px; }
+        .info-table tr:last-child th, .info-table tr:last-child td { border-bottom: none; }
+        .fee-note { font-size: 12px; color: #8B949E; margin-top: 20px; padding: 15px; border-left: 3px solid #D4AF37; background-color: #0D1117; }
+        .footer { padding: 30px; text-align: center; color: #484F58; font-size: 12px; background-color: #0D1117; border-top: 1px solid #30363D; }
+        .footer a { color: #D4AF37; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="https://www.stokvelbody.org.za/wp-content/uploads/2019/05/logo02.png" alt="NSBSA Logo" class="logo">
+            <div class="tagline">Empowering Communities</div>
+        </div>
+        <div class="content">
+            <p>Dear <strong>$vendorName</strong>,</p>
+            <p>A new loan has been successfully created for you. Please find the details and payment schedule below.</p>
+            
+            <table class="info-table">
+                <tr><th>Loan Ref</th><td>$loanRef</td></tr>
+                <tr><th>Amount</th><td>R$amount</td></tr>
+                <tr><th>Duration</th><td>$durationMonths Months</td></tr>
+                <tr><th>First Payment</th><td>$nextPayStr</td></tr>
+                <tr><th>Initiation Fee</th><td>R${initiationFee ?? 150.0}</td></tr>
+                <tr><th>Admin Fee</th><td>R${monthlyAdminFee ?? 65.0} (Monthly)</td></tr>
+                <tr><th>Group</th><td>$groupName</td></tr>
+                <tr><th>Center</th><td>$centerName</td></tr>
+            </table>
+
+            <div class="fee-note">
+                <strong>Penalty Notice:</strong> A penalty fee is applied to your account if any payment is missed by 20 days or more from the scheduled date.
+            </div>
+
+            <p>Thank you for being a valued member of NSBSA.</p>
+        </div>
+        <div class="footer">
+            <p><strong>Contact NSBSA</strong><br>Email: info@nsbsa.org.za<br>Phone: 087 107 7524<br>WhatsApp: 087 107 7524<br>Website: <a href="https://www.stokvelbody.org.za">https://www.stokvelbody.org.za</a></p>
+        </div>
+    </div>
+</body>
+</html>
+''';
+
+    if (toEmail.isNotEmpty) {
+      await sendManualEmail(
+        vendorId: vendorId,
+        toEmail: toEmail,
+        subject: 'Loan Confirmation - $loanRef',
+        content: emailHtml,
+        isRawHtml: true,
+      );
+    }
+
+    // 2. WhatsApp (Branded)
+    final whatsappNumber = toWhatsApp.isNotEmpty ? toWhatsApp : toPhone;
+    if (whatsappNumber.isNotEmpty) {
+      final whatsappContent =
+          'Dear *$vendorName*,\n\n'
+          'A new loan has been successfully created for you.\n\n'
+          '🧾 *Loan Ref:* $loanRef\n'
+          '💰 *Amount:* R$amount\n'
+          '📅 *Duration:* $durationMonths Months\n'
+          '🗓️ *First Payment:* $nextPayStr\n'
+          '💸 *Initiation Fee:* R${initiationFee ?? 150.0}\n'
+          '⚙️ *Admin Fee:* R${monthlyAdminFee ?? 65.0} (pm)\n'
+          '👥 *Group:* $groupName\n'
+          '🏢 *Center:* $centerName\n\n'
+          '⚠️ *Penalty Notice:* Applied when payment is missed by 20 days.\n\n'
+          'Thank you for your trust in NSBSA.';
+      await sendManualWhatsApp(
+        vendorId: vendorId,
+        toWhatsApp: whatsappNumber,
+        content: whatsappContent,
+      );
+    }
+
+    // 3. SMS (Concise ≤ 160 chars)
+    if (toPhone.isNotEmpty) {
+      final smsContent =
+          'NSBSA: Loan $loanRef (R$amount) created. Term: $durationMonths mos. 1st Pay: $nextPayStr. Fees: R150 init, R65 admin. Penalty applied after 20 days late.';
+      await sendManualSMS(
+        vendorId: vendorId,
+        toPhone: toPhone,
+        content: smsContent,
+      );
+    }
+  }
+
   // --- HELPERS ---
+
+  String _getMonthName(int month) {
+    const months = [
+      '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    return months[month];
+  }
 
   String _wrapInBrandedTemplate(String content) {
     final formattedContent = content.replaceAll('\n', '<br>');

@@ -7,10 +7,51 @@ class WeSenderService {
   static const String _baseUrl = 'https://www.wasenderapi.com/api';
   final _supabase = Supabase.instance.client;
 
+  // ---------------------------------------------------------------------------
+  // NSBSA WhatsApp Branding Templates
+  // ---------------------------------------------------------------------------
+
+  static const String _header =
+      '🌐 *NSBSA | Empowering Communities*\n'
+      '─────────────────────────────────';
+
+  static const String _footer =
+      '─────────────────────────────────\n'
+      '📞 *Contact NSBSA*\n'
+      '📧 Email: info@nsbsa.org.za\n'
+      '☎️  Phone: 087 107 7524\n'
+      '💬 WhatsApp: 087 107 7524\n'
+      '🌍 Website: https://www.stokvelbody.org.za';
+
+  /// Wraps [body] with the NSBSA header and optional footer.
+  ///
+  /// Set [includeFooter] to `false` for very short transactional messages
+  /// (e.g., OTPs, quick alerts) where the footer would be intrusive.
+  static String formatMessage(String body, {bool includeFooter = true}) {
+    final buffer = StringBuffer();
+    buffer.writeln(_header);
+    buffer.writeln();
+    buffer.write(body.trim());
+    if (includeFooter) {
+      buffer.writeln();
+      buffer.writeln();
+      buffer.write(_footer);
+    }
+    return buffer.toString();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public API
+  // ---------------------------------------------------------------------------
+
   /// Sends a WhatsApp message using the stored WeSender API credentials.
+  ///
+  /// The NSBSA header and footer are automatically applied to [message].
+  /// Set [includeFooter] to `false` to suppress the footer for short messages.
   Future<bool> sendWhatsApp({
     required String to,
     required String message,
+    bool includeFooter = true,
   }) async {
     try {
       final apiKey = await _getApiKey();
@@ -18,6 +59,8 @@ class WeSenderService {
         debugPrint('WeSender: No active API key found.');
         return false;
       }
+
+      final formattedMessage = formatMessage(message, includeFooter: includeFooter);
 
       final response = await http.post(
         Uri.parse('$_baseUrl/send-message'),
@@ -28,7 +71,7 @@ class WeSenderService {
         },
         body: jsonEncode({
           'to': _formatPhoneNumber(to),
-          'text': message,
+          'text': formattedMessage,
         }),
       );
 
@@ -44,6 +87,10 @@ class WeSenderService {
       return false;
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Private helpers
+  // ---------------------------------------------------------------------------
 
   /// Fetches the active WeSender API key from the api_keys table.
   Future<String?> _getApiKey() async {
@@ -62,29 +109,26 @@ class WeSenderService {
     }
   }
 
-  /// Formats phone number for WhatsApp (E.164 without the '+' for some APIs, or with it).
-  /// Standardizing to E.164 (e.g., 27712345678).
+  /// Normalises a phone number to E.164 SA format (e.g. 27712345678).
   String _formatPhoneNumber(String phone) {
-    String cleaned = phone.replaceAll(RegExp(r'\D'), '');
+    final cleaned = phone.replaceAll(RegExp(r'\D'), '');
     if (cleaned.startsWith('0') && cleaned.length == 10) {
       return '27${cleaned.substring(1)}';
     }
     return cleaned;
   }
 
-  /// Tests the connection (usually by calling a simple account/profile endpoint).
+  /// Tests the connection by calling a real WaSender endpoint.
   Future<bool> testConnection(String apiKey) async {
     try {
-      // Trying to fetch profile or a simple endpoint to verify key
       final response = await http.get(
-        Uri.parse('$_baseUrl/me'), // Assuming /me or /profile exists for test
+        Uri.parse('$_baseUrl/groups'),
         headers: {
           'Authorization': 'Bearer $apiKey',
           'Accept': 'application/json',
         },
       );
-      // Even if 404, if it's not 401/403, the key might be valid. 
-      // But let's assume a success status code.
+      
       return response.statusCode == 200;
     } catch (e) {
       return false;

@@ -631,52 +631,63 @@ class GroupsScreen extends StatelessWidget {
                   onPressed: () async {
                     if (nameController.text.isNotEmpty &&
                         selectedCenterId != null) {
-                      final authProvider = Provider.of<AuthProvider>(
-                        context,
-                        listen: false,
-                      );
-                      final provider = Provider.of<GroupProvider>(
-                        context,
-                        listen: false,
-                      );
-                      final ref =
-                          'GRP-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+                      try {
+                        final authProvider = Provider.of<AuthProvider>(
+                          context,
+                          listen: false,
+                        );
+                        final provider = Provider.of<GroupProvider>(
+                          context,
+                          listen: false,
+                        );
+                        final ref =
+                            'GRP-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
 
-                      List<Map<String, dynamic>> members = [];
-                      for (var controllers in memberControllers) {
-                        if (controllers['name']!.text.isNotEmpty) {
-                          members.add({
-                            'name': controllers['name']!.text,
-                            'phone': controllers['phone']!.text,
-                            'id_number': controllers['id_number']!.text,
-                            'gender': controllers['gender']!.text,
-                            'business': controllers['business']!.text,
-                            'whatsapp': controllers['whatsapp']!.text,
-                            'email': controllers['email']!.text,
-                            'address': controllers['address']!.text,
-                            'role': controllers['role']!.text,
-                            'savings_amount':
-                                double.tryParse(
-                                  controllers['savings_amount']!.text,
-                                ) ??
-                                0.0,
-                            'savings_frequency':
-                                controllers['savings_frequency']!.text,
-                            'savings_start_date': DateTime.now()
-                                .toIso8601String(),
-                          });
+                        List<Map<String, dynamic>> members = [];
+                        for (var controllers in memberControllers) {
+                          if (controllers['name']!.text.isNotEmpty) {
+                            members.add({
+                              'name': controllers['name']!.text,
+                              'phone': controllers['phone']!.text,
+                              'id_number': controllers['id_number']!.text,
+                              'gender': controllers['gender']!.text,
+                              'business': controllers['business']!.text,
+                              'whatsapp': controllers['whatsapp']!.text,
+                              'email': controllers['email']!.text,
+                              'address': controllers['address']!.text,
+                              'role': controllers['role']!.text,
+                              'savings_amount':
+                                  double.tryParse(
+                                    controllers['savings_amount']!.text,
+                                  ) ??
+                                  0.0,
+                              'savings_frequency':
+                                  controllers['savings_frequency']!.text,
+                              'savings_start_date': DateTime.now()
+                                  .toIso8601String(),
+                            });
+                          }
+                        }
+
+                        await provider.addGroupWithMembers(
+                          nameController.text,
+                          ref,
+                          selectedCenterId!,
+                          members,
+                          creatorId: authProvider.userProfile?.id,
+                          creatorName: authProvider.userProfile?.fullName,
+                        );
+                        if (context.mounted) Navigator.pop(context);
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Error adding group: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
                         }
                       }
-
-                      await provider.addGroupWithMembers(
-                        nameController.text,
-                        ref,
-                        selectedCenterId!,
-                        members,
-                        creatorId: authProvider.userProfile?.id,
-                        creatorName: authProvider.userProfile?.fullName,
-                      );
-                      if (context.mounted) Navigator.pop(context);
                     } else if (selectedCenterId == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(

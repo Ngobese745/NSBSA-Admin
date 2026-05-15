@@ -21,6 +21,9 @@ import '../models/leadership.dart';
 import 'vendor_profile_screen.dart';
 import 'loan_details_screen.dart';
 import '../services/loan_calculation_service.dart';
+import '../widgets/communication/communication_dialog.dart';
+import '../widgets/communication/group_communication_dialog.dart';
+import '../services/excel_export_service.dart';
 import '../models/comment.dart';
 import '../providers/comment_provider.dart';
 import '../providers/auth_provider.dart';
@@ -715,47 +718,37 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       (sum, m) => sum + (m.savingsAmount ?? 0.0),
     );
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final crossAxisCount = constraints.maxWidth > 1000
-            ? 4
-            : (constraints.maxWidth > 600 ? 2 : 1);
-        return GridView.count(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisCount: crossAxisCount,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
-          childAspectRatio: constraints.maxWidth > 1000 ? 4.4 : 8.0,
-          children: [
-            _buildStatCard(
-              'Members',
-              groupMembers.length.toString(),
-              Icons.people,
-              theme.primaryColor,
-            ),
-            _buildStatCard(
-              'Loans',
-              _loans.length.toString(),
-              Icons.account_balance,
-              Colors.blueAccent,
-            ),
-            _buildStatCard(
-              'Total Value',
-              'R ${totalLoaned.toStringAsFixed(0)}',
-              Icons.payments,
-              Colors.greenAccent,
-              subtitle: 'Bal: R ${balance.toStringAsFixed(0)}',
-            ),
-            _buildStatCard(
-              'Savings',
-              'R ${totalSavings.toStringAsFixed(0)}',
-              Icons.savings,
-              Colors.amber,
-            ),
-          ],
-        );
-      },
+    return Row(
+      children: [
+        _buildStatCard(
+          'Members',
+          groupMembers.length.toString(),
+          Icons.people,
+          theme.primaryColor,
+        ),
+        const SizedBox(width: 12),
+        _buildStatCard(
+          'Loans',
+          _loans.length.toString(),
+          Icons.account_balance,
+          Colors.blueAccent,
+        ),
+        const SizedBox(width: 12),
+        _buildStatCard(
+          'Total Value',
+          'R ${totalLoaned.toStringAsFixed(0)}',
+          Icons.payments,
+          Colors.greenAccent,
+          subtitle: 'Bal: R ${balance.toStringAsFixed(0)}',
+        ),
+        const SizedBox(width: 12),
+        _buildStatCard(
+          'Savings',
+          'R ${totalSavings.toStringAsFixed(0)}',
+          Icons.savings,
+          Colors.amber,
+        ),
+      ],
     );
   }
 
@@ -766,63 +759,67 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     Color color, {
     String? subtitle,
   }) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
+    return Expanded(
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: color, size: 20),
               ),
-              child: Icon(icon, color: color, size: 20),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(color: Colors.grey, fontSize: 11),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Text(
-                        value,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      if (subtitle != null) ...[
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            subtitle,
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(color: Colors.grey, fontSize: 10),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 1),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Text(
+                            value,
                             style: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 10,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ],
+                          if (subtitle != null) ...[
+                            const SizedBox(width: 4),
+                            Text(
+                              subtitle,
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 9,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -832,8 +829,11 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 12,
+          runSpacing: 8,
           children: [
             Text(
               'Group Members',
@@ -841,10 +841,21 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 fontWeight: FontWeight.bold,
               ),
             ),
-            TextButton.icon(
-              onPressed: () => _showAddMemberDialog(members),
-              icon: const Icon(Icons.person_add, size: 18),
-              label: const Text('Add Member'),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextButton.icon(
+                  onPressed: () => _showGroupCommunicationDialog(members),
+                  icon: const Icon(Icons.send, size: 18, color: AppTheme.primaryGold),
+                  label: const Text('Message Group'),
+                ),
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  onPressed: () => _showAddMemberDialog(members),
+                  icon: const Icon(Icons.person_add, size: 18),
+                  label: const Text('Add Member'),
+                ),
+              ],
             ),
           ],
         ),
@@ -860,7 +871,13 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               return ListTile(
                 title: Row(
                   children: [
-                    Text(member.name),
+                    Expanded(
+                      child: Text(
+                        member.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                     if (member.role != null && member.role != 'Member') ...[
                       const SizedBox(width: 8),
                       Container(
@@ -930,8 +947,11 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 12,
+          runSpacing: 8,
           children: [
             Text(
               'Group Loans',
@@ -940,6 +960,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               ),
             ),
             Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 TextButton.icon(
                   onPressed: () => _showRecordGroupPaymentDialog(members),
@@ -986,6 +1007,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                           Text(
                             'Status: ${loan.status} • Term: ${loan.durationMonths} Months',
                             style: theme.textTheme.bodySmall,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       ),
@@ -1577,76 +1600,106 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
 
   void _showRecordPaymentDialog(LoanModel loan) {
     final amountController = TextEditingController(
-      text: loan.monthlyPayment.toString(),
+      text: loan.monthlyPayment.toStringAsFixed(0),
     );
+    String selectedType = 'Cash';
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        title: const Text(
-          'Record Payment',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Recording payment for Loan R ${loan.amount}',
-              style: const TextStyle(color: Colors.grey),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          title: const Text(
+            'Record Payment',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Recording payment for Loan R ${loan.amount}',
+                style: const TextStyle(color: Colors.grey, fontSize: 14),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Payment Type',
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+              DropdownButtonFormField<String>(
+                value: selectedType,
+                dropdownColor: Theme.of(context).cardColor,
+                style: TextStyle(
+                  color: Theme.of(context).textTheme.bodyMedium?.color,
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'Cash', child: Text('Cash')),
+                  DropdownMenuItem(value: 'EFT', child: Text('EFT')),
+                  DropdownMenuItem(value: 'Card', child: Text('Card')),
+                ],
+                onChanged: (val) =>
+                    setState(() => selectedType = val ?? 'Cash'),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Amount Paid',
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+              TextField(
+                controller: amountController,
+                style: TextStyle(
+                  color: Theme.of(context).textTheme.bodyMedium?.color,
+                ),
+                decoration: InputDecoration(
+                  prefixText: 'R ',
+                  prefixStyle: TextStyle(
+                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                  ),
+                ),
+                keyboardType: TextInputType.number,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: amountController,
-              style: TextStyle(
-                color: Theme.of(context).textTheme.bodyMedium?.color,
-              ),
-              decoration: const InputDecoration(
-                labelText: 'Amount Paid (R)',
-                labelStyle: TextStyle(color: Colors.grey),
-              ),
-              keyboardType: TextInputType.number,
+            ElevatedButton(
+              onPressed: () async {
+                final amount = double.tryParse(amountController.text) ?? 0;
+                if (amount > 0) {
+                  try {
+                    await context.read<PaymentProvider>().addPayment(
+                      PaymentModel(
+                        id: '',
+                        loanId: loan.id,
+                        amountPaid: amount,
+                        paymentMethod: selectedType,
+                        datePaid: DateTime.now(),
+                        createdAt: DateTime.now(),
+                      ),
+                      loan: loan,
+                    );
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Payment recorded successfully!'),
+                        ),
+                      );
+                      Navigator.pop(context);
+                    }
+                  } catch (e) {
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('Error: $e')));
+                  }
+                }
+              },
+              child: const Text('Confirm Payment'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final amount = double.tryParse(amountController.text) ?? 0;
-              if (amount > 0) {
-                try {
-                  await context.read<PaymentProvider>().addPayment(
-                    PaymentModel(
-                      id: '',
-                      loanId: loan.id,
-                      amountPaid: amount,
-                      datePaid: DateTime.now(),
-                      createdAt: DateTime.now(),
-                    ),
-                  );
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Payment recorded successfully!'),
-                      ),
-                    );
-                    Navigator.pop(context);
-                  }
-                } catch (e) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text('Error: $e')));
-                }
-              }
-            },
-            child: const Text('Confirm Payment'),
-          ),
-        ],
       ),
     );
   }
@@ -3264,6 +3317,16 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showGroupCommunicationDialog(List<VendorModel> members) {
+    showDialog(
+      context: context,
+      builder: (context) => GroupCommunicationDialog(
+        group: widget.group,
+        members: members,
       ),
     );
   }

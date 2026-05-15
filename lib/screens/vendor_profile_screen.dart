@@ -606,7 +606,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
       child: isDesktop
           ? Row(
               children: [
-                _buildVendorAvatar(theme),
+                _buildVendorAvatar(theme, currentVendor),
                 const SizedBox(width: 24),
                 Expanded(child: _buildVendorTitle(theme, group, isDesktop, currentVendor)),
                 const SizedBox(width: 24),
@@ -617,7 +617,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
               children: [
                 Row(
                   children: [
-                    _buildVendorAvatar(theme, radius: 25),
+                    _buildVendorAvatar(theme, currentVendor, radius: 25),
                     const SizedBox(width: 16),
                     Expanded(child: _buildVendorTitle(theme, group, isDesktop, currentVendor)),
                   ],
@@ -629,12 +629,192 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     );
   }
 
-  Widget _buildVendorAvatar(ThemeData theme, {double radius = 35}) {
-    return CircleAvatar(
-      radius: radius,
-      backgroundColor: theme.primaryColor.withOpacity(0.1),
-      child: Icon(Icons.person, size: radius * 0.9, color: theme.primaryColor),
+  Widget _buildVendorAvatar(ThemeData theme, VendorModel currentVendor, {double radius = 35}) {
+    final vendorProvider = context.watch<VendorProvider>();
+    final bool isUploading = vendorProvider.isLoading;
+
+    return InkWell(
+      onTap: isUploading ? null : () => _showAvatarOptions(currentVendor),
+      borderRadius: BorderRadius.circular(radius),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          CircleAvatar(
+            radius: radius,
+            backgroundColor: theme.primaryColor.withOpacity(0.1),
+            backgroundImage: currentVendor.avatarUrl != null && currentVendor.avatarUrl!.isNotEmpty
+                ? NetworkImage(currentVendor.avatarUrl!)
+                : null,
+            child: currentVendor.avatarUrl == null || currentVendor.avatarUrl!.isEmpty
+                ? Icon(Icons.person, size: radius * 0.9, color: theme.primaryColor)
+                : null,
+          ),
+          if (isUploading)
+            CircleAvatar(
+              radius: radius,
+              backgroundColor: Colors.black45,
+              child: const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              ),
+            )
+          else
+            Positioned(
+              bottom: 0,
+              right: 0,
+              child: CircleAvatar(
+                radius: radius * 0.3,
+                backgroundColor: theme.primaryColor,
+                child: Icon(Icons.camera_alt, size: radius * 0.35, color: Colors.black),
+              ),
+            ),
+        ],
+      ),
     );
+  }
+
+  void _showAvatarOptions(VendorModel currentVendor) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF161B22),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white10,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 24),
+              if (currentVendor.avatarUrl != null && currentVendor.avatarUrl!.isNotEmpty)
+                ListTile(
+                  leading: const Icon(Icons.fullscreen, color: Colors.white),
+                  title: const Text('View Profile Picture', style: TextStyle(color: Colors.white)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _viewFullImage(currentVendor.avatarUrl!, currentVendor.name);
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: Colors.white),
+                title: const Text('Update Profile Picture', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _handleAvatarUpload(currentVendor);
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _viewFullImage(String url, String name) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: EdgeInsets.zero,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: InteractiveViewer(
+                minScale: 0.5,
+                maxScale: 4.0,
+                child: Image.network(
+                  url,
+                  fit: BoxFit.contain,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return const Center(child: CircularProgressIndicator(color: Color(0xFFD4AF37)));
+                  },
+                ),
+              ),
+            ),
+            Positioned(
+              top: 40,
+              left: 20,
+              right: 20,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                      const Text(
+                        'Profile Picture',
+                        style: TextStyle(color: Colors.grey, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                  CircleAvatar(
+                    backgroundColor: Colors.black54,
+                    child: IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleAvatarUpload(VendorModel currentVendor) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: false,
+    );
+
+    if (result != null && result.files.single.bytes != null) {
+      final file = result.files.single;
+      final extension = file.extension ?? 'jpg';
+      
+      try {
+        final vendorProvider = context.read<VendorProvider>();
+        await vendorProvider.uploadAvatar(
+          currentVendor.id,
+          file.bytes!,
+          extension,
+        );
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Profile picture updated successfully')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to upload picture: $e'), backgroundColor: Colors.redAccent),
+          );
+        }
+      }
+    }
   }
 
   Widget _buildVendorTitle(ThemeData theme, GroupModel group, bool isDesktop, VendorModel currentVendor) {

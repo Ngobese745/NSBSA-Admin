@@ -460,7 +460,7 @@ class LoanDetailsScreen extends StatelessWidget {
           const Divider(height: 24, thickness: 0.5),
           _buildInfoRow(
             'Total Loan Liability',
-            'R ${((loan.monthlyPayment * loan.durationMonths) + (loan.initiationFee ?? 0) + ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) + appliedPenalty).toStringAsFixed(0)}',
+            'R ${((loan.monthlyPayment * loan.durationMonths) + (loan.openingAmount ?? 0) + appliedPenalty).toStringAsFixed(0)}',
             isValueBold: true,
             valueColor: AppTheme.primaryGold,
           ),

@@ -13,6 +13,8 @@ import '../services/connectivity_service.dart';
 
 import 'package:intl/intl.dart';
 import '../services/communication_service.dart';
+import '../services/pdf_service.dart';
+import 'dart:typed_data';
 
 class PaymentProvider with ChangeNotifier {
   final _supabase = Supabase.instance.client;
@@ -148,31 +150,87 @@ class PaymentProvider with ChangeNotifier {
 
   Future<void> _triggerPaymentConfirmation(PaymentModel payment, LoanModel? loan) async {
     try {
-      String? vendorId = loan?.vendorId;
-      if (vendorId == null) {
-        final loanData = await _supabase.from('loans').select('vendor_id').eq('id', payment.loanId).single();
-        vendorId = loanData['vendor_id']?.toString();
+      LoanModel? activeLoan = loan;
+      if (activeLoan == null) {
+        final loanData = await _supabase.from('loans').select().eq('id', payment.loanId).single();
+        activeLoan = LoanModel.fromJson(loanData);
       }
+
+      final vendorId = activeLoan.vendorId;
+      if (vendorId == null) return;
+
+      // 1. Fetch Comprehensive Details
+      final vendorRes = await _supabase
+          .from('vendors')
+          .select('name, email, phone, whatsapp_number')
+          .eq('id', vendorId)
+          .single();
+
+      final groupRes = await _supabase
+          .from('groups')
+          .select('name, center_id')
+          .eq('id', activeLoan.groupId)
+          .single();
+
+      final gName = groupRes['name']?.toString() ?? 'NSBSA Group';
+      final centerId = groupRes['center_id'];
+
+      String cName = 'NSBSA Center';
+      if (centerId != null) {
+        final centerRes = await _supabase
+            .from('centers')
+            .select('name')
+            .eq('id', centerId)
+            .single();
+        cName = centerRes['name']?.toString() ?? 'NSBSA Center';
+      }
+
+      final vName = vendorRes['name']?.toString() ?? 'Member';
+      final vEmail = vendorRes['email']?.toString() ?? '';
+      final vPhone = vendorRes['phone']?.toString() ?? '';
+      final vWhatsApp = vendorRes['whatsapp_number']?.toString() ?? '';
+      final loanRef = activeLoan.id.substring(0, 8).toUpperCase();
+
+      // 2. Fetch all payments for this loan to calculate the actual balance
+      final paymentsRes = await _supabase
+          .from('payments')
+          .select()
+          .eq('loan_id', activeLoan.id);
+      final allPayments = (paymentsRes as List)
+          .map((p) => PaymentModel.fromJson(p))
+          .toList();
       
-      if (vendorId != null) {
-        final vendorData = await _supabase.from('vendors').select('name, email, phone, whatsapp_number').eq('id', vendorId).single();
-        final commService = CommunicationService();
-        final formattedDate = DateFormat('MMMM dd, yyyy').format(payment.datePaid);
-        
-        commService.sendPaymentConfirmation(
-          vendorId: vendorId,
-          vendorName: vendorData['name'] ?? 'Member',
-          toEmail: vendorData['email'] ?? '',
-          toPhone: vendorData['phone'] ?? '',
-          toWhatsApp: vendorData['whatsapp_number'] ?? '',
-          amount: payment.amountPaid.toStringAsFixed(2),
-          transactionId: payment.id,
-          date: formattedDate,
-          paymentMethod: payment.paymentMethod ?? 'Electronic Transfer',
-        ).catchError((e) => debugPrint('Error sending confirmation: $e'));
-      }
+      final actualBalance = LoanCalculationService.calculateBalance(activeLoan, allPayments);
+
+      // 3. Generate PDF Slip
+      final pdfBytes = await PdfService.generatePaymentSlip(
+        loanRef: loanRef,
+        memberName: vName,
+        groupName: gName,
+        centerName: cName,
+        amountPaid: payment.amountPaid,
+        balanceRemaining: actualBalance,
+        paymentDate: payment.datePaid,
+      );
+
+      // 4. Send Multi-Channel Notification
+      final commService = CommunicationService();
+      await commService.sendPaymentNotification(
+        vendorId: vendorId,
+        vendorName: vName,
+        toEmail: vEmail,
+        toPhone: vPhone,
+        toWhatsApp: vWhatsApp,
+        loanRef: loanRef,
+        amountPaid: payment.amountPaid,
+        balanceRemaining: actualBalance,
+        groupName: gName,
+        centerName: cName,
+        date: payment.datePaid,
+        pdfBytes: pdfBytes,
+      );
     } catch (e) {
-      debugPrint('Failed to fetch vendor or send confirmation: $e');
+      debugPrint('Error in payment confirmation flow: $e');
     }
   }
 

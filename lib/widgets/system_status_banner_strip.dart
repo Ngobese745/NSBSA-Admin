@@ -49,7 +49,7 @@ class SystemStatusBannerStrip extends StatelessWidget {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -74,7 +74,7 @@ class SystemStatusBannerStrip extends StatelessWidget {
                         letterSpacing: 1.1,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    // Removed SizedBox(height: 2)
                     Text(
                       banner.title,
                       style: TextStyle(
@@ -83,7 +83,7 @@ class SystemStatusBannerStrip extends StatelessWidget {
                         fontSize: 14,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    // Removed SizedBox(height: 2)
                     Text(
                       banner.message,
                       style: TextStyle(
@@ -93,7 +93,7 @@ class SystemStatusBannerStrip extends StatelessWidget {
                       ),
                     ),
                     if (banner.endsAt != null) ...[
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 4),
                       Text(
                         'Until ${banner.endsAt!.toLocal().toString().substring(0, 16)}',
                         style: TextStyle(

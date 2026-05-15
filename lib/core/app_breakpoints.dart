@@ -16,7 +16,7 @@ abstract final class AppBreakpoints {
   static const double loginSplitMin = 900;
 
   /// [GroupDetailsScreen] two-column body.
-  static const double groupDetailsDesktopMin = 900;
+  static const double groupDetailsDesktopMin = 1050;
 
   /// [GroupDetailsScreen] relaxed padding breakpoint.
   static const double groupDetailsTabletMin = 600;

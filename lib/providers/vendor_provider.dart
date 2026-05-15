@@ -8,6 +8,8 @@ import '../services/system_audit_service.dart';
 import '../services/realtime_service.dart';
 import '../services/offline_queue_service.dart';
 import '../services/connectivity_service.dart';
+import 'dart:typed_data';
+import 'package:image/image.dart' as img;
 
 class VendorProvider with ChangeNotifier {
   final _supabase = Supabase.instance.client;
@@ -318,6 +320,50 @@ class VendorProvider with ChangeNotifier {
       notifyListeners();
       debugPrint('Error recording savings transaction: $e');
       rethrow;
+    }
+  }
+
+  Future<String?> uploadAvatar(String vendorId, Uint8List fileBytes, String extension) async {
+    try {
+      _isLoading = true;
+      notifyListeners();
+
+      Uint8List dataToUpload = fileBytes;
+      
+      // If over 5MB, compress
+      if (fileBytes.length > 5 * 1024 * 1024) {
+        final image = img.decodeImage(fileBytes);
+        if (image != null) {
+          // Resize if very large, otherwise just compress quality
+          img.Image resized = image;
+          if (image.width > 1200) {
+            resized = img.copyResize(image, width: 1200);
+          }
+          dataToUpload = Uint8List.fromList(img.encodeJpg(resized, quality: 70));
+        }
+      }
+
+      final fileName = 'avatar_${vendorId}_${DateTime.now().millisecondsSinceEpoch}.$extension';
+      final filePath = 'avatars/$fileName';
+
+      await _supabase.storage.from('documents').uploadBinary(
+        filePath,
+        dataToUpload,
+        fileOptions: FileOptions(contentType: 'image/$extension', upsert: true),
+      );
+
+      final publicUrl = _supabase.storage.from('documents').getPublicUrl(filePath);
+
+      // Update vendor profile
+      await updateVendor(vendorId, {'avatar_url': publicUrl});
+
+      return publicUrl;
+    } catch (e) {
+      debugPrint('Error uploading avatar: $e');
+      rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
   }
 }

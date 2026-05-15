@@ -13,6 +13,12 @@ import '../models/vendor.dart';
 import '../models/group.dart';
 import 'vendor_profile_screen.dart';
 import '../widgets/communication/communication_dialog.dart';
+import '../widgets/communication/group_communication_dialog.dart';
+import '../services/vendor_pdf_service.dart';
+import '../providers/loan_provider.dart';
+import '../providers/payment_provider.dart';
+
+import 'package:shared_preferences/shared_preferences.dart';
 
 class VendorsScreen extends StatefulWidget {
   const VendorsScreen({super.key});
@@ -22,12 +28,33 @@ class VendorsScreen extends StatefulWidget {
 }
 
 class _VendorsScreenState extends State<VendorsScreen> {
+  bool _isGridView = false;
+
   @override
   void initState() {
     super.initState();
+    _loadViewState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<VendorProvider>().fetchVendors();
+      context.read<GroupProvider>().fetchGroups();
+      context.read<LoanProvider>().fetchLoans();
     });
+  }
+
+  Future<void> _loadViewState() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _isGridView = prefs.getBool('vendors_view_is_grid') ?? false;
+      });
+    }
+  }
+
+  Future<void> _toggleView() async {
+    final newState = !_isGridView;
+    setState(() => _isGridView = newState);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('vendors_view_is_grid', newState);
   }
 
   Future<void> _generateVendorListPDF(BuildContext context) async {
@@ -151,27 +178,116 @@ class _VendorsScreenState extends State<VendorsScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              Row(
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: () => _generateVendorListPDF(context),
-                    icon: const Icon(Icons.download, size: 16),
-                    label: const Text('Export PDF'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
+              Builder(
+                builder: (context) {
+                  final isSmall = MediaQuery.of(context).size.width < 800;
+                  return Row(
+                    children: [
+                      IconButton(
+                        onPressed: _toggleView,
+                        icon: Icon(
+                          _isGridView ? Icons.list_rounded : Icons.grid_view_rounded,
+                          color: Colors.grey,
+                          size: 20,
+                        ),
+                        tooltip: _isGridView ? 'Switch to List' : 'Switch to Grid',
                       ),
-                      textStyle: const TextStyle(fontSize: 11),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton.icon(
-                    onPressed: () => _showAddMemberDialog(context),
-                    icon: const Icon(Icons.person_add, size: 16),
-                    label: const Text('Add Member'),
-                  ),
-                ],
+                      if (isSmall) ...[
+                        PopupMenuButton<String>(
+                          icon: const Icon(Icons.more_vert, color: Colors.grey),
+                          tooltip: 'More Actions',
+                          onSelected: (value) {
+                            if (value == 'message') {
+                              final provider = context.read<VendorProvider>();
+                              showDialog(
+                                context: context,
+                                builder: (context) => GroupCommunicationDialog(
+                                  members: provider.vendors,
+                                  customTitle: 'General Announcement',
+                                ),
+                              );
+                            } else if (value == 'export') {
+                              _generateVendorListPDF(context);
+                            } else if (value == 'add') {
+                              _showAddMemberDialog(context);
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            const PopupMenuItem(
+                              value: 'message',
+                              child: ListTile(
+                                leading: Icon(Icons.send_rounded, size: 20, color: Color(0xFFD4AF37)),
+                                title: Text('Message All'),
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 'export',
+                              child: ListTile(
+                                leading: Icon(Icons.download, size: 20),
+                                title: Text('Export PDF'),
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 'add',
+                              child: ListTile(
+                                leading: Icon(Icons.person_add, size: 20),
+                                title: Text('Add Member'),
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ] else ...[
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            final provider = context.read<VendorProvider>();
+                            showDialog(
+                              context: context,
+                              builder: (context) => GroupCommunicationDialog(
+                                members: provider.vendors,
+                                customTitle: 'General Announcement',
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.send_rounded, size: 16, color: Color(0xFFD4AF37)),
+                          label: const Text('Message All'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            textStyle: const TextStyle(fontSize: 11),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: () => _generateVendorListPDF(context),
+                          icon: const Icon(Icons.download, size: 16),
+                          label: const Text('Export PDF'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            textStyle: const TextStyle(fontSize: 11),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          onPressed: () => _showAddMemberDialog(context),
+                          icon: const Icon(Icons.person_add, size: 16),
+                          label: const Text('Add Member'),
+                        ),
+                      ],
+                    ],
+                  );
+                },
               ),
             ],
           ),
@@ -193,6 +309,10 @@ class _VendorsScreenState extends State<VendorsScreen> {
                     );
                   }
 
+                  if (_isGridView) {
+                    return _buildGridView(provider.vendors, theme);
+                  }
+
                   return ListView.separated(
                     padding: EdgeInsets.zero,
                     itemCount: provider.vendors.length,
@@ -206,11 +326,16 @@ class _VendorsScreenState extends State<VendorsScreen> {
                         leading: CircleAvatar(
                           radius: 14,
                           backgroundColor: theme.primaryColor.withOpacity(0.1),
-                          child: Icon(
-                            Icons.person,
-                            color: theme.primaryColor,
-                            size: 14,
-                          ),
+                          backgroundImage: vendor.avatarUrl != null && vendor.avatarUrl!.isNotEmpty
+                              ? NetworkImage(vendor.avatarUrl!)
+                              : null,
+                          child: vendor.avatarUrl == null || vendor.avatarUrl!.isEmpty
+                              ? Icon(
+                                  Icons.person,
+                                  color: theme.primaryColor,
+                                  size: 14,
+                                )
+                              : null,
                         ),
                         title: Text(
                           vendor.name,
@@ -240,7 +365,8 @@ class _VendorsScreenState extends State<VendorsScreen> {
                               onPressed: () {
                                 showDialog(
                                   context: context,
-                                  builder: (context) => CommunicationDialog(vendor: vendor),
+                                  builder: (context) =>
+                                      CommunicationDialog(vendor: vendor),
                                 );
                               },
                             ),
@@ -270,6 +396,117 @@ class _VendorsScreenState extends State<VendorsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildGridView(List<VendorModel> vendors, ThemeData theme) {
+    return GridView.builder(
+      padding: const EdgeInsets.all(16),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 280,
+        mainAxisExtent: 180,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+      ),
+      itemCount: vendors.length,
+      itemBuilder: (context, index) {
+        final vendor = vendors[index];
+        return InkWell(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => VendorProfileScreen(vendor: vendor),
+              ),
+            );
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.03),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white.withOpacity(0.05)),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircleAvatar(
+                  radius: 30,
+                  backgroundColor: theme.primaryColor.withOpacity(0.1),
+                  backgroundImage: vendor.avatarUrl != null && vendor.avatarUrl!.isNotEmpty
+                      ? NetworkImage(vendor.avatarUrl!)
+                      : null,
+                  child: vendor.avatarUrl == null || vendor.avatarUrl!.isEmpty
+                      ? Icon(
+                          Icons.person,
+                          color: theme.primaryColor,
+                          size: 30,
+                        )
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  vendor.name,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  vendor.referenceNumber ?? 'N/A',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.message, color: Colors.green, size: 18),
+                      onPressed: () {
+                        showDialog(
+                          context: context,
+                          builder: (context) => CommunicationDialog(vendor: vendor),
+                        );
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.download_rounded, color: Color(0xFFD4AF37), size: 18),
+                      tooltip: 'Download Profile PDF',
+                      onPressed: () {
+                        final loanProvider = context.read<LoanProvider>();
+                        final groupProvider = context.read<GroupProvider>();
+                        
+                        final vendorLoans = loanProvider.loans
+                            .where((l) => l.vendorId == vendor.id)
+                            .toList();
+                            
+                        final group = groupProvider.groups.firstWhere(
+                          (g) => g.id == vendor.groupId,
+                          orElse: () => GroupModel.unknown(),
+                        );
+
+                        VendorPdfService.generateProfilePDF(
+                          context: context,
+                          vendor: vendor,
+                          group: group,
+                          loans: vendorLoans,
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

@@ -8,9 +8,11 @@ import '../services/notification_service.dart';
 import '../services/realtime_service.dart';
 import '../services/offline_queue_service.dart';
 import '../services/connectivity_service.dart';
+import '../services/communication_service.dart';
 
 class LoanProvider with ChangeNotifier {
   final _supabase = Supabase.instance.client;
+  final _communicationService = CommunicationService();
   List<LoanModel> _loans = [];
   bool _isLoading = false;
 
@@ -112,6 +114,12 @@ class LoanProvider with ChangeNotifier {
       
       _syncCacheAndNotify();
       _logAndNotify(confirmedLoan);
+
+      // Trigger multi-channel notifications (fire-and-forget)
+      _triggerLoanNotifications(confirmedLoan).catchError((e) {
+        debugPrint('Non-critical: Loan notification failed: $e');
+      });
+
       return confirmedLoan;
     } catch (e) {
       _loans.removeWhere((l) => l.id == loan.id);
@@ -210,5 +218,62 @@ class LoanProvider with ChangeNotifier {
       'A new loan of R${loan.amount} has been issued.',
       type: 'FINANCIAL',
     );
+  }
+
+  Future<void> _triggerLoanNotifications(LoanModel loan) async {
+    try {
+      // 1. Fetch Vendor Details
+      final vendorRes = await _supabase
+          .from('vendors')
+          .select('name, email, phone, whatsapp_number')
+          .eq('id', loan.vendorId ?? '')
+          .single();
+
+      final vName = vendorRes['name']?.toString() ?? 'Member';
+      final vEmail = vendorRes['email']?.toString() ?? '';
+      final vPhone = vendorRes['phone']?.toString() ?? '';
+      final vWhatsApp = vendorRes['whatsapp_number']?.toString() ?? '';
+
+      // 2. Fetch Group & Center Details
+      final groupRes = await _supabase
+          .from('groups')
+          .select('name, center_id')
+          .eq('id', loan.groupId)
+          .single();
+
+      final gName = groupRes['name']?.toString() ?? 'NSBSA Group';
+      final centerId = groupRes['center_id'];
+
+      String cName = 'NSBSA Center';
+      if (centerId != null) {
+        final centerRes = await _supabase
+            .from('centers')
+            .select('name')
+            .eq('id', centerId)
+            .single();
+        cName = centerRes['name']?.toString() ?? 'NSBSA Center';
+      }
+
+      // 3. Send Notification
+      await _communicationService.sendLoanCreationNotification(
+        vendorId: loan.vendorId ?? '',
+        vendorName: vName,
+        toEmail: vEmail,
+        toPhone: vPhone,
+        toWhatsApp: vWhatsApp,
+        loanRef: loan.id.substring(0, 8).toUpperCase(),
+        amount: loan.amount,
+        groupName: gName,
+        centerName: cName,
+        date: loan.createdAt,
+        durationMonths: loan.durationMonths,
+        nextPaymentDate: loan.firstInstalmentDate,
+        initiationFee: loan.initiationFee,
+        monthlyAdminFee: loan.monthlyAdminFee,
+      );
+    } catch (e) {
+      debugPrint('Error triggering loan notifications: $e');
+      rethrow;
+    }
   }
 }

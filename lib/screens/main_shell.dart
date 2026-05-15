@@ -74,6 +74,8 @@ class _MainShellState extends State<MainShell> {
     'Notification History',
   ];
 
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
   @override
   void initState() {
     super.initState();
@@ -102,7 +104,18 @@ class _MainShellState extends State<MainShell> {
       case 5:
         return const FeatureGuard(featureKey: 'analytics', child: AnalyticsScreen());
       case 6:
-        return const FeatureGuard(featureKey: 'reports', child: ReportsScreen());
+        return Builder(
+          builder: (context) {
+            final isLarge = MediaQuery.of(context).size.width >= AppBreakpoints.shellDesktopMin;
+            if (!isLarge) {
+              return const FeatureDisabledPlaceholder(
+                customLabel: 'Financial Reports',
+                customMessage: 'This detailed reporting module is optimized for large screens (tablets and desktop) only. Please use a larger device to view and export reports.',
+              );
+            }
+            return const FeatureGuard(featureKey: 'reports', child: ReportsScreen());
+          },
+        );
       case 7:
         return const FeatureGuard(featureKey: 'import', child: ImportScreen());
       case 8:
@@ -134,6 +147,7 @@ class _MainShellState extends State<MainShell> {
     final isLight = theme.brightness == Brightness.light;
 
     return Scaffold(
+      key: _scaffoldKey,
       appBar: isDesktop
           ? null
           : AppBar(
@@ -360,6 +374,7 @@ class _MainShellState extends State<MainShell> {
                               Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 crossAxisAlignment: CrossAxisAlignment.end,
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Text(
                                     displayName,
@@ -368,6 +383,8 @@ class _MainShellState extends State<MainShell> {
                                       fontSize: 12,
                                       fontWeight: FontWeight.bold,
                                     ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                   Text(
                                     role,
@@ -375,6 +392,8 @@ class _MainShellState extends State<MainShell> {
                                       color: Colors.white70,
                                       fontSize: 10,
                                     ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ],
                               ),
@@ -541,6 +560,7 @@ class _MainShellState extends State<MainShell> {
     final profile = context.select<AuthProvider, dynamic>((p) => p.userProfile);
     final navIndex = context.select<ShellNavigationProvider, int>((p) => p.selectedIndex);
     final dev = context.watch<DeveloperControlsProvider>();
+    final isLarge = MediaQuery.of(context).size.width >= AppBreakpoints.shellDesktopMin;
 
     return Column(
       children: [
@@ -592,7 +612,9 @@ class _MainShellState extends State<MainShell> {
                   featureKey: 'analytics',
                   isCollapsed: isCollapsed,
                 ),
-              if (AccessControlService.canViewReports(profile) && (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false)))
+              if (AccessControlService.canViewReports(profile) && 
+                  (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false)) &&
+                  isLarge)
                 _buildNavItem(
                   Icons.assessment,
                   'Reports',
@@ -719,17 +741,22 @@ class _MainShellState extends State<MainShell> {
             );
             return;
           }
+          
           if (selectedIndex == index) {
             // Pop to root if already selected
             _navigatorKeys[index].currentState?.popUntil((route) => route.isFirst);
           } else {
             context.read<ShellNavigationProvider>().setSelectedIndex(index);
           }
-          // Close drawer on mobile if open
-          if (MediaQuery.of(context).size.width < AppBreakpoints.shellDesktopMin) {
-            if (Scaffold.of(context).isDrawerOpen) {
-              Navigator.pop(context);
-            }
+
+          // Auto-hide/collapse sidebar on navigation
+          setState(() {
+            _isSidebarVisible = false;
+          });
+
+          // Close drawer on mobile if open using GlobalKey for reliability
+          if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+            Navigator.pop(context);
           }
         },
       ),

@@ -395,6 +395,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                               datePaid: DateTime.now(),
                               createdAt: DateTime.now(),
                             ),
+                            loan: selectedLoan,
                           );
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(

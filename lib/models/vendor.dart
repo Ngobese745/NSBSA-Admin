@@ -16,6 +16,7 @@ class VendorModel {
   final double? savingsAmount;
   final String? savingsFrequency;
   final DateTime? savingsStartDate;
+  final String? avatarUrl;
   final DateTime createdAt;
 
   VendorModel({
@@ -36,6 +37,7 @@ class VendorModel {
     this.savingsAmount,
     this.savingsFrequency,
     this.savingsStartDate,
+    this.avatarUrl,
     required this.createdAt,
   });
 
@@ -57,6 +59,7 @@ class VendorModel {
     double? savingsAmount,
     String? savingsFrequency,
     DateTime? savingsStartDate,
+    String? avatarUrl,
     DateTime? createdAt,
   }) {
     return VendorModel(
@@ -77,6 +80,7 @@ class VendorModel {
       savingsAmount: savingsAmount ?? this.savingsAmount,
       savingsFrequency: savingsFrequency ?? this.savingsFrequency,
       savingsStartDate: savingsStartDate ?? this.savingsStartDate,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -104,6 +108,7 @@ class VendorModel {
       savingsStartDate: json['savings_start_date'] != null
           ? DateTime.parse(json['savings_start_date'])
           : null,
+      avatarUrl: json['avatar_url'],
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'])
           : DateTime.now(),
@@ -128,6 +133,7 @@ class VendorModel {
       'savings_amount': savingsAmount,
       'savings_frequency': savingsFrequency,
       'savings_start_date': savingsStartDate?.toIso8601String(),
+      'avatar_url': avatarUrl,
       'created_at': createdAt.toIso8601String(),
     };
     if (id.isNotEmpty) {

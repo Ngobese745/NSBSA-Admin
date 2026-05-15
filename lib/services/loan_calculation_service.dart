@@ -53,21 +53,14 @@ class LoanCalculationService {
   static double calculateBalance(LoanModel loan, List<PaymentModel> payments) {
     final totalPaid = payments.fold(0.0, (sum, p) => sum + p.amountPaid);
 
-    final initiationFee = loan.initiationFee ?? 0.0;
-    
-    // Admin fee is charged monthly for the duration of the loan
-    final totalAdminFee = (loan.monthlyAdminFee ?? 0.0) * loan.durationMonths;
-    
     final appliedPenalty = calculateAppliedPenalty(loan, payments);
     final openingAmount = loan.openingAmount ?? 0.0;
 
-    // Total liability is (Monthly Repayment * Term) + Fees + Penalties
-    // Note: loan.amount is the principal, but the monthly repayment includes interest.
+    // Total liability is (Monthly Repayment * Term) + Opening Amount + Late Penalties
+    // The monthly installment already includes the principal, interest, admin fees, and amortized initiation fee.
     final totalLiability =
         (loan.monthlyPayment * loan.durationMonths) +
         openingAmount +
-        initiationFee +
-        totalAdminFee +
         appliedPenalty;
 
     final balance = totalLiability - totalPaid;

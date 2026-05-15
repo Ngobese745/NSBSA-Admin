@@ -4,9 +4,11 @@ import '../models/group.dart';
 
 import '../services/cache_service.dart';
 import '../services/system_audit_service.dart';
+import '../services/communication_service.dart';
 
 class GroupProvider with ChangeNotifier {
   final _supabase = Supabase.instance.client;
+  final _communicationService = CommunicationService();
   List<GroupModel> _groups = [];
   bool _isLoading = false;
 
@@ -56,14 +58,15 @@ class GroupProvider with ChangeNotifier {
     String? creatorName,
   }) async {
     try {
-      // Fetch Center to get DF
+      // Fetch Center to get DF and Center Name
       final centerRes = await _supabase
           .from('centers')
-          .select('df_id, df_name')
+          .select('name, df_id, df_name')
           .eq('id', centerId)
           .single();
-      final dfId = centerRes['df_id'];
-      final dfName = centerRes['df_name'];
+      final actualCenterName = centerRes['name']?.toString() ?? 'NSBSA Center';
+      final String? dfId = centerRes['df_id']?.toString();
+      final dfName = centerRes['df_name']?.toString() ?? 'NSBSA Facilitator';
 
       final response = await _supabase
           .from('groups')
@@ -71,9 +74,9 @@ class GroupProvider with ChangeNotifier {
             'name': name,
             'reference_number': referenceNumber,
             'center_id': centerId,
-            'df_id': dfId,
+            'df_id': (dfId == null || dfId.isEmpty) ? null : dfId,
             'df_name': dfName,
-            'creator_id': creatorId,
+            'creator_id': (creatorId == null || creatorId.isEmpty) ? null : creatorId,
             'creator_name': creatorName,
           })
           .select()
@@ -93,13 +96,14 @@ class GroupProvider with ChangeNotifier {
                 'gender': m['gender'],
                 'business_type': m['business'],
                 'whatsapp_number': m['whatsapp'],
+                'email': m['email'],
                 'address': m['address'],
                 'role': m['role'],
                 'savings_amount': m['savings_amount'],
                 'savings_frequency': m['savings_frequency'],
                 'savings_start_date': m['savings_start_date'],
                 'reference_number': referenceNumber,
-                'df_id': dfId,
+                'df_id': (dfId == null || dfId.isEmpty) ? null : dfId,
                 'df_name': dfName,
               },
             )
@@ -114,7 +118,9 @@ class GroupProvider with ChangeNotifier {
             .select()
             .eq('group_id', groupId);
 
-        for (var vendor in (vendorsResponse as List)) {
+        final List vendorsList = vendorsResponse as List? ?? [];
+        
+        for (var vendor in vendorsList) {
           final role = vendor['role'];
           if (['Chairperson', 'Secretary', 'Treasurer'].contains(role)) {
             leadershipEntries.add({
@@ -127,6 +133,35 @@ class GroupProvider with ChangeNotifier {
 
         if (leadershipEntries.isNotEmpty) {
           await _supabase.from('leadership').insert(leadershipEntries);
+        }
+
+        // Send notifications to all new members (fire-and-forget — never blocks save)
+        for (var vendor in vendorsList) {
+          final vendorId = vendor['id']?.toString() ?? '';
+          final vendorName = vendor['name']?.toString() ?? '';
+          final vendorEmail = vendor['email']?.toString() ?? '';
+          final vendorPhone = vendor['phone']?.toString() ?? '';
+          final vendorWhatsApp = vendor['whatsapp_number']?.toString() ?? '';
+          final memberRole = vendor['role']?.toString() ?? 'Member';
+
+          if (vendorId.isNotEmpty && vendorName.isNotEmpty) {
+            _communicationService
+                .sendGroupWelcomeNotification(
+                  vendorId: vendorId,
+                  vendorName: vendorName,
+                  toEmail: vendorEmail,
+                  toPhone: vendorPhone,
+                  toWhatsApp: vendorWhatsApp,
+                  groupName: name,
+                  groupRef: referenceNumber,
+                  centerName: actualCenterName,
+                  memberRole: memberRole,
+                )
+                .catchError((e) {
+              debugPrint(
+                  'Non-critical: notification failed for $vendorName: $e');
+            });
+          }
         }
       }
 
