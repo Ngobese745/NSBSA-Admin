@@ -970,6 +970,154 @@ class CommunicationService {
     });
   }
 
+  Future<void> sendPrivacyPolicyNotification({
+    required String vendorId,
+    required String vendorName,
+    required String memberRole,
+    required String toEmail,
+    required String toPhone,
+    required String toWhatsApp,
+    required String groupName,
+    required String groupRef,
+    required String centerName,
+  }) async {
+    debugPrint('Queuing Privacy Policy notification for $vendorName (Group: $groupName)');
+
+    final fileName = 'Privacy_Policy_${vendorId}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+    final filePath = 'privacy_policies/$fileName';
+
+    // 1. Generate PDF Privacy Policy
+    Uint8List? pdfBytes;
+    String? pdfUrl;
+    try {
+      pdfBytes = await PdfService.generatePrivacyPolicyPdf(
+        memberName: vendorName,
+        memberRole: memberRole,
+        groupName: groupName,
+        groupRef: groupRef,
+        centerName: centerName,
+      );
+
+      // Upload to storage
+      await _client.storage.from('documents').uploadBinary(filePath, pdfBytes);
+      pdfUrl = _client.storage.from('documents').getPublicUrl(filePath);
+    } catch (e) {
+      debugPrint('Error generating/uploading Privacy Policy PDF: $e');
+    }
+
+    // 2. Prepare SMS (≤160 chars)
+    if (toPhone.isNotEmpty) {
+      final smsContent = 'NSBSA: You’ve been added to Group $groupName. Please review our Privacy Policy here: https://nsbsa.org.za/privacy-policy.html';
+      await sendManualSMS(vendorId: vendorId, toPhone: toPhone, content: smsContent);
+    }
+
+    // 3. Prepare WhatsApp & Email Body
+    final commonBody = 
+        'Dear *$vendorName*,\n\n'
+        'You have been successfully added to a new NSBSA Group. Please find your registration and group details below.\n\n'
+        '📌 *Group Name:* $groupName\n'
+        '🧾 *Group Ref:* $groupRef\n'
+        '🏢 *Center:* $centerName\n'
+        '👤 *Member Name:* $vendorName\n'
+        '🏷️ *Role:* $memberRole\n'
+        '📱 *Contact:* ${toPhone.isNotEmpty ? toPhone : 'N/A'}\n\n'
+        'Please review our *Privacy Policy* attached for your rights and obligations as a member.\n\n'
+        'Welcome to the group!';
+
+    // 3a. WhatsApp (Document + Caption)
+    final whatsappNumber = toWhatsApp.isNotEmpty ? toWhatsApp : toPhone;
+    if (whatsappNumber.isNotEmpty) {
+      if (pdfUrl != null) {
+        await sendManualWhatsAppDocument(
+          vendorId: vendorId,
+          toWhatsApp: whatsappNumber,
+          documentUrl: pdfUrl,
+          filename: 'NSBSA_Privacy_Policy.pdf',
+          caption: commonBody,
+        );
+      } else {
+        await sendManualWhatsApp(
+          vendorId: vendorId,
+          toWhatsApp: whatsappNumber,
+          content: commonBody,
+        );
+      }
+    }
+
+    // 3b. Email (Branded HTML + PDF attachment link)
+    if (toEmail.isNotEmpty) {
+      final emailHtml = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0A0E14; color: #E6E6E6; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 40px auto; background-color: #161B22; border-radius: 16px; overflow: hidden; border: 1px solid #30363D; }
+        .header { background-color: #0D1117; padding: 40px; text-align: center; border-bottom: 2px solid #D4AF37; }
+        .logo { max-width: 120px; }
+        .tagline { font-size: 12px; color: #D4AF37; letter-spacing: 1px; margin-top: 10px; text-transform: uppercase; }
+        .content { padding: 40px 50px; line-height: 1.8; color: #B1BAC4; }
+        .info-table { width: 100%; border-collapse: collapse; margin: 25px 0; background-color: #0D1117; border-radius: 8px; overflow: hidden; border: 1px solid #30363D; }
+        .info-table td { padding: 12px; border-bottom: 1px solid #1F242D; }
+        .label { color: #8B949E; width: 40%; }
+        .value { color: #FFFFFF; font-weight: bold; }
+        .download-btn { display: inline-block; padding: 15px 30px; background-color: #D4AF37; color: #000000 !important; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; }
+        .footer { padding: 30px; text-align: center; color: #484F58; font-size: 12px; background-color: #0D1117; border-top: 1px solid #30363D; }
+        .footer a { color: #D4AF37; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="https://www.stokvelbody.org.za/wp-content/uploads/2019/05/logo02.png" alt="NSBSA Logo" class="logo">
+            <div class="tagline">Empowering Communities</div>
+        </div>
+        <div class="content">
+            <p>Dear <strong>$vendorName</strong>,</p>
+            <p>You have been successfully added to a new NSBSA Group. Please find your registration and group details below.</p>
+            
+            <table class="info-table">
+                <tr><td class="label">Group Name</td><td class="value">$groupName</td></tr>
+                <tr><td class="label">Group Ref</td><td class="value">$groupRef</td></tr>
+                <tr><td class="label">Center Name</td><td class="value">$centerName</td></tr>
+                <tr><td class="label">Member Role</td><td class="value">$memberRole</td></tr>
+            </table>
+
+            <p>Please review our <strong>Privacy Policy</strong> attached for your rights and obligations as a member.</p>
+            
+            ${pdfUrl != null ? '<div style="text-align: center;"><a href="$pdfUrl" class="download-btn">Download Privacy Policy (PDF)</a></div>' : ''}
+            
+            <p>Welcome to the group! Together, we strive to build stronger financial futures.</p>
+        </div>
+        <div class="footer">
+            <p><strong>Contact NSBSA</strong><br>Email: info@nsbsa.org.za | Phone: 087 107 7524<br>Website: <a href="https://www.stokvelbody.org.za">www.stokvelbody.org.za</a></p>
+        </div>
+    </div>
+</body>
+</html>
+''';
+
+      await sendManualEmail(
+        vendorId: vendorId,
+        toEmail: toEmail,
+        subject: 'Group Membership & Privacy Policy Disclosure - $groupName',
+        content: emailHtml,
+        isRawHtml: true,
+      );
+    }
+
+    // 4. Cleanup: Remove PDF after 10 minutes
+    Future.delayed(const Duration(minutes: 10), () async {
+      try {
+        await _client.storage.from('documents').remove([filePath]);
+        debugPrint('Cleaned up Privacy Policy PDF: $filePath');
+      } catch (e) {
+        debugPrint('Error cleaning up Privacy Policy PDF: $e');
+      }
+    });
+  }
+
   String _wrapInBrandedTemplate(String content) {
     final formattedContent = content.replaceAll('\n', '<br>');
     return '''

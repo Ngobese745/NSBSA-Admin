@@ -276,11 +276,152 @@ class PdfService {
     return pdf.save();
   }
 
+  static Future<Uint8List> generatePrivacyPolicyPdf({
+    required String memberName,
+    required String memberRole,
+    required String groupName,
+    required String groupRef,
+    required String centerName,
+  }) async {
+    final pdf = pw.Document();
+    final dateFormat = DateFormat('dd MMMM yyyy');
+
+    pw.Widget logoPlaceholder;
+    try {
+      final logoData = await rootBundle.load('assets/images/logo1.png');
+      final logoImage = pw.MemoryImage(logoData.buffer.asUint8List());
+      logoPlaceholder = pw.Image(logoImage, width: 100);
+    } catch (e) {
+      logoPlaceholder = pw.Text('NSBSA', 
+        style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColors.amber));
+    }
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(40),
+        build: (pw.Context context) {
+          return [
+            // Header
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                logoPlaceholder,
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: [
+                    pw.Text('PRIVACY POLICY & DATA PROTECTION', 
+                      style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+                    pw.Text('Member Disclosure Document', 
+                      style: const pw.TextStyle(fontSize: 9, color: PdfColors.black)),
+                  ],
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 15),
+            pw.Divider(color: PdfColors.black, thickness: 1.5),
+            pw.SizedBox(height: 20),
+
+            // Personalized Section
+            pw.Container(
+              padding: const pw.EdgeInsets.all(15),
+              decoration: pw.BoxDecoration(
+                color: PdfColors.grey100,
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text('MEMBER & GROUP DETAILS', 
+                    style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
+                  pw.SizedBox(height: 10),
+                  pw.Row(
+                    children: [
+                      pw.Expanded(child: _buildInfoItem('Member Name', memberName)),
+                      pw.Expanded(child: _buildInfoItem('Role', memberRole)),
+                    ],
+                  ),
+                  pw.SizedBox(height: 10),
+                  pw.Row(
+                    children: [
+                      pw.Expanded(child: _buildInfoItem('Group', '$groupName ($groupRef)')),
+                      pw.Expanded(child: _buildInfoItem('Center', centerName)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 25),
+
+            // Policy Content
+            _buildPolicySection('1. Introduction', 
+              'NSBSA is committed to protecting your privacy and ensuring that your personal information is collected and used properly, lawfully, and transparently in compliance with the Protection of Personal Information Act (POPIA). This policy explains how we handle your data.'),
+            
+            _buildPolicySection('2. Data Collection', 
+              'We collect personal information including your name, contact details, ID number, and financial activity (savings and loans) within your group. This data is collected directly from you or your group leadership during onboarding.'),
+
+            _buildPolicySection('3. Usage of Information', 
+              'Your information is used to:\n'
+              '- Process and manage group-based loans.\n'
+              '- Track and report on your savings activities.\n'
+              '- Send automated notifications (SMS, WhatsApp, Email) regarding your account.\n'
+              '- Ensure organizational oversight and financial compliance.'),
+
+            _buildPolicySection('4. Data Sharing', 
+              'NSBSA does not sell your data. Your information may be shared with:\n'
+              '- Your group leadership and fellow members (as per group constitution).\n'
+              '- Regulatory authorities where required by law.\n'
+              '- Verified third-party service providers (e.g., communication gateways) solely for operational purposes.'),
+
+            _buildPolicySection('5. Your Rights', 
+              'As a member, you have the right to:\n'
+              '- Access the personal information we hold about you.\n'
+              '- Request corrections to inaccurate or outdated information.\n'
+              '- Object to the processing of your data (subject to group membership obligations).\n'
+              '- Request the deletion of your data once membership is terminated and all obligations are met.'),
+
+            _buildPolicySection('6. Contact Us', 
+              'For any privacy-related queries or to exercise your rights, please contact the NSBSA Information Officer at info@nsbsa.org.za or call 087 107 7524.'),
+
+            pw.Spacer(),
+            pw.Divider(),
+            pw.Center(
+              child: pw.Column(
+                children: [
+                  pw.Text('NSBSA | Empowering Communities', 
+                    style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                  pw.Text('Issue Date: ${dateFormat.format(DateTime.now())} | Version 1.2', 
+                    style: const pw.TextStyle(fontSize: 8)),
+                ],
+              ),
+            ),
+          ];
+        },
+      ),
+    );
+
+    return pdf.save();
+  }
+
+  static pw.Widget _buildPolicySection(String title, String content) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 15),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(title, style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
+          pw.SizedBox(height: 5),
+          pw.Text(content, style: const pw.TextStyle(fontSize: 10, height: 1.4)),
+        ],
+      ),
+    );
+  }
+
   static pw.Widget _buildInfoItem(String label, String value) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        pw.Text(label, style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
+        pw.Text(label, style: const pw.TextStyle(fontSize: 8, color: PdfColors.black)),
         pw.Text(value.isEmpty ? '-' : value, style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
       ],
     );

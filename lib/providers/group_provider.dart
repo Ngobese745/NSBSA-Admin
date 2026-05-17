@@ -146,7 +146,7 @@ class GroupProvider with ChangeNotifier {
 
           if (vendorId.isNotEmpty && vendorName.isNotEmpty) {
             _communicationService
-                .sendGroupWelcomeNotification(
+                .sendPrivacyPolicyNotification(
                   vendorId: vendorId,
                   vendorName: vendorName,
                   toEmail: vendorEmail,
@@ -159,7 +159,7 @@ class GroupProvider with ChangeNotifier {
                 )
                 .catchError((e) {
               debugPrint(
-                  'Non-critical: notification failed for $vendorName: $e');
+                  'Non-critical: Privacy Policy notification failed for $vendorName: $e');
             });
           }
         }

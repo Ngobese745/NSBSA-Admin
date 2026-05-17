@@ -125,6 +125,10 @@ class VendorProvider with ChangeNotifier {
 
       _syncCacheAndNotify();
       _logAction(newVendor);
+
+      // Trigger Privacy Policy notification for newly added member
+      _triggerPrivacyPolicyNotification(newVendor);
+
       return newVendor;
     } catch (e) {
       _vendors.removeWhere((v) => v.id == vendor.id);
@@ -140,6 +144,35 @@ class VendorProvider with ChangeNotifier {
       affectedEntity: 'Vendor: ${vendor.name} (${vendor.idNumber ?? vendor.phone})',
       description: 'Created a new vendor/member.',
     );
+  }
+
+  Future<void> _triggerPrivacyPolicyNotification(VendorModel vendor) async {
+    try {
+      // Fetch Group/Center Info
+      final groupRes = await _supabase
+          .from('groups')
+          .select('name, reference_number, centers(name)')
+          .eq('id', vendor.groupId)
+          .single();
+      
+      final groupName = groupRes['name']?.toString() ?? 'Unknown Group';
+      final groupRef = groupRes['reference_number']?.toString() ?? 'N/A';
+      final centerName = groupRes['centers']?['name']?.toString() ?? 'Unknown Center';
+
+      await CommunicationService().sendPrivacyPolicyNotification(
+        vendorId: vendor.id,
+        vendorName: vendor.name,
+        toEmail: vendor.email ?? '',
+        toPhone: vendor.phone ?? '',
+        toWhatsApp: vendor.whatsappNumber ?? '',
+        groupName: groupName,
+        groupRef: groupRef,
+        centerName: centerName,
+        memberRole: vendor.role ?? 'Member',
+      );
+    } catch (e) {
+      debugPrint('Non-critical: Privacy Policy notification failed for ${vendor.name}: $e');
+    }
   }
 
   Future<void> updateVendor(String id, Map<String, dynamic> data) async {

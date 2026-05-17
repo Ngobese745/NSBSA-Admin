@@ -75,8 +75,8 @@ flutter:
   uses-material-design: true
 
   assets:
-    - .env
     - assets/images/
+    - .env # IMPORTANT: Remove this before production deployment to prevent secret leakage in JS bundle.
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see
