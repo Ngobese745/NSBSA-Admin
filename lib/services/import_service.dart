@@ -5,79 +5,229 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/vendor.dart';
 import '../models/loan.dart';
 import 'notification_service.dart';
+import 'system_audit_service.dart';
+
+// ---------------------------------------------------------------------------
+// Result models
+// ---------------------------------------------------------------------------
+
+/// Per-sheet import summary used for post-import verification.
+class MonthImportSummary {
+  /// The raw tab name exactly as it appears in the Excel file.
+  final String rawSheetLabel;
+
+  /// Normalised human-readable month name (e.g. "January").
+  final String monthLabel;
+
+  /// Number of data rows found in the Excel sheet (excluding header).
+  final int rowsInExcel;
+
+  /// Number of rows successfully persisted (or skipped as duplicate).
+  final int rowsImported;
+
+  /// Whether the imported count matches what was in the file.
+  bool get matched => rowsImported == rowsInExcel;
+
+  const MonthImportSummary({
+    required this.rawSheetLabel,
+    required this.monthLabel,
+    required this.rowsInExcel,
+    required this.rowsImported,
+  });
+}
+
+/// Top-level result returned after a complete import run.
+class ImportResult {
+  final bool success;
+  final int totalRecordsInExcel;
+  final int totalRecordsImported;
+  final List<MonthImportSummary> monthSummaries;
+  final List<String> errors;
+
+  /// Sheets that are present in the Excel file but whose imported count
+  /// doesn't match the source – used for the verification failure message.
+  List<MonthImportSummary> get mismatchedMonths =>
+      monthSummaries.where((s) => !s.matched).toList();
+
+  bool get allMonthsMatch => mismatchedMonths.isEmpty;
+
+  String get verificationMessage {
+    if (!success) {
+      return 'Month values could not be imported correctly. '
+          'Please check your Excel file format.';
+    }
+    if (!allMonthsMatch) {
+      final names = mismatchedMonths.map((s) => s.monthLabel).join(', ');
+      return 'Month values could not be imported correctly for: $names. '
+          'Please check your Excel file format.';
+    }
+    return 'Import completed successfully. All month values match the Excel file.';
+  }
+
+  const ImportResult({
+    required this.success,
+    required this.totalRecordsInExcel,
+    required this.totalRecordsImported,
+    required this.monthSummaries,
+    required this.errors,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Canonical month definitions
+// ---------------------------------------------------------------------------
+
+/// All recognised variants per month (uppercase). The first entry is the
+/// canonical full name used when displaying results.
+const _monthVariants = [
+  ['JANUARY', 'JAN'],
+  ['FEBRUARY', 'FEB'],
+  ['MARCH', 'MAR'],
+  ['APRIL', 'APR'],
+  ['MAY'],
+  ['JUNE', 'JUN'],
+  ['JULY', 'JUL'],
+  ['AUGUST', 'AUG'],
+  ['SEPTEMBER', 'SEP'],
+  ['OCTOBER', 'OCT'],
+  ['NOVEMBER', 'NOV'],
+  ['DECEMBER', 'DEC'],
+];
+
+// ---------------------------------------------------------------------------
+// ImportService
+// ---------------------------------------------------------------------------
 
 class ImportService {
   final _supabase = Supabase.instance.client;
 
-  Future<void> importExcel(List<int> bytes, {Function(double, String)? onProgress}) async {
-    onProgress?.call(0.0, 'Analyzing Excel file...');
-    var decoder = SpreadsheetDecoder.decodeBytes(bytes);
-    
-    // 1. Calculate total valid rows for progress tracking
-    int totalValidRows = 0;
-    List<String> validSheets = [];
-    for (var table in decoder.tables.keys) {
-      if (_isMonthSheet(table)) {
-        validSheets.add(table);
-        var sheet = decoder.tables[table]!;
-        for (int i = 1; i < sheet.maxRows; i++) {
-          if (sheet.rows[i].isNotEmpty && sheet.rows[i][0] != null) {
-            totalValidRows++;
-          }
-        }
+  // -------------------------------------------------------------------------
+  // Public API
+  // -------------------------------------------------------------------------
+
+  /// Import an Excel file (.xlsx) encoded as [bytes].
+  ///
+  /// [fileName]   – used purely for audit-log traceability.
+  /// [onProgress] – optional progress callback (0.0 → 1.0, message).
+  ///
+  /// Returns a structured [ImportResult] describing what happened per month.
+  Future<ImportResult> importExcel(
+    List<int> bytes, {
+    String fileName = 'unknown.xlsx',
+    Function(double, String)? onProgress,
+  }) async {
+    onProgress?.call(0.0, 'Analysing Excel file…');
+
+    final List<MonthImportSummary> summaries = [];
+    final List<String> errors = [];
+
+    late SpreadsheetDecoder decoder;
+    try {
+      decoder = SpreadsheetDecoder.decodeBytes(bytes);
+    } catch (e) {
+      throw Exception(
+        'Month values could not be imported correctly. '
+        'Please check your Excel file format. ($e)',
+      );
+    }
+
+    onProgress?.call(0.02, 'Pre-loading existing data into memory…');
+    await _preloadData();
+
+
+    // 1. Discover and validate month sheets ---------------------------------
+    final List<_SheetInfo> sheets = [];
+
+    for (final tabName in decoder.tables.keys) {
+      final info = _resolveMonthSheet(tabName);
+      if (info == null) continue; // Not a month sheet – skip silently
+
+      final sheet = decoder.tables[tabName]!;
+
+      // Detect header row and column mapping
+      final headerInfo = _detectHeaderRow(sheet);
+      if (headerInfo == null) continue; // No recognisable header – skip
+
+      // Count data rows (rows after the header with a non-empty name cell)
+      int dataRows = 0;
+      for (int i = headerInfo.dataStartRow; i < sheet.maxRows; i++) {
+        final row = sheet.rows[i];
+        if (row.isEmpty) continue;
+        final name = _str(row, headerInfo.cols['name'] ?? 0);
+        if (name.isNotEmpty) dataRows++;
       }
+
+      if (dataRows == 0) continue; // Empty sheet – skip
+
+      sheets.add(_SheetInfo(
+        tabName: tabName,
+        monthLabel: info.$1,
+        monthNumber: info.$2,
+        sheet: sheet,
+        headerInfo: headerInfo,
+        rowsInExcel: dataRows,
+      ));
     }
 
-    if (totalValidRows == 0) {
-      throw Exception('No valid data found in any month sheet (January-December).');
+    if (sheets.isEmpty) {
+      throw Exception(
+        'No valid data found in any month sheet (January–December). '
+        'Please check your Excel file format.',
+      );
     }
 
+    // Sort sheets in calendar order
+    sheets.sort((a, b) => a.monthNumber.compareTo(b.monthNumber));
+
+    int totalExcel = sheets.fold(0, (s, sh) => s + sh.rowsInExcel);
     int processedRows = 0;
-    onProgress?.call(0.05, 'Importing $totalValidRows records...');
 
-    for (var table in validSheets) {
-      var sheet = decoder.tables[table]!;
-      DateTime sheetDate = _getSheetDate(table);
+    onProgress?.call(0.05, 'Importing $totalExcel records…');
 
-      for (int i = 1; i < sheet.maxRows; i++) {
-        var row = sheet.rows[i];
-        if (row.isEmpty || row[0] == null) continue;
+    // 2. Process each sheet -------------------------------------------------
+    for (final sheetInfo in sheets) {
+      int importedForSheet = 0;
+      final sheet = sheetInfo.sheet;
+      final cols = sheetInfo.headerInfo.cols;
+      final dataStart = sheetInfo.headerInfo.dataStartRow;
+      final sheetDate = DateTime(DateTime.now().year, sheetInfo.monthNumber, 1);
 
-        String name = row[0]?.toString() ?? '';
-        if (name.isEmpty || name == 'null') continue;
+      for (int i = dataStart; i < sheet.maxRows; i++) {
+        final row = sheet.rows[i];
+        if (row.isEmpty) continue;
+
+        final name = _str(row, cols['name'] ?? 0);
+        if (name.isEmpty || name.toLowerCase() == 'null') continue;
 
         processedRows++;
-        double progress = 0.05 + (processedRows / totalValidRows * 0.9);
-        onProgress?.call(progress, 'Processing: $name ($table)');
+        final pct = 0.05 + (processedRows / totalExcel * 0.9);
+        onProgress?.call(pct, 'Processing: $name (${sheetInfo.monthLabel})');
 
         try {
-          String idNumber = row[1]?.toString() ?? '';
-          String phone = row[2]?.toString() ?? '';
-          String groupName = row[3]?.toString() ?? 'Default Group';
-          String businessType = row[4]?.toString() ?? '';
-          String dfName = row[5]?.toString() ?? '';
-          String gender = row[6]?.toString() ?? '';
+          final idNumber      = _str(row, cols['id_number'] ?? 1);
+          final phone         = _str(row, cols['phone'] ?? 2);
+          final groupName     = _str(row, cols['group_name'] ?? 3, fallback: 'Default Group');
+          final businessType  = _str(row, cols['business_type'] ?? 4);
+          final dfName        = _str(row, cols['df_name'] ?? 5);
+          final gender        = _str(row, cols['gender'] ?? 6);
 
-          double amount = _toDouble(row[7]);
-          int term = _toInt(row[8]);
-          DateTime? firstPaymentDate = _toDateTime(row[9]);
-          double openingAmount = _toDouble(row[10]);
-          double initiationFee = _toDouble(row[11]);
-          double adminFee = _toDouble(row[12]);
-          double monthlyInstalment = _toDouble(row.length > 13 ? row[13] : 0);
-          double penaltyFee = _toDouble(row.length > 14 ? row[14] : 0);
+          final amount            = _toDouble(row, cols['loan_amount'] ?? 7);
+          final term              = _toInt(row, cols['loan_term'] ?? 8);
+          final firstPaymentDate  = _toDateTime(row, cols['first_payment'] ?? 9);
+          final openingAmount     = _toDouble(row, cols['opening_amount'] ?? 10);
+          final initiationFee     = _toDouble(row, cols['init_fee'] ?? 11);
+          final adminFee          = _toDouble(row, cols['admin_fee'] ?? 12);
+          final monthlyInstalment = _toDouble(row, cols['monthly'] ?? 13);
+          final penaltyFee        = _toDouble(row, cols['penalty'] ?? 14);
 
-          double paidInit = _toDouble(row.length > 15 ? row[15] : 0);
-          double paidAdmin = _toDouble(row.length > 16 ? row[16] : 0);
-          double paidInstalment = _toDouble(row.length > 17 ? row[17] : 0);
-          double paidPenalty = _toDouble(row.length > 18 ? row[18] : 0);
-          double totalPaidThisMonth = paidInit + paidAdmin + paidInstalment + paidPenalty;
+          final paidInit        = _toDouble(row, cols['paid_init'] ?? 15);
+          final paidAdmin       = _toDouble(row, cols['paid_admin'] ?? 16);
+          final paidInstalment  = _toDouble(row, cols['paid_instalment'] ?? 17);
+          final paidPenalty     = _toDouble(row, cols['paid_penalty'] ?? 18);
+          final totalPaid = paidInit + paidAdmin + paidInstalment + paidPenalty;
 
-          // 1. Get or Create Group
-          String groupId = await _getOrCreateGroup(groupName);
-
-          // 2. Get or Create Vendor
-          String vendorId = await _getOrCreateVendor(
+          final groupId = await _getOrCreateGroup(groupName);
+          final vendorId = await _getOrCreateVendor(
             groupId: groupId,
             name: name,
             phone: phone,
@@ -87,46 +237,294 @@ class ImportService {
             gender: gender,
           );
 
-          // 3. Handle Loan & Payment Logic
           if (amount > 0) {
-            String? existingLoanId = await _findExistingLoan(vendorId, amount);
+            String? loanId = await _findExistingLoan(vendorId, amount);
+            loanId ??= await _upsertLoan(
+              groupId: groupId,
+              vendorId: vendorId,
+              amount: amount,
+              term: term,
+              monthlyPayment: monthlyInstalment,
+              initiationFee: initiationFee,
+              adminFee: adminFee,
+              penaltyFee: penaltyFee,
+              openingAmount: openingAmount,
+              firstPaymentDate: firstPaymentDate,
+            );
 
-            if (existingLoanId == null) {
-              existingLoanId = await _upsertLoan(
-                groupId: groupId,
-                vendorId: vendorId,
-                amount: amount,
-                term: term,
-                monthlyPayment: monthlyInstalment,
-                initiationFee: initiationFee,
-                adminFee: adminFee,
-                penaltyFee: penaltyFee,
-                openingAmount: openingAmount,
-                firstPaymentDate: firstPaymentDate,
-              );
-            }
-
-            if (totalPaidThisMonth > 0) {
+            if (totalPaid > 0) {
               await _recordPayment(
-                loanId: existingLoanId,
-                amount: totalPaidThisMonth,
+                loanId: loanId,
+                amount: totalPaid,
                 date: sheetDate,
               );
             }
           }
+
+          importedForSheet++;
         } catch (e) {
-          debugPrint('Error importing row for $name: $e');
-          // Continue with next row
+          final errMsg = 'Row error in ${sheetInfo.monthLabel} for "$name": $e';
+          debugPrint(errMsg);
+          errors.add(errMsg);
+        }
+      }
+
+      summaries.add(MonthImportSummary(
+        rawSheetLabel: sheetInfo.tabName,
+        monthLabel: sheetInfo.monthLabel,
+        rowsInExcel: sheetInfo.rowsInExcel,
+        rowsImported: importedForSheet,
+      ));
+    }
+
+    onProgress?.call(0.97, 'Verifying imported month data…');
+
+    // 3. Post-import verification -------------------------------------------
+    final result = ImportResult(
+      success: errors.isEmpty,
+      totalRecordsInExcel: totalExcel,
+      totalRecordsImported: processedRows,
+      monthSummaries: summaries,
+      errors: errors,
+    );
+
+    // 4. Audit log ----------------------------------------------------------
+    final monthBreakdown = summaries
+        .map((s) => '${s.monthLabel}: ${s.rowsImported}/${s.rowsInExcel}'
+            '${s.matched ? ' ✓' : ' ✗'}')
+        .join(', ');
+
+    await SystemAuditService.logAction(
+      actionType: 'IMPORT',
+      affectedEntity: 'EXCEL_IMPORT',
+      description: 'File: $fileName | Records: $processedRows/$totalExcel | '
+          'Months: $monthBreakdown | '
+          'Errors: ${errors.isEmpty ? "None" : errors.length}',
+    );
+
+    // 5. Admin notification -------------------------------------------------
+    onProgress?.call(1.0, result.verificationMessage);
+
+    await NotificationService.notifyAdmins(
+      result.allMonthsMatch ? 'Data Import Complete' : 'Data Import Warning',
+      result.verificationMessage,
+      type: 'SYSTEM',
+    );
+
+    return result;
+  }
+
+  // -------------------------------------------------------------------------
+  // Month sheet resolution
+  // -------------------------------------------------------------------------
+
+  /// Returns (canonicalMonthName, monthNumber) if [tabName] is a month sheet,
+  /// or null if it is not.  Handles full names, abbreviations, and trailing
+  /// dots (e.g. "JANUARY.", "JAN", "jan.").
+  (String, int)? _resolveMonthSheet(String tabName) {
+    final normalised = tabName.toUpperCase().replaceAll('.', '').trim();
+    for (int i = 0; i < _monthVariants.length; i++) {
+      for (final variant in _monthVariants[i]) {
+        if (normalised == variant) {
+          // Return proper-case full month name + 1-based month number
+          final fullName = _monthVariants[i][0][0] +
+              _monthVariants[i][0].substring(1).toLowerCase();
+          return (fullName, i + 1);
         }
       }
     }
+    return null;
+  }
 
-    onProgress?.call(1.0, 'Finalizing import...');
-    await NotificationService.notifyAdmins(
-      'Data Import Complete',
-      'The Excel data import has finished successfully. $totalValidRows records processed.',
-      type: 'SYSTEM',
+  // -------------------------------------------------------------------------
+  // Header-row detection & column mapping
+  // -------------------------------------------------------------------------
+
+  /// Known column-header aliases mapped to internal keys.
+  static const _headerAliases = <String, String>{
+    // Name column
+    "member's name & surname": 'name',
+    "member name": 'name',
+    "name": 'name',
+    "full name": 'name',
+    // ID
+    "id number": 'id_number',
+    "id no": 'id_number',
+    "id": 'id_number',
+    // Phone / Cell
+    "cell number": 'phone',
+    "phone": 'phone',
+    "phone number": 'phone',
+    "cell": 'phone',
+    // Group
+    "group name": 'group_name',
+    "group": 'group_name',
+    // Business
+    "business type": 'business_type',
+    "business": 'business_type',
+    // DF
+    "d.f name": 'df_name',
+    "df name": 'df_name',
+    "facilitator": 'df_name',
+    // Gender
+    "gender": 'gender',
+    // Loan amount
+    "loan amount": 'loan_amount',
+    "amount": 'loan_amount',
+    "principal": 'loan_amount',
+    // Term
+    "loan term": 'loan_term',
+    "term": 'loan_term',
+    "duration": 'loan_term',
+    // First payment
+    "1st instal payment": 'first_payment',
+    "first instalment": 'first_payment',
+    "first payment date": 'first_payment',
+    "1st payment": 'first_payment',
+    // Opening
+    "opening amount": 'opening_amount',
+    "opening balance": 'opening_amount',
+    // Fees
+    "initiation fee": 'init_fee',
+    "init fee": 'init_fee',
+    "admin fee": 'admin_fee',
+    "monthly admin fee": 'admin_fee',
+    "monthly instalment": 'monthly',
+    "monthly": 'monthly',
+    "penalty fee": 'penalty',
+    "penalty": 'penalty',
+    // Paid columns
+    "paid init": 'paid_init',
+    "paid initiation": 'paid_init',
+    "paid admin": 'paid_admin',
+    "paid instalment": 'paid_instalment',
+    "paid monthly": 'paid_instalment',
+    "paid penalty": 'paid_penalty',
+  };
+
+  _HeaderInfo? _detectHeaderRow(dynamic sheet) {
+    // Scan first 5 rows for the header
+    for (int r = 0; r < 5 && r < (sheet.maxRows as int); r++) {
+      final row = sheet.rows[r] as List;
+      if (row.isEmpty) continue;
+
+      final Map<String, int> colMap = {};
+
+      for (int c = 0; c < row.length; c++) {
+        final raw = row[c]?.toString().trim().toLowerCase() ?? '';
+        if (raw.isEmpty) continue;
+        final key = _headerAliases[raw];
+        if (key != null && !colMap.containsKey(key)) {
+          colMap[key] = c;
+        }
+      }
+
+      // Accept a row as a header if it contains at least the name column
+      if (colMap.containsKey('name')) {
+        return _HeaderInfo(headerRow: r, dataStartRow: r + 1, cols: colMap);
+      }
+    }
+
+    // Fallback: treat row 0 as header and use positional mapping
+    return _HeaderInfo(
+      headerRow: 0,
+      dataStartRow: 1,
+      cols: {
+        'name': 0, 'id_number': 1, 'phone': 2, 'group_name': 3,
+        'business_type': 4, 'df_name': 5, 'gender': 6, 'loan_amount': 7,
+        'loan_term': 8, 'first_payment': 9, 'opening_amount': 10,
+        'init_fee': 11, 'admin_fee': 12, 'monthly': 13, 'penalty': 14,
+        'paid_init': 15, 'paid_admin': 16, 'paid_instalment': 17,
+        'paid_penalty': 18,
+      },
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // Helper extractors
+  // -------------------------------------------------------------------------
+
+  String _str(List<dynamic> row, int col, {String fallback = ''}) {
+    if (col >= row.length) return fallback;
+    final v = row[col]?.toString().trim() ?? '';
+    return v.isEmpty ? fallback : v;
+  }
+
+  double _toDouble(List<dynamic> row, int col) {
+    if (col >= row.length || row[col] == null) return 0.0;
+    final v = row[col];
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString()) ?? 0.0;
+  }
+
+  int _toInt(List<dynamic> row, int col) {
+    if (col >= row.length || row[col] == null) return 0;
+    final v = row[col];
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString()) ?? 0;
+  }
+
+  DateTime? _toDateTime(List<dynamic> row, int col) {
+    if (col >= row.length || row[col] == null) return null;
+    final v = row[col];
+    if (v is DateTime) return v;
+    return DateTime.tryParse(v.toString());
+  }
+
+  // -------------------------------------------------------------------------
+  // Database helpers (In-Memory Cached)
+  // -------------------------------------------------------------------------
+
+  Map<String, String> _groupIdMap = {}; // name (lower) -> id
+  Map<String, String> _groupIdRefMap = {}; // id -> reference_number
+  
+  Map<String, String> _vendorIdNumberMap = {}; // idNumber -> id
+  Map<String, String> _vendorPhoneMap = {}; // phone -> id
+  Map<String, String> _vendorNameGroupMap = {}; // "name|groupId" -> id
+
+  Map<String, String> _loanKeyMap = {}; // "vendorId|amount" -> id
+
+  Set<String> _paymentKeySet = {}; // "loanId|amount|date" -> id
+
+  Future<void> _preloadData() async {
+    _groupIdMap.clear();
+    _groupIdRefMap.clear();
+    _vendorIdNumberMap.clear();
+    _vendorPhoneMap.clear();
+    _vendorNameGroupMap.clear();
+    _loanKeyMap.clear();
+    _paymentKeySet.clear();
+
+    // Load groups
+    final groups = await _supabase.from('groups').select('id, name, reference_number');
+    for (var g in groups) {
+      _groupIdMap[g['name'].toString().toLowerCase().trim()] = g['id'];
+      _groupIdRefMap[g['id']] = g['reference_number']?.toString() ?? '';
+    }
+
+    // Load vendors
+    final vendors = await _supabase.from('vendors').select('id, id_number, phone, name, group_id');
+    for (var v in vendors) {
+      if (v['id_number'] != null && v['id_number'].toString().trim().isNotEmpty) {
+        _vendorIdNumberMap[v['id_number'].toString().trim()] = v['id'];
+      }
+      if (v['phone'] != null && v['phone'].toString().trim().isNotEmpty) {
+        _vendorPhoneMap[v['phone'].toString().trim()] = v['id'];
+      }
+      _vendorNameGroupMap['${v['name']}|${v['group_id']}'] = v['id'];
+    }
+
+    // Load loans
+    final loans = await _supabase.from('loans').select('id, vendor_id, amount').eq('status', 'Active');
+    for (var l in loans) {
+      _loanKeyMap['${l['vendor_id']}|${l['amount']}'] = l['id'];
+    }
+
+    // Load payments
+    final payments = await _supabase.from('payments').select('id, loan_id, amount_paid, date_paid');
+    for (var p in payments) {
+      _paymentKeySet.add('${p['loan_id']}|${p['amount_paid']}|${p['date_paid']}');
+    }
   }
 
   Future<void> _recordPayment({
@@ -134,100 +532,26 @@ class ImportService {
     required double amount,
     required DateTime date,
   }) async {
-    // Check if this payment already exists to prevent duplicate payments on re-import
-    final existing = await _supabase
-        .from('payments')
-        .select('id')
-        .eq('loan_id', loanId)
-        .eq('amount_paid', amount)
-        .eq('date_paid', date.toIso8601String())
-        .maybeSingle();
-
-    if (existing == null) {
-      await _supabase.from('payments').insert({
-        'loan_id': loanId,
-        'amount_paid': amount,
-        'date_paid': date.toIso8601String(),
-        'payment_method': 'Imported',
-      });
+    final paymentKey = '$loanId|$amount|${date.toIso8601String()}';
+    if (_paymentKeySet.contains(paymentKey)) {
+      return; // Already exists
     }
-  }
 
-  bool _isMonthSheet(String name) {
-    final months = [
-      'JANUARY',
-      'FEBRUARY',
-      'MARCH',
-      'APRIL',
-      'MAY',
-      'JUNE',
-      'JULY',
-      'AUGUST',
-      'SEPTEMBER',
-      'OCTOBER',
-      'NOVEMBER',
-      'DECEMBER',
-    ];
-    String upper = name.toUpperCase().replaceAll('.', '').trim();
-    return months.contains(upper);
-  }
-
-  DateTime _getSheetDate(String sheetName) {
-    String upper = sheetName.toUpperCase().replaceAll('.', '').trim();
-    int month = 1;
-    if (upper.contains('FEB'))
-      month = 2;
-    else if (upper.contains('MAR'))
-      month = 3;
-    else if (upper.contains('APR'))
-      month = 4;
-    else if (upper.contains('MAY'))
-      month = 5;
-    else if (upper.contains('JUN'))
-      month = 6;
-    else if (upper.contains('JUL'))
-      month = 7;
-    else if (upper.contains('AUG'))
-      month = 8;
-    else if (upper.contains('SEP'))
-      month = 9;
-    else if (upper.contains('OCT'))
-      month = 10;
-    else if (upper.contains('NOV'))
-      month = 11;
-    else if (upper.contains('DEC'))
-      month = 12;
-
-    // Stable date based on the month sheet to prevent duplicates if re-run
-    return DateTime(2026, month, 1);
-  }
-
-  double _toDouble(dynamic value) {
-    if (value == null) return 0.0;
-    if (value is num) return value.toDouble();
-    return double.tryParse(value.toString()) ?? 0.0;
-  }
-
-  int _toInt(dynamic value) {
-    if (value == null) return 0;
-    if (value is num) return value.toInt();
-    return int.tryParse(value.toString()) ?? 0;
-  }
-
-  DateTime? _toDateTime(dynamic value) {
-    if (value == null) return null;
-    if (value is DateTime) return value;
-    return DateTime.tryParse(value.toString());
+    await _supabase.from('payments').insert({
+      'loan_id': loanId,
+      'amount_paid': amount,
+      'date_paid': date.toIso8601String(),
+      'payment_method': 'Imported',
+    });
+    
+    _paymentKeySet.add(paymentKey);
   }
 
   Future<String> _getOrCreateGroup(String name) async {
-    final existing = await _supabase
-        .from('groups')
-        .select('id')
-        .eq('name', name)
-        .maybeSingle();
-
-    if (existing != null) return existing['id'];
+    final lowerName = name.toLowerCase().trim();
+    if (_groupIdMap.containsKey(lowerName)) {
+      return _groupIdMap[lowerName]!;
+    }
 
     final inserted = await _supabase
         .from('groups')
@@ -235,10 +559,13 @@ class ImportService {
           'name': name,
           'reference_number': 'GRP-${DateTime.now().millisecondsSinceEpoch}',
         })
-        .select('id')
+        .select('id, reference_number')
         .single();
-
-    return inserted['id'];
+        
+    final newId = inserted['id'] as String;
+    _groupIdMap[lowerName] = newId;
+    _groupIdRefMap[newId] = inserted['reference_number']?.toString() ?? '';
+    return newId;
   }
 
   Future<String> _getOrCreateVendor({
@@ -252,35 +579,16 @@ class ImportService {
   }) async {
     String? existingId;
 
-    // 1. Check by ID number (strongest unique identifier)
-    if (idNumber.isNotEmpty) {
-      final byId = await _supabase
-          .from('vendors')
-          .select('id')
-          .eq('id_number', idNumber)
-          .maybeSingle();
-      if (byId != null) existingId = byId['id'];
+    if (idNumber.isNotEmpty && _vendorIdNumberMap.containsKey(idNumber)) {
+      existingId = _vendorIdNumberMap[idNumber];
     }
 
-    // 2. Check by phone number if ID number wasn't found
-    if (existingId == null && phone.isNotEmpty) {
-      final byPhone = await _supabase
-          .from('vendors')
-          .select('id')
-          .eq('phone', phone)
-          .maybeSingle();
-      if (byPhone != null) existingId = byPhone['id'];
+    if (existingId == null && phone.isNotEmpty && _vendorPhoneMap.containsKey(phone)) {
+      existingId = _vendorPhoneMap[phone];
     }
 
-    // 3. Fall back to name + group (legacy safety net)
-    if (existingId == null) {
-      final byName = await _supabase
-          .from('vendors')
-          .select('id')
-          .eq('name', name)
-          .eq('group_id', groupId)
-          .maybeSingle();
-      if (byName != null) existingId = byName['id'];
+    if (existingId == null && _vendorNameGroupMap.containsKey('$name|$groupId')) {
+      existingId = _vendorNameGroupMap['$name|$groupId'];
     }
 
     final vendorData = {
@@ -294,43 +602,33 @@ class ImportService {
     };
 
     if (existingId != null) {
-      // UPDATE existing vendor details
       await _supabase.from('vendors').update(vendorData).eq('id', existingId);
       return existingId;
     } else {
-      // CREATE new vendor
       vendorData['reference_number'] = await _getGroupRef(groupId);
       final inserted = await _supabase
           .from('vendors')
           .insert(vendorData)
           .select('id')
           .single();
-      return inserted['id'];
+          
+      final newId = inserted['id'] as String;
+      
+      if (idNumber.isNotEmpty) _vendorIdNumberMap[idNumber] = newId;
+      if (phone.isNotEmpty) _vendorPhoneMap[phone] = newId;
+      _vendorNameGroupMap['$name|$groupId'] = newId;
+      
+      return newId;
     }
   }
 
   Future<String?> _findExistingLoan(String vendorId, double amount) async {
-    // Look for an active loan with this amount for this specific vendor
-    final response = await _supabase
-        .from('loans')
-        .select('id')
-        .eq('vendor_id', vendorId)
-        .eq('amount', amount)
-        .eq('status', 'Active')
-        .order('created_at', ascending: false)
-        .limit(1)
-        .maybeSingle();
-
-    return response?['id'];
+    final key = '$vendorId|$amount';
+    return _loanKeyMap[key];
   }
 
   Future<String> _getGroupRef(String groupId) async {
-    final res = await _supabase
-        .from('groups')
-        .select('reference_number')
-        .eq('id', groupId)
-        .single();
-    return res['reference_number'];
+    return _groupIdRefMap[groupId] ?? 'GRP-UNKNOWN';
   }
 
   Future<String> _upsertLoan({
@@ -362,22 +660,29 @@ class ImportService {
     };
 
     if (existingLoanId != null) {
-      // Update existing loan parameters if they differ (e.g. fees changed in spreadsheet)
-      await _supabase.from('loans').update(loanData).eq('id', existingLoanId);
+      await _supabase
+          .from('loans')
+          .update(loanData)
+          .eq('id', existingLoanId);
       return existingLoanId;
     } else {
-      // Insert new loan
       final inserted = await _supabase
           .from('loans')
           .insert(loanData)
           .select('id')
           .single();
-      return inserted['id'];
+          
+      final newId = inserted['id'] as String;
+      _loanKeyMap['$vendorId|$amount'] = newId;
+      return newId;
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Backup / Restore / Clear (unchanged)
+  // -------------------------------------------------------------------------
+
   Future<void> clearAllData() async {
-    // Delete in reverse order of dependencies to respect foreign keys
     await _supabase
         .from('payments')
         .delete()
@@ -420,44 +725,27 @@ class ImportService {
         .neq('id', '00000000-0000-0000-0000-000000000000');
   }
 
-  /// Generates a full system backup as a JSON string
   Future<Map<String, dynamic>> generateBackup() async {
     final Map<String, dynamic> data = {};
-
     final tables = [
-      'groups',
-      'profiles',
-      'system_settings',
-      'email_outbox',
-      'password_reset_requests',
-      'account_audit_log',
-      'system_audit_log',
-      'vendors',
-      'announcements',
-      'group_payments',
-      'loans',
-      'comments',
-      'documents',
-      'savings_history',
-      'payments',
+      'groups', 'profiles', 'system_settings', 'email_outbox',
+      'password_reset_requests', 'account_audit_log', 'system_audit_log',
+      'vendors', 'announcements', 'group_payments', 'loans', 'comments',
+      'documents', 'savings_history', 'payments',
     ];
-
-    for (var table in tables) {
+    for (final table in tables) {
       try {
-        final response = await _supabase.from(table).select();
-        data[table] = response;
+        data[table] = await _supabase.from(table).select();
       } catch (e) {
-        debugPrint('Backup: Skipping table $table as it might not exist: $e');
-        data[table] = []; // Default to empty if table is missing
+        debugPrint('Backup: Skipping table $table: $e');
+        data[table] = [];
       }
     }
-
     await NotificationService.notifyAdmins(
       'System Backup Created',
       'A full system data backup has been generated.',
       type: 'SYSTEM',
     );
-
     return {
       'version': '1.1.1',
       'timestamp': DateTime.now().toIso8601String(),
@@ -465,13 +753,9 @@ class ImportService {
     };
   }
 
-  /// Restores the system from a backup map
   Future<void> restoreBackup(Map<String, dynamic> backup) async {
     final data = backup['data'] as Map<String, dynamic>;
-
-    // 1. Wipe existing data (Full system wipe)
     await clearAllData();
-    // Wipe independent log tables too
     await _supabase
         .from('system_audit_log')
         .delete()
@@ -485,74 +769,33 @@ class ImportService {
         .delete()
         .neq('id', '00000000-0000-0000-0000-000000000000');
 
-    // 2. Restore in strict order of dependencies
-    if (data['groups'] != null && (data['groups'] as List).isNotEmpty) {
-      await _supabase.from('groups').insert(data['groups']);
+    void safeInsert(String table) async {
+      if (data[table] != null && (data[table] as List).isNotEmpty) {
+        await _supabase.from(table).insert(data[table]);
+      }
     }
 
-    // Profiles and Settings (Independent/Critical)
-    if (data['profiles'] != null && (data['profiles'] as List).isNotEmpty) {
-      await _supabase.from('profiles').upsert(data['profiles']);
-    }
-    if (data['system_settings'] != null &&
-        (data['system_settings'] as List).isNotEmpty) {
-      await _supabase.from('system_settings').upsert(data['system_settings']);
+    void safeUpsert(String table) async {
+      if (data[table] != null && (data[table] as List).isNotEmpty) {
+        await _supabase.from(table).upsert(data[table]);
+      }
     }
 
-    // Independent Logs
-    if (data['email_outbox'] != null &&
-        (data['email_outbox'] as List).isNotEmpty) {
-      await _supabase.from('email_outbox').insert(data['email_outbox']);
-    }
-    if (data['password_reset_requests'] != null &&
-        (data['password_reset_requests'] as List).isNotEmpty) {
-      await _supabase
-          .from('password_reset_requests')
-          .insert(data['password_reset_requests']);
-    }
-    if (data['account_audit_log'] != null &&
-        (data['account_audit_log'] as List).isNotEmpty) {
-      await _supabase
-          .from('account_audit_log')
-          .insert(data['account_audit_log']);
-    }
-    if (data['system_audit_log'] != null &&
-        (data['system_audit_log'] as List).isNotEmpty) {
-      await _supabase.from('system_audit_log').insert(data['system_audit_log']);
-    }
-
-    // Level 2 (Depends on Groups)
-    if (data['vendors'] != null && (data['vendors'] as List).isNotEmpty) {
-      await _supabase.from('vendors').insert(data['vendors']);
-    }
-    if (data['announcements'] != null &&
-        (data['announcements'] as List).isNotEmpty) {
-      await _supabase.from('announcements').insert(data['announcements']);
-    }
-    if (data['group_payments'] != null &&
-        (data['group_payments'] as List).isNotEmpty) {
-      await _supabase.from('group_payments').insert(data['group_payments']);
-    }
-
-    // Level 3 (Depends on Vendors/Groups/GroupPayments)
-    if (data['loans'] != null && (data['loans'] as List).isNotEmpty) {
-      await _supabase.from('loans').insert(data['loans']);
-    }
-    if (data['comments'] != null && (data['comments'] as List).isNotEmpty) {
-      await _supabase.from('comments').insert(data['comments']);
-    }
-    if (data['documents'] != null && (data['documents'] as List).isNotEmpty) {
-      await _supabase.from('documents').insert(data['documents']);
-    }
-    if (data['savings_history'] != null &&
-        (data['savings_history'] as List).isNotEmpty) {
-      await _supabase.from('savings_history').insert(data['savings_history']);
-    }
-
-    // Level 4 (Depends on Loans and GroupPayments)
-    if (data['payments'] != null && (data['payments'] as List).isNotEmpty) {
-      await _supabase.from('payments').insert(data['payments']);
-    }
+    safeInsert('groups');
+    safeUpsert('profiles');
+    safeUpsert('system_settings');
+    safeInsert('email_outbox');
+    safeInsert('password_reset_requests');
+    safeInsert('account_audit_log');
+    safeInsert('system_audit_log');
+    safeInsert('vendors');
+    safeInsert('announcements');
+    safeInsert('group_payments');
+    safeInsert('loans');
+    safeInsert('comments');
+    safeInsert('documents');
+    safeInsert('savings_history');
+    safeInsert('payments');
 
     await NotificationService.notifySuperAdmin(
       'System Restored',
@@ -560,4 +803,37 @@ class ImportService {
       type: 'SYSTEM',
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Private helpers
+// ---------------------------------------------------------------------------
+
+class _HeaderInfo {
+  final int headerRow;
+  final int dataStartRow;
+  final Map<String, int> cols;
+  const _HeaderInfo({
+    required this.headerRow,
+    required this.dataStartRow,
+    required this.cols,
+  });
+}
+
+class _SheetInfo {
+  final String tabName;
+  final String monthLabel;
+  final int monthNumber;
+  final dynamic sheet;
+  final _HeaderInfo headerInfo;
+  final int rowsInExcel;
+
+  const _SheetInfo({
+    required this.tabName,
+    required this.monthLabel,
+    required this.monthNumber,
+    required this.sheet,
+    required this.headerInfo,
+    required this.rowsInExcel,
+  });
 }

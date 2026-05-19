@@ -7,6 +7,7 @@ import 'package:universal_html/html.dart' as html;
 import '../services/import_service.dart';
 import '../services/system_audit_service.dart';
 import '../providers/providers.dart';
+import '../theme/app_theme.dart';
 
 class ImportScreen extends StatefulWidget {
   const ImportScreen({super.key});
@@ -16,31 +17,38 @@ class ImportScreen extends StatefulWidget {
 }
 
 class _ImportScreenState extends State<ImportScreen> {
-  final _importService = ImportService(); // Still used for file picking/downloading directly
+  final _importService = ImportService();
+
+  // -------------------------------------------------------------------------
+  // Import
+  // -------------------------------------------------------------------------
 
   Future<void> _pickAndImportFile() async {
     final provider = context.read<ImportProvider>();
     if (provider.isImporting) return;
 
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['xlsx'],
         withData: true,
       );
 
-      if (result != null) {
-        // Run the import in background through provider
-        provider.runImport(result.files.first.bytes!);
-        
+      if (result != null && result.files.first.bytes != null) {
+        final fileName = result.files.first.name;
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Import started in background...'),
+            SnackBar(
+              content: Text('Importing "$fileName" in background…'),
               backgroundColor: Colors.blueAccent,
+              duration: const Duration(seconds: 3),
             ),
           );
         }
+
+        // Run import and pass filename for audit traceability
+        provider.runImport(result.files.first.bytes!, fileName: fileName);
       } else {
         provider.setStatus('No file selected.');
       }
@@ -49,23 +57,27 @@ class _ImportScreenState extends State<ImportScreen> {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Backup
+  // -------------------------------------------------------------------------
+
   Future<void> _handleBackup() async {
     final provider = context.read<ImportProvider>();
     provider.startBackup();
-    provider.setStatus('Generating system backup...');
+    provider.setStatus('Generating system backup…');
 
     try {
       final backupData = await _importService.generateBackup();
       final jsonString = jsonEncode(backupData);
       final encryptedString = base64Encode(utf8.encode(jsonString));
       final bytes = utf8.encode(encryptedString);
-      
+
       final blob = html.Blob([bytes]);
       final url = html.Url.createObjectUrlFromBlob(blob);
-      final anchor = html.AnchorElement(href: url)
+      html.AnchorElement(href: url)
         ..setAttribute(
-          "download",
-          "NSBSA_Backup_${DateTime.now().toIso8601String().split('T')[0]}.nsbsa",
+          'download',
+          'NSBSA_Backup_${DateTime.now().toIso8601String().split('T')[0]}.nsbsa',
         )
         ..click();
       html.Url.revokeObjectUrl(url);
@@ -82,20 +94,23 @@ class _ImportScreenState extends State<ImportScreen> {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Restore
+  // -------------------------------------------------------------------------
+
   Future<void> _handleRestore() async {
     final provider = context.read<ImportProvider>();
     provider.startRestore();
-    provider.setStatus('Selecting backup file...');
+    provider.setStatus('Selecting backup file…');
 
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.platform.pickFiles(
         type: FileType.any,
         withData: true,
       );
 
       if (result != null) {
-        provider.setStatus('Decrypting and restoring data...');
-
+        provider.setStatus('Decrypting and restoring data…');
         final encryptedString = utf8.decode(result.files.first.bytes!);
         final jsonString = utf8.decode(base64Decode(encryptedString));
         final backupData = jsonDecode(jsonString) as Map<String, dynamic>;
@@ -117,28 +132,31 @@ class _ImportScreenState extends State<ImportScreen> {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Build
+  // -------------------------------------------------------------------------
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final authProvider = Provider.of<AuthProvider>(context);
     final importProvider = context.watch<ImportProvider>();
-    
+
     final isSuperAdmin = authProvider.userRole == 'Super Admin';
     final isAdmin = authProvider.userRole == 'Admin' || isSuperAdmin;
-
-    final isLoadingAny = importProvider.isImporting || 
-                         importProvider.isBackupRunning || 
-                         importProvider.isRestoreRunning;
+    final isLoadingAny = importProvider.isImporting ||
+        importProvider.isBackupRunning ||
+        importProvider.isRestoreRunning;
 
     return Scaffold(
       body: SingleChildScrollView(
         child: Center(
           child: Container(
-            constraints: const BoxConstraints(maxWidth: 800),
+            constraints: const BoxConstraints(maxWidth: 860),
             padding: const EdgeInsets.all(32),
             child: Column(
               children: [
-                // Header & Import
+                // ── Header ──────────────────────────────────────────────────
                 Icon(Icons.upload_file, size: 64, color: theme.primaryColor),
                 const SizedBox(height: 16),
                 Text(
@@ -152,13 +170,12 @@ class _ImportScreenState extends State<ImportScreen> {
                 Text(
                   'Upload Excel files to populate the system or manage system backups.',
                   textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey[400],
-                  ),
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(color: Colors.grey[400]),
                 ),
                 const SizedBox(height: 40),
 
-                // Main Actions
+                // ── Action cards ────────────────────────────────────────────
                 Wrap(
                   spacing: 20,
                   runSpacing: 20,
@@ -167,7 +184,8 @@ class _ImportScreenState extends State<ImportScreen> {
                     _buildActionCard(
                       title: 'Import Excel',
                       description:
-                          'Import groups, vendors and loans from "VES Loan Book".',
+                          'Import groups, vendors and loans from the VES Loan Book. '
+                          'Month sheets are automatically detected and verified.',
                       icon: Icons.table_view,
                       buttonLabel: 'Select Excel File',
                       onPressed: _pickAndImportFile,
@@ -203,93 +221,22 @@ class _ImportScreenState extends State<ImportScreen> {
                   ),
                 ],
 
+                // ── Status / progress ────────────────────────────────────────
                 if (importProvider.statusMessage != null) ...[
                   const SizedBox(height: 32),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: importProvider.statusMessage!.contains('Error') ||
-                              importProvider.statusMessage!.contains('failed')
-                          ? Colors.red.withOpacity(0.1)
-                          : Colors.green.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: importProvider.statusMessage!.contains('Error') ||
-                                importProvider.statusMessage!.contains('failed')
-                            ? Colors.red
-                            : Colors.green,
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          children: [
-                            if (isLoadingAny)
-                              const SizedBox(
-                                height: 16,
-                                width: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.green),
-                                ),
-                              )
-                            else
-                              Icon(
-                                importProvider.statusMessage!.contains('Error') ||
-                                        importProvider.statusMessage!.contains('failed')
-                                    ? Icons.error_outline
-                                    : Icons.check_circle_outline,
-                                color: importProvider.statusMessage!.contains('Error') ||
-                                        importProvider.statusMessage!.contains('failed')
-                                    ? Colors.red
-                                    : Colors.green,
-                              ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                importProvider.statusMessage!,
-                                style: TextStyle(
-                                  color: importProvider.statusMessage!.contains('Error') ||
-                                          importProvider.statusMessage!.contains('failed')
-                                      ? Colors.red
-                                      : Colors.green,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (importProvider.isImporting && importProvider.progress > 0) ...[
-                          const SizedBox(height: 16),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(4),
-                            child: LinearProgressIndicator(
-                              value: importProvider.progress,
-                              backgroundColor: Colors.white10,
-                              valueColor: const AlwaysStoppedAnimation<Color>(
-                                  Colors.green),
-                              minHeight: 6,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '${(importProvider.progress * 100).toInt()}% Complete',
-                            style: TextStyle(
-                              color: Colors.green.withOpacity(0.7),
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
+                  _buildStatusBanner(importProvider, isLoadingAny),
+                ],
+
+                // ── Per-month verification results ───────────────────────────
+                if (importProvider.lastImportResult != null &&
+                    !importProvider.isImporting) ...[
+                  const SizedBox(height: 24),
+                  _buildVerificationPanel(importProvider.lastImportResult!),
                 ],
 
                 const SizedBox(height: 64),
 
-                // Danger Zone - ONLY Super Admin
+                // ── Danger zone ─────────────────────────────────────────────
                 if (isSuperAdmin) ...[
                   const Divider(),
                   const SizedBox(height: 32),
@@ -303,7 +250,8 @@ class _ImportScreenState extends State<ImportScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Warning: This will permanently delete all groups, members, loans, and payments from the system.',
+                    'Warning: This will permanently delete all groups, members, '
+                    'loans, and payments from the system.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.grey[600], fontSize: 13),
                   ),
@@ -317,9 +265,7 @@ class _ImportScreenState extends State<ImportScreen> {
                     ),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 32,
-                        vertical: 16,
-                      ),
+                          horizontal: 32, vertical: 16),
                       side: const BorderSide(color: Colors.red),
                     ),
                   ),
@@ -332,6 +278,339 @@ class _ImportScreenState extends State<ImportScreen> {
       ),
     );
   }
+
+  // -------------------------------------------------------------------------
+  // Status banner widget
+  // -------------------------------------------------------------------------
+
+  Widget _buildStatusBanner(ImportProvider provider, bool isLoadingAny) {
+    final msg = provider.statusMessage!;
+    final isError = msg.toLowerCase().contains('error') ||
+        msg.toLowerCase().contains('failed') ||
+        msg.toLowerCase().contains('could not');
+    final isSuccess = !isError && !isLoadingAny;
+
+    final Color borderColor =
+        isError ? Colors.redAccent : (isSuccess ? Colors.green : Colors.blue);
+    final Color bgColor = borderColor.withOpacity(0.08);
+    final IconData icon = isError
+        ? Icons.error_outline
+        : (isLoadingAny ? Icons.hourglass_top_rounded : Icons.check_circle_outline);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: borderColor),
+      ),
+      child: Column(
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (isLoadingAny)
+                SizedBox(
+                  height: 18,
+                  width: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(borderColor),
+                  ),
+                )
+              else
+                Icon(icon, color: borderColor, size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  msg,
+                  style: TextStyle(
+                    color: borderColor,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (provider.isImporting && provider.progress > 0) ...[
+            const SizedBox(height: 14),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: provider.progress,
+                backgroundColor: Colors.white10,
+                valueColor: AlwaysStoppedAnimation<Color>(borderColor),
+                minHeight: 6,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                '${(provider.progress * 100).toInt()}% complete',
+                style: TextStyle(
+                  color: borderColor.withOpacity(0.7),
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Per-month verification panel
+  // -------------------------------------------------------------------------
+
+  Widget _buildVerificationPanel(ImportResult result) {
+    final allGood = result.allMonthsMatch && result.success;
+    final headerColor = allGood ? Colors.green : Colors.orangeAccent;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Panel header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            decoration: BoxDecoration(
+              color: headerColor.withOpacity(0.1),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(12)),
+              border: Border(
+                  bottom: BorderSide(color: headerColor.withOpacity(0.3))),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  allGood
+                      ? Icons.verified_rounded
+                      : Icons.warning_amber_rounded,
+                  color: headerColor,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Month-by-Month Verification Report',
+                    style: TextStyle(
+                      color: headerColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                // Summary badge
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: headerColor.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '${result.totalRecordsImported} / ${result.totalRecordsInExcel} records',
+                    style: TextStyle(
+                      color: headerColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Month rows table header
+          Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            child: Row(
+              children: [
+                Expanded(
+                    flex: 3,
+                    child: _tableHeaderCell('Excel Sheet Label')),
+                Expanded(
+                    flex: 2,
+                    child: _tableHeaderCell('Mapped Month')),
+                Expanded(child: _tableHeaderCell('In File')),
+                Expanded(child: _tableHeaderCell('Imported')),
+                const SizedBox(width: 60),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: Colors.white10),
+
+          // Month rows
+          ...result.monthSummaries.map((s) => _buildMonthRow(s)),
+
+          // Errors section (if any)
+          if (result.errors.isNotEmpty) ...[
+            const Divider(height: 1, color: Colors.white10),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Row-level errors (import continued for other rows)',
+                    style: TextStyle(
+                      color: Colors.orangeAccent,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ...result.errors.take(5).map(
+                        (e) => Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            '• $e',
+                            style: const TextStyle(
+                                color: Colors.redAccent, fontSize: 11),
+                          ),
+                        ),
+                      ),
+                  if (result.errors.length > 5)
+                    Text(
+                      '… and ${result.errors.length - 5} more errors.',
+                      style: const TextStyle(
+                          color: Colors.grey, fontSize: 11),
+                    ),
+                ],
+              ),
+            ),
+          ],
+
+          // Bottom summary
+          Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            decoration: BoxDecoration(
+              color: allGood
+                  ? Colors.green.withOpacity(0.07)
+                  : Colors.orangeAccent.withOpacity(0.07),
+              borderRadius:
+                  const BorderRadius.vertical(bottom: Radius.circular(12)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  allGood ? Icons.check_circle : Icons.info_outline,
+                  color: allGood ? Colors.green : Colors.orangeAccent,
+                  size: 16,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    result.verificationMessage,
+                    style: TextStyle(
+                      color: allGood ? Colors.green : Colors.orangeAccent,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMonthRow(MonthImportSummary s) {
+    final matched = s.matched;
+    final rowColor = matched ? Colors.green : Colors.orangeAccent;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: Colors.white10)),
+      ),
+      child: Row(
+        children: [
+          // Raw Excel label – preserved exactly as in the file
+          Expanded(
+            flex: 3,
+            child: Text(
+              s.rawSheetLabel,
+              style: const TextStyle(
+                  fontFamily: 'monospace',
+                  color: Colors.white70,
+                  fontSize: 12),
+            ),
+          ),
+          // Mapped canonical month name
+          Expanded(
+            flex: 2,
+            child: Text(
+              s.monthLabel,
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.w600,
+                  fontSize: 12),
+            ),
+          ),
+          // In-file count
+          Expanded(
+            child: Text(
+              '${s.rowsInExcel}',
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ),
+          // Imported count (coloured)
+          Expanded(
+            child: Text(
+              '${s.rowsImported}',
+              style: TextStyle(
+                  color: rowColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12),
+            ),
+          ),
+          // Status badge
+          SizedBox(
+            width: 60,
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: rowColor.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                matched ? '✓ OK' : '✗ Mismatch',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    color: rowColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 10),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tableHeaderCell(String label) => Text(
+        label,
+        style: const TextStyle(
+            color: Colors.grey, fontSize: 11, fontWeight: FontWeight.w600),
+      );
+
+  // -------------------------------------------------------------------------
+  // Action card
+  // -------------------------------------------------------------------------
 
   Widget _buildActionCard({
     required String title,
@@ -356,15 +635,12 @@ class _ImportScreenState extends State<ImportScreen> {
         children: [
           Icon(icon, color: color, size: 32),
           const SizedBox(height: 16),
-          Text(
-            title,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-          ),
+          Text(title,
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: 18)),
           const SizedBox(height: 8),
-          Text(
-            description,
-            style: TextStyle(color: Colors.grey[500], fontSize: 13),
-          ),
+          Text(description,
+              style: TextStyle(color: Colors.grey[500], fontSize: 13)),
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
@@ -372,9 +648,10 @@ class _ImportScreenState extends State<ImportScreen> {
               onPressed: isLoading ? null : onPressed,
               style: ElevatedButton.styleFrom(
                 backgroundColor: color,
-                foregroundColor: color == Theme.of(context).primaryColor
-                    ? Colors.black
-                    : Colors.white,
+                foregroundColor:
+                    color == Theme.of(context).primaryColor
+                        ? Colors.black
+                        : Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
               child: isLoading
@@ -390,6 +667,10 @@ class _ImportScreenState extends State<ImportScreen> {
       ),
     );
   }
+
+  // -------------------------------------------------------------------------
+  // Confirmation dialogs
+  // -------------------------------------------------------------------------
 
   void _confirmRestore(BuildContext context) {
     showDialog(
@@ -419,8 +700,7 @@ class _ImportScreenState extends State<ImportScreen> {
               _handleRestore();
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orangeAccent,
-            ),
+                backgroundColor: Colors.orangeAccent),
             child: const Text('Yes, Proceed with Restore'),
           ),
         ],
@@ -448,7 +728,7 @@ class _ImportScreenState extends State<ImportScreen> {
             onPressed: () async {
               final provider = context.read<ImportProvider>();
               Navigator.pop(context);
-              provider.setStatus('Clearing all data...');
+              provider.setStatus('Clearing all data…');
               try {
                 await _importService.clearAllData();
                 await SystemAuditService.logAction(

@@ -136,6 +136,11 @@ class ExcelExportService {
     dash.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 2)).value = TextCellValue('Report Generated:');
     dash.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 2)).value = TextCellValue(DateTime.now().toString().substring(0, 16));
 
+    if (summary['period'] != null) {
+      dash.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 3)).value = TextCellValue('Report Period:');
+      dash.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 3)).value = TextCellValue(summary['period'].toString());
+    }
+
     // KPI Section
     List<Map<String, String>> kpis = [
       {'label': 'Total Disbursed', 'value': 'R ${summary['totalDisbursed']}'},

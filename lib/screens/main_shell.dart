@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/app_assets.dart';
 import '../core/app_breakpoints.dart';
@@ -79,10 +80,21 @@ class _MainShellState extends State<MainShell> {
   @override
   void initState() {
     super.initState();
+    _loadSidebarState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       context.read<DeveloperControlsProvider>().refresh();
     });
+  }
+
+  Future<void> _loadSidebarState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final isExpanded = prefs.getBool('sidebar_expanded');
+    if (isExpanded != null && mounted) {
+      setState(() {
+        _isSidebarVisible = isExpanded;
+      });
+    }
   }
 
   Widget _shellBodyForIndex(int index) {
@@ -194,10 +206,12 @@ class _MainShellState extends State<MainShell> {
                               _isSidebarVisible ? Icons.menu_open : Icons.menu,
                               color: Colors.white,
                             ),
-                            onPressed: () {
+                            onPressed: () async {
                               setState(() {
                                 _isSidebarVisible = !_isSidebarVisible;
                               });
+                              final prefs = await SharedPreferences.getInstance();
+                              await prefs.setBool('sidebar_expanded', _isSidebarVisible);
                             },
                           ),
                           if (_isSidebarVisible) ...[
@@ -720,16 +734,27 @@ class _MainShellState extends State<MainShell> {
         leading: isCollapsed
             ? null
             : Icon(icon, size: 18, color: color),
-        title: isCollapsed
-            ? Center(child: Icon(icon, size: 20, color: color))
-            : Text(
-                title,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: color,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+        title: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          child: isCollapsed
+              ? Tooltip(
+                  key: ValueKey('icon-$title'),
+                  message: title,
+                  child: Center(child: Icon(icon, size: 20, color: color)),
+                )
+              : Container(
+                  key: ValueKey('text-$title'),
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: color,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                    ),
+                  ),
                 ),
-              ),
+        ),
         selected: isSelected,
         selectedTileColor: isLight
             ? Colors.white.withOpacity(0.3)
@@ -749,10 +774,7 @@ class _MainShellState extends State<MainShell> {
             context.read<ShellNavigationProvider>().setSelectedIndex(index);
           }
 
-          // Auto-hide/collapse sidebar on navigation
-          setState(() {
-            _isSidebarVisible = false;
-          });
+
 
           // Close drawer on mobile if open using GlobalKey for reliability
           if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {

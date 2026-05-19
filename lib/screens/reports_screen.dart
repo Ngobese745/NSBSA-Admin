@@ -14,6 +14,10 @@ import '../providers/analytics_provider.dart';
 import 'loan_details_screen.dart';
 import '../services/loan_calculation_service.dart';
 import '../services/excel_export_service.dart';
+import '../models/loan.dart';
+import '../models/payment.dart';
+import '../models/vendor.dart';
+import '../models/group.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -26,6 +30,52 @@ class _ReportsScreenState extends State<ReportsScreen> {
   String? _selectedLoanId;
   String? _editingFieldKey; // format: "loanId_fieldName"
   final Map<String, TextEditingController> _controllers = {};
+  int _selectedMonthFilter = DateTime.now().month;
+
+  List<Map<String, dynamic>> _getMonthFilterOptions() {
+    final now = DateTime.now();
+    final currentMonth = now.month;
+    final currentYear = now.year;
+    
+    final List<String> monthNames = [
+      '', 'January', 'February', 'March', 'April', 'May', 'June', 
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    List<Map<String, dynamic>> options = [];
+    
+    // Add cumulative option at the top
+    options.add({
+      'value': 0, // 0 represents cumulative "All Months"
+      'label': 'All Months (Cumulative: Jan - ${monthNames[currentMonth]} $currentYear)',
+    });
+
+    // Add specific months up to current month
+    for (int m = 1; m <= currentMonth; m++) {
+      final isCurrent = m == currentMonth;
+      options.add({
+        'value': m,
+        'label': '${monthNames[m]} $currentYear${isCurrent ? ' (Current)' : ''}',
+      });
+    }
+    
+    return options;
+  }
+
+  String _getSelectedPeriodString() {
+    final now = DateTime.now();
+    final currentYear = now.year;
+    final currentMonth = now.month;
+    final List<String> monthNames = [
+      '', 'January', 'February', 'March', 'April', 'May', 'June', 
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    if (_selectedMonthFilter == 0) {
+      return 'Cumulative (Jan - ${monthNames[currentMonth]} $currentYear)';
+    } else {
+      return '${monthNames[_selectedMonthFilter]} $currentYear';
+    }
+  }
 
   @override
   void dispose() {
@@ -131,19 +181,50 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final paymentProvider = context.watch<PaymentProvider>();
     final vendorProvider = context.watch<VendorProvider>();
 
+    final now = DateTime.now();
+    final currentYear = now.year;
+    final currentMonth = now.month;
+
+    // Filter loans & payments based on selected month
+    final List<LoanModel> filteredLoans;
+    final List<PaymentModel> filteredPayments;
+    final List<VendorModel> filteredVendors;
+
+    if (_selectedMonthFilter == 0) {
+      // Cumulative: from start of year up to current month
+      filteredLoans = loanProvider.loans.where((l) {
+        final date = l.firstInstalmentDate ?? l.createdAt;
+        return date.year == currentYear && date.month <= currentMonth;
+      }).toList();
+      filteredPayments = paymentProvider.payments.where((p) =>
+        p.datePaid.year == currentYear && p.datePaid.month <= currentMonth
+      ).toList();
+      filteredVendors = vendorProvider.vendors;
+    } else {
+      // Specific month
+      filteredLoans = loanProvider.loans.where((l) {
+        final date = l.firstInstalmentDate ?? l.createdAt;
+        return date.year == currentYear && date.month == _selectedMonthFilter;
+      }).toList();
+      filteredPayments = paymentProvider.payments.where((p) =>
+        p.datePaid.year == currentYear && p.datePaid.month == _selectedMonthFilter
+      ).toList();
+      filteredVendors = vendorProvider.vendors;
+    }
+
     // Calculate Summary Data
-    final totalDisbursed = loanProvider.loans.fold(
+    final totalDisbursed = filteredLoans.fold(
       0.0,
       (sum, l) => sum + l.amount,
     );
-    final totalCollected = paymentProvider.payments.fold(
+    final totalCollected = filteredPayments.fold(
       0.0,
       (sum, p) => sum + p.amountPaid,
     );
     // Calculate Total Outstanding by summing individual loan balances
     double totalOutstanding = 0;
-    for (final loan in loanProvider.loans) {
-      final loanPayments = paymentProvider.payments
+    for (final loan in filteredLoans) {
+      final loanPayments = filteredPayments
           .where((p) => p.loanId == loan.id)
           .toList();
       totalOutstanding += LoanCalculationService.calculateBalance(
@@ -151,22 +232,22 @@ class _ReportsScreenState extends State<ReportsScreen> {
         loanPayments,
       );
     }
-    final totalSavings = vendorProvider.vendors.fold(
+    final totalSavings = filteredVendors.fold(
       0.0,
       (sum, v) => sum + (v.savingsAmount ?? 0.0),
     );
 
     // Fee Calculations
-    final totalInitiationFees = loanProvider.loans.fold(
+    final totalInitiationFees = filteredLoans.fold(
       0.0,
       (sum, l) => sum + (l.initiationFee ?? 0),
     );
-    final totalAdminFees = loanProvider.loans.fold(
+    final totalAdminFees = filteredLoans.fold(
       0.0,
       (sum, l) => sum + ((l.monthlyAdminFee ?? 0) * l.durationMonths),
     );
-    final totalPenaltyFees = loanProvider.loans.fold(0.0, (sum, l) {
-      final loanPayments = paymentProvider.payments
+    final totalPenaltyFees = filteredLoans.fold(0.0, (sum, l) {
+      final loanPayments = filteredPayments
           .where((p) => p.loanId == l.id)
           .toList();
       return sum +
@@ -174,6 +255,51 @@ class _ReportsScreenState extends State<ReportsScreen> {
     });
     final totalExpectedFees =
         totalInitiationFees + totalAdminFees + totalPenaltyFees;
+
+    // Calculate local filtered Arrears Aging
+    double aging30 = 0;
+    double aging60 = 0;
+    double aging90 = 0;
+    double aging90Plus = 0;
+
+    // Calculate local filtered Loan Book Breakdown
+    final Map<String, double> breakdownByDF = {};
+    final Map<String, double> breakdownByCenter = {};
+    final Map<String, double> breakdownByType = {};
+
+    final Map<String, GroupModel> groupMap = {for (var g in groupProvider.groups) g.id: g};
+
+    for (var loan in filteredLoans) {
+      final loanPayments = filteredPayments.where((p) => p.loanId == loan.id).toList();
+      final balance = LoanCalculationService.calculateBalance(loan, loanPayments);
+      
+      if (balance > 0) {
+        final group = groupMap[loan.groupId];
+        final dfName = group?.dfName ?? 'Unassigned';
+        final centerId = group?.centerId ?? 'Unassigned';
+        final loanType = loan.loanType ?? 'Standard';
+
+        breakdownByDF[dfName] = (breakdownByDF[dfName] ?? 0) + balance;
+        breakdownByCenter[centerId] = (breakdownByCenter[centerId] ?? 0) + balance;
+        breakdownByType[loanType] = (breakdownByType[loanType] ?? 0) + balance;
+
+        final arrears = LoanCalculationService.calculateArrears(loan, loanPayments);
+        if (arrears > 0) {
+          final monthsOverdue = (arrears / (loan.monthlyPayment > 0 ? loan.monthlyPayment : 1)).ceil();
+          final daysOverdue = monthsOverdue * 30;
+
+          if (daysOverdue <= 30) {
+            aging30 += arrears;
+          } else if (daysOverdue <= 60) {
+            aging60 += arrears;
+          } else if (daysOverdue <= 90) {
+            aging90 += arrears;
+          } else {
+            aging90Plus += arrears;
+          }
+        }
+      }
+    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(32),
@@ -204,8 +330,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 children: [
                   ElevatedButton.icon(
                     onPressed: () => _exportToExcel(
-                      loanProvider,
-                      paymentProvider,
+                      filteredLoans,
+                      filteredPayments,
                       vendorProvider,
                       groupProvider,
                     ),
@@ -229,6 +355,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       totalOutstanding,
                       totalExpectedFees,
                       totalSavings,
+                      filteredLoans,
+                      filteredPayments,
                     ),
                     icon: const Icon(Icons.download),
                     label: const Text('Export PDF Report'),
@@ -246,6 +374,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ],
           ),
           const SizedBox(height: 40),
+
+          // Month Filter Bar
+          _buildFilterBar(context),
+          const SizedBox(height: 32),
 
           // Main Stats Row
           Row(
@@ -406,7 +538,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           _buildTableHeader(''), // Actions
                         ],
                       ),
-                      ...loanProvider.loans.map((loan) {
+                      ...filteredLoans.map((loan) {
                         final isSelected = loan.id == _selectedLoanId;
                         final vendor = vendorProvider.vendors
                             .where((v) => v.id == loan.vendorId)
@@ -414,7 +546,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         final group = groupProvider.groups
                             .where((g) => g.id == loan.groupId)
                             .firstOrNull;
-                        final loanPayments = paymentProvider.payments
+                        final loanPayments = filteredPayments
                             .where((p) => p.loanId == loan.id)
                             .toList();
                         final totalPaid = loanPayments.fold(
@@ -566,7 +698,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 child: _buildInsightCard(
                   theme,
                   'Arrears Aging Analysis',
-                  _buildAgingTable(context),
+                  _buildAgingTable(context, aging30, aging60, aging90, aging90Plus),
                 ),
               ),
             ],
@@ -583,7 +715,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 child: _buildInsightCard(
                   theme,
                   'Loan Book by Facilitator (DF)',
-                  _buildBreakdownTable(context, 'DF'),
+                  _buildBreakdownTable(context, 'DF', breakdownByDF),
                 ),
               ),
               const SizedBox(width: 24),
@@ -592,7 +724,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 child: _buildInsightCard(
                   theme,
                   'Loan Book by Center',
-                  _buildBreakdownTable(context, 'Center'),
+                  _buildBreakdownTable(context, 'Center', breakdownByCenter),
                 ),
               ),
               const SizedBox(width: 24),
@@ -601,12 +733,103 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 child: _buildInsightCard(
                   theme,
                   'Loan Book by Type',
-                  _buildBreakdownTable(context, 'Type'),
+                  _buildBreakdownTable(context, 'Type', breakdownByType),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 60),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterBar(BuildContext context) {
+    final theme = Theme.of(context);
+    final options = _getMonthFilterOptions();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.primaryGold.withOpacity(0.15)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.calendar_month, color: AppTheme.primaryGold, size: 24),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'REPORTING PERIOD',
+                    style: TextStyle(
+                      color: AppTheme.primaryGold,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 11,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _getSelectedPeriodString(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.black38,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<int>(
+                value: _selectedMonthFilter,
+                dropdownColor: theme.cardColor,
+                icon: const Icon(Icons.keyboard_arrow_down, color: AppTheme.primaryGold),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+                onChanged: (int? newValue) {
+                  if (newValue != null) {
+                    setState(() {
+                      _selectedMonthFilter = newValue;
+                    });
+                  }
+                },
+                items: options.map<DropdownMenuItem<int>>((option) {
+                  return DropdownMenuItem<int>(
+                    value: option['value'] as int,
+                    child: Text(
+                      option['label'] as String,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -852,10 +1075,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
     double outstanding,
     double fees,
     double savings,
+    List<LoanModel> filteredLoans,
+    List<PaymentModel> filteredPayments,
   ) async {
     final groupProvider = context.read<GroupProvider>();
-    final loanProvider = context.read<LoanProvider>();
-    final paymentProvider = context.read<PaymentProvider>();
     final vendorProvider = context.read<VendorProvider>();
 
     final pdf = pw.Document();
@@ -882,7 +1105,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     ),
                   ),
                   pw.Text(
-                    'Date: ${DateTime.now().toString().substring(0, 10)}',
+                    'Period: ${_getSelectedPeriodString()}',
+                    style: pw.TextStyle(
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.Text(
+                    'Exported: ${DateTime.now().toString().substring(0, 10)}',
                   ),
                 ],
               ),
@@ -947,14 +1176,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     _pdfCell('Balance', isBold: true),
                   ],
                 ),
-                ...loanProvider.loans.map((loan) {
+                ...filteredLoans.map((loan) {
                   final vendor = vendorProvider.vendors
                       .where((v) => v.id == loan.vendorId)
                       .firstOrNull;
                   final group = groupProvider.groups
                       .where((g) => g.id == loan.groupId)
                       .firstOrNull;
-                  final loanPayments = paymentProvider.payments
+                  final loanPayments = filteredPayments
                       .where((p) => p.loanId == loan.id)
                       .toList();
                   final totalPaid = loanPayments.fold(
@@ -1034,8 +1263,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Future<void> _exportToExcel(
-    LoanProvider loanProvider,
-    PaymentProvider paymentProvider,
+    List<LoanModel> filteredLoans,
+    List<PaymentModel> filteredPayments,
     VendorProvider vendorProvider,
     GroupProvider groupProvider,
   ) async {
@@ -1057,14 +1286,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
       ],
     ];
 
-    for (var loan in loanProvider.loans) {
+    for (var loan in filteredLoans) {
       final vendor = vendorProvider.vendors
           .where((v) => v.id == loan.vendorId)
           .firstOrNull;
       final group = groupProvider.groups
           .where((g) => g.id == loan.groupId)
           .firstOrNull;
-      final loanPayments = paymentProvider.payments
+      final loanPayments = filteredPayments
           .where((p) => p.loanId == loan.id)
           .toList();
       final totalPaid = loanPayments.fold(0.0, (sum, p) => sum + p.amountPaid);
@@ -1095,21 +1324,30 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
 
     // Calculate Summary Data
-    final totalDisbursed = loanProvider.loans.fold(0.0, (sum, l) => sum + l.amount);
-    final totalCollected = paymentProvider.payments.fold(0.0, (sum, p) => sum + p.amountPaid);
+    final totalDisbursed = filteredLoans.fold(0.0, (sum, l) => sum + l.amount);
+    final totalCollected = filteredPayments.fold(0.0, (sum, p) => sum + p.amountPaid);
     double totalOutstanding = 0;
-    for (var l in loanProvider.loans) {
-      final lp = paymentProvider.payments.where((p) => p.loanId == l.id).toList();
+    for (var l in filteredLoans) {
+      final lp = filteredPayments.where((p) => p.loanId == l.id).toList();
       totalOutstanding += LoanCalculationService.calculateBalance(l, lp);
     }
-    final totalSavings = vendorProvider.vendors.fold(0.0, (sum, v) => sum + (v.savingsAmount ?? 0.0));
-    final totalInitFees = loanProvider.loans.fold(0.0, (sum, l) => sum + (l.initiationFee ?? 0));
-    final totalAdminFees = loanProvider.loans.fold(0.0, (sum, l) => sum + ((l.monthlyAdminFee ?? 0) * l.durationMonths));
+    // Filter vendors to selected period
+    final now = DateTime.now();
+    final currentYear = now.year;
+    final currentMonth = now.month;
+    final filteredVendors = vendorProvider.vendors.where((v) =>
+      true
+    ).toList();
+
+    final totalSavings = filteredVendors.fold(0.0, (sum, v) => sum + (v.savingsAmount ?? 0.0));
+    final totalInitFees = filteredLoans.fold(0.0, (sum, l) => sum + (l.initiationFee ?? 0));
+    final totalAdminFees = filteredLoans.fold(0.0, (sum, l) => sum + ((l.monthlyAdminFee ?? 0) * l.durationMonths));
     final totalExpectedFees = totalInitFees + totalAdminFees;
     final collectionRate = totalDisbursed > 0 ? (totalCollected / totalDisbursed * 100).toStringAsFixed(1) : '0';
 
     await ExcelExportService.exportMasterLedger(
       summary: {
+        'period': _getSelectedPeriodString(),
         'totalDisbursed': totalDisbursed.toStringAsFixed(0),
         'totalCollected': totalCollected.toStringAsFixed(0),
         'totalOutstanding': totalOutstanding.toStringAsFixed(0),
@@ -1144,6 +1382,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final trend = context.watch<AnalyticsProvider>().monthlyTrend;
     final theme = Theme.of(context);
 
+    // List of months for matching
+    final List<String> shortMonths = [
+      '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+
     return Table(
       border: TableBorder.all(color: theme.dividerColor, width: 0.5),
       children: [
@@ -1158,22 +1401,46 @@ class _ReportsScreenState extends State<ReportsScreen> {
             _buildTableHeader('Actual Coll'),
           ],
         ),
-        ...trend.map((t) => TableRow(
-          children: [
-            _buildTableCell(t.month),
-            _buildTableCell('R ${t.disbursed.toStringAsFixed(0)}'),
-            _buildTableCell('R ${t.interest.toStringAsFixed(0)}'),
-            _buildTableCell('R ${t.adminFees.toStringAsFixed(0)}'),
-            _buildTableCell('R ${t.initiationFees.toStringAsFixed(0)}'),
-            _buildTableCell('R ${t.collected.toStringAsFixed(0)}', color: Colors.greenAccent),
-          ],
-        )).toList(),
+        ...trend.map((t) {
+          final isSelectedMonth = _selectedMonthFilter > 0 && 
+              shortMonths[_selectedMonthFilter] == t.month;
+
+          return TableRow(
+            decoration: isSelectedMonth
+                ? BoxDecoration(
+                    color: AppTheme.primaryGold.withOpacity(0.15),
+                  )
+                : null,
+            children: [
+              _buildTableCell(
+                t.month,
+                isBold: isSelectedMonth,
+                color: isSelectedMonth ? AppTheme.primaryGold : null,
+              ),
+              _buildTableCell('R ${t.disbursed.toStringAsFixed(0)}', isBold: isSelectedMonth),
+              _buildTableCell('R ${t.interest.toStringAsFixed(0)}', isBold: isSelectedMonth),
+              _buildTableCell('R ${t.adminFees.toStringAsFixed(0)}', isBold: isSelectedMonth),
+              _buildTableCell('R ${t.initiationFees.toStringAsFixed(0)}', isBold: isSelectedMonth),
+              _buildTableCell(
+                'R ${t.collected.toStringAsFixed(0)}',
+                color: isSelectedMonth ? AppTheme.primaryGold : Colors.greenAccent,
+                isBold: isSelectedMonth,
+              ),
+            ],
+          );
+        }).toList(),
       ],
     );
   }
 
-  Widget _buildAgingTable(BuildContext context) {
-    final aging = context.watch<AnalyticsProvider>().arrearsAging;
+  Widget _buildAgingTable(
+    BuildContext context,
+    double aging30,
+    double aging60,
+    double aging90,
+    double aging90Plus,
+  ) {
+    final totalArrears = aging30 + aging60 + aging90 + aging90Plus;
     final theme = Theme.of(context);
 
     return Table(
@@ -1186,15 +1453,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
             _buildTableHeader('Amount'),
           ],
         ),
-        _buildAgingRow('30 Days', aging.m30, Colors.yellowAccent),
-        _buildAgingRow('60 Days', aging.m60, Colors.orangeAccent),
-        _buildAgingRow('90 Days', aging.m90, Colors.redAccent),
-        _buildAgingRow('90+ Days', aging.m90Plus, Colors.red[900]!),
+        _buildAgingRow('30 Days', aging30, Colors.yellowAccent),
+        _buildAgingRow('60 Days', aging60, Colors.orangeAccent),
+        _buildAgingRow('90 Days', aging90, Colors.redAccent),
+        _buildAgingRow('90+ Days', aging90Plus, Colors.red[900]!),
         TableRow(
           decoration: BoxDecoration(color: theme.dividerColor.withOpacity(0.1)),
           children: [
             _buildTableHeader('Total Arrears'),
-            _buildTableHeader('R ${aging.totalArrears.toStringAsFixed(0)}'),
+            _buildTableHeader('R ${totalArrears.toStringAsFixed(0)}'),
           ],
         ),
       ],
@@ -1210,12 +1477,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Widget _buildBreakdownTable(BuildContext context, String mode) {
-    final breakdown = context.watch<AnalyticsProvider>().loanBookBreakdown;
+  Widget _buildBreakdownTable(BuildContext context, String mode, Map<String, double> data) {
     final theme = Theme.of(context);
-    final Map<String, double> data = mode == 'DF' 
-        ? breakdown.byDF 
-        : (mode == 'Center' ? breakdown.byCenter : breakdown.byType);
 
     return Table(
       border: TableBorder.all(color: theme.dividerColor, width: 0.5),
