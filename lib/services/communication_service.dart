@@ -3,12 +3,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/vendor.dart';
 import '../models/savings_history.dart';
 import 'pdf_service.dart';
-import 'smsworx_service.dart';
+import 'sms_messenger_service.dart';
 import 'wesender_service.dart';
 
 class CommunicationService {
   final _client = Supabase.instance.client;
-  final _smsService = SMSWorxService();
+  final _smsService = SMSMessengerService();
   final _whatsappService = WeSenderService();
 
   // --- MANUAL MESSAGING METHODS ---
