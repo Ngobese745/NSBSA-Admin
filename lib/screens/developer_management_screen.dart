@@ -10,12 +10,64 @@ import '../services/system_audit_service.dart';
 import '../services/audit_pdf_service.dart';
 
 import '../core/pdf_branding.dart';
+import '../widgets/nsbsa_loading_overlay.dart';
 import '../models/developer_controls.dart';
 import '../providers/auth_provider.dart';
 import '../providers/developer_controls_provider.dart';
 import '../services/access_control_service.dart';
 import 'developer/api_management_panel.dart';
 import '../theme/app_theme.dart';
+
+/// A small section label for dialogs.
+class _SectionLabel extends StatelessWidget {
+  final String label;
+  const _SectionLabel({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Text(
+      label,
+      style: theme.textTheme.bodySmall?.copyWith(
+        fontWeight: FontWeight.w600,
+        color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
+      ),
+    );
+  }
+}
+
+/// A small icon button for the header action area.
+class _HeaderAction extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  const _HeaderAction({
+    required this.icon,
+    required this.tooltip,
+    this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 34,
+      height: 34,
+      child: IconButton(
+        icon: Icon(icon, size: 18),
+        tooltip: tooltip,
+        onPressed: onPressed,
+        padding: EdgeInsets.zero,
+        visualDensity: VisualDensity.compact,
+        style: IconButton.styleFrom(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(6),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// Super Admin + allowlisted developer only (see [AccessControlService.canAccessDeveloperTools]).
 class DeveloperManagementScreen extends StatefulWidget {
@@ -35,7 +87,11 @@ class _DeveloperManagementScreenState extends State<DeveloperManagementScreen>
     super.initState();
     _tabController = TabController(length: 5, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) context.read<DeveloperControlsProvider>().refresh();
+      if (mounted) {
+        try {
+          context.read<DeveloperControlsProvider>().refresh();
+        } catch (_) {}
+      }
     });
   }
 
@@ -70,53 +126,80 @@ class _DeveloperManagementScreenState extends State<DeveloperManagementScreen>
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+          // ─── Header ───
+          Container(
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: theme.dividerColor.withOpacity(0.3),
+                  width: 0.5,
+                ),
+              ),
+            ),
+            padding: const EdgeInsets.fromLTRB(24, 16, 16, 12),
             child: Row(
               children: [
                 Icon(
                   Icons.developer_mode,
                   color: theme.colorScheme.primary,
-                  size: 28,
+                  size: 20,
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Text(
                   'Developer Management',
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.refresh),
+                _HeaderAction(
+                  icon: Icons.refresh,
                   tooltip: 'Reload',
-                  onPressed: () =>
-                      context.read<DeveloperControlsProvider>().refresh(),
+                  onPressed: () {
+                    final devCtrl = context.read<DeveloperControlsProvider>();
+                    runWithLoading(context, task: () => devCtrl.refresh());
+                  },
                 ),
               ],
             ),
           ),
+          // ─── Missing tables warning ───
           Consumer<DeveloperControlsProvider>(
             builder: (context, dev, _) {
               if (dev.tablesMissing) {
                 return Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 8,
-                  ),
-                  child: Material(
-                    color: Colors.deepOrange.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
-                    child: const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: Text(
-                        'Developer tables are not installed. Run '
-                        'supabase/migrations/20250512120002_developer_controls.sql in Supabase SQL Editor.',
-                        style: TextStyle(
-                          color: Colors.deepOrange,
-                          fontSize: 13,
-                        ),
+                  padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.deepOrange.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: Colors.deepOrange.withOpacity(0.2),
                       ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          size: 16,
+                          color: Colors.deepOrange.shade300,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Developer tables are not installed. Run '
+                            'supabase/migrations/20250512120002_developer_controls.sql '
+                            'in Supabase SQL Editor.',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: Colors.deepOrange.shade300,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 );
@@ -124,28 +207,36 @@ class _DeveloperManagementScreenState extends State<DeveloperManagementScreen>
               return const SizedBox.shrink();
             },
           ),
-          Material(
-            color: theme.cardColor,
+          // ─── Tab bar ───
+          Container(
+            padding: const EdgeInsets.only(left: 20, right: 20, top: 4),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: theme.dividerColor.withOpacity(0.15),
+                  width: 0.5,
+                ),
+              ),
+            ),
             child: TabBar(
               controller: _tabController,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
               indicatorColor: AppTheme.primaryGold,
+              indicatorSize: TabBarIndicatorSize.label,
               labelColor: AppTheme.primaryGold,
-              unselectedLabelColor: Colors.grey,
+              unselectedLabelColor: theme.textTheme.bodyMedium?.color?.withOpacity(0.5),
+              labelStyle: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+              unselectedLabelStyle: theme.textTheme.bodyMedium,
+              dividerHeight: 0,
               tabs: const [
-                Tab(text: 'Banners', icon: Icon(Icons.campaign, size: 18)),
-                Tab(
-                  text: 'Feature toggles',
-                  icon: Icon(Icons.toggle_on, size: 18),
-                ),
-                Tab(text: 'Activity log', icon: Icon(Icons.history, size: 18)),
-                Tab(
-                  text: 'System Audit Log',
-                  icon: Icon(Icons.security, size: 18),
-                ),
-                Tab(
-                  text: 'API Keys',
-                  icon: Icon(Icons.api_outlined, size: 18),
-                ),
+                Tab(text: 'Banners'),
+                Tab(text: 'Feature toggles'),
+                Tab(text: 'Activity log'),
+                Tab(text: 'System Audit Log'),
+                Tab(text: 'API Keys'),
               ],
             ),
           ),
@@ -172,32 +263,92 @@ class _BannersPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Consumer<DeveloperControlsProvider>(
       builder: (context, dev, _) {
         if (dev.isLoading && dev.banners.isEmpty) {
           return const Center(child: CircularProgressIndicator());
         }
         return ListView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
           children: [
-            FilledButton.icon(
-              onPressed: dev.tablesMissing
-                  ? null
-                  : () => _openBannerEditor(context, null),
-              icon: const Icon(Icons.add),
-              label: const Text('New banner'),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppTheme.primaryGold,
-                foregroundColor: Colors.black,
-              ),
+            // ─── Section header ───
+            Row(
+              children: [
+                Text(
+                  'System Banners',
+                  style: theme.textTheme.titleMedium,
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '${dev.banners.length}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: dev.tablesMissing
+                      ? null
+                      : () => _openBannerEditor(context, null),
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('New banner'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppTheme.primaryGold,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    textStyle: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             if (dev.banners.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'No banners yet. Create one to show a system-wide notice.',
-                  style: TextStyle(color: Colors.grey),
+              Container(
+                padding: const EdgeInsets.all(32),
+                decoration: BoxDecoration(
+                  color: theme.cardColor,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: theme.dividerColor.withOpacity(0.15),
+                  ),
+                ),
+                child: Center(
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.campaign_outlined,
+                        size: 36,
+                        color: theme.textTheme.bodySmall?.color?.withOpacity(0.4),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'No banners yet',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.textTheme.bodySmall?.color,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Create one to show a system-wide notice.',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
                 ),
               )
             else
@@ -222,100 +373,111 @@ class _BannerCard extends StatelessWidget {
     final uid = auth.userProfile?.id;
     final email = auth.userProfile?.email;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: theme.dividerColor),
+    final severityColor = switch (banner.severity) {
+      'critical' => Colors.red,
+      'warning' => Colors.amber,
+      _ => Colors.blue,
+    };
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: theme.dividerColor.withOpacity(0.12),
+          width: 0.5,
+        ),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ─── Top row: title + toggle ───
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
+            child: Row(
               children: [
+                Container(
+                  width: 3,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: banner.isEnabled
+                        ? severityColor
+                        : Colors.grey.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    banner.title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        banner.title,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        banner.message,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.textTheme.bodyMedium?.color?.withOpacity(0.6),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                Text(
-                  banner.isEnabled ? 'ON' : 'off',
-                  style: TextStyle(
-                    color: banner.isEnabled ? Colors.greenAccent : Colors.grey,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 11,
-                  ),
-                ),
+                const SizedBox(width: 8),
                 Switch(
                   value: banner.isEnabled,
                   activeThumbColor: AppTheme.primaryGold,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   onChanged: dev.tablesMissing || uid == null
                       ? null
-                      : (v) async {
-                          try {
+                      : (v) {
+                          runWithLoading(context, task: () async {
                             await dev.setBannerEnabled(
                               bannerId: banner.id,
                               enabled: v,
                               developerId: uid,
                               developerEmail: email,
                             );
-                          } catch (e) {
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('$e'),
-                                  backgroundColor: Colors.red,
-                                ),
-                              );
-                            }
-                          }
+                          }, successMessage: v ? 'Banner enabled.' : 'Banner disabled.');
                         },
                 ),
               ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              banner.message,
-              style: TextStyle(color: Colors.grey[400], fontSize: 13),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
+          ),
+          // ─── Meta row ───
+          Padding(
+            padding: const EdgeInsets.fromLTRB(31, 8, 12, 8),
+            child: Row(
               children: [
-                Chip(
-                  label: Text(
-                    banner.bannerType,
-                    style: const TextStyle(fontSize: 11),
-                  ),
-                  visualDensity: VisualDensity.compact,
+                _MetaChip(
+                  label: banner.bannerType.replaceAll('_', ' '),
+                  color: theme.colorScheme.primary,
                 ),
-                Chip(
-                  label: Text(
-                    banner.severity,
-                    style: const TextStyle(fontSize: 11),
-                  ),
-                  visualDensity: VisualDensity.compact,
+                const SizedBox(width: 6),
+                _MetaChip(
+                  label: banner.severity,
+                  color: severityColor,
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                TextButton.icon(
+                const Spacer(),
+                _MiniButton(
+                  icon: Icons.edit_outlined,
+                  label: 'Edit',
                   onPressed: dev.tablesMissing
                       ? null
                       : () => _openBannerEditor(context, banner),
-                  icon: const Icon(Icons.edit, size: 18),
-                  label: const Text('Edit'),
                 ),
-                TextButton.icon(
+                const SizedBox(width: 4),
+                _MiniButton(
+                  icon: Icons.delete_outline,
+                  label: 'Delete',
+                  color: Colors.red,
                   onPressed: dev.tablesMissing
                       ? null
                       : () async {
@@ -337,31 +499,84 @@ class _BannerCard extends StatelessWidget {
                             ),
                           );
                           if (ok == true && context.mounted && uid != null) {
-                            try {
-                              await dev.removeBanner(
-                                bannerId: banner.id,
-                                developerId: uid,
-                                developerEmail: email,
-                              );
-                            } catch (e) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('$e'),
-                                    backgroundColor: Colors.red,
-                                  ),
+                            final ctx = context;
+                            runWithLoadingAfterPop(
+                              ctx, task: () async {
+                                await dev.removeBanner(
+                                  bannerId: banner.id,
+                                  developerId: uid,
+                                  developerEmail: email,
                                 );
-                              }
-                            }
+                              },
+                              successMessage: 'Banner deleted.',
+                            );
                           }
                         },
-                  icon: const Icon(Icons.delete_outline, size: 18),
-                  label: const Text('Delete'),
                 ),
               ],
             ),
-          ],
-        ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetaChip extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _MetaChip({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w500),
+      ),
+    );
+  }
+}
+
+class _MiniButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color? color;
+  final VoidCallback? onPressed;
+
+  const _MiniButton({
+    required this.icon,
+    required this.label,
+    this.color,
+    this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final fgColor = color ?? theme.textTheme.bodySmall?.color;
+    return TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        foregroundColor: fgColor,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13),
+          const SizedBox(width: 4),
+          Text(label, style: const TextStyle(fontSize: 11)),
+        ],
       ),
     );
   }
@@ -391,131 +606,222 @@ Future<void> _openBannerEditor(
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setLocal) => AlertDialog(
         title: Text(existing == null ? 'Create banner' : 'Edit banner'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Enabled'),
-                subtitle: const Text(
-                  'Only one live banner; enabling turns others off.',
-                ),
-                value: enableState[0],
-                activeThumbColor: AppTheme.primaryGold,
-                onChanged: (v) => setLocal(() => enableState[0] = v),
-              ),
-              const Divider(),
-              DropdownButtonFormField<String>(
-                value: type,
-                decoration: const InputDecoration(labelText: 'Banner type'),
-                items: const [
-                  DropdownMenuItem(
-                    value: 'system_update',
-                    child: Text('System update'),
+        contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+        content: SizedBox(
+          width: 420,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Enabled'),
+                  subtitle: const Text(
+                    'Only one live banner; enabling turns others off.',
                   ),
-                  DropdownMenuItem(
-                    value: 'under_development',
-                    child: Text('Under development'),
+                  value: enableState[0],
+                  activeThumbColor: AppTheme.primaryGold,
+                  onChanged: (v) => setLocal(() => enableState[0] = v),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: type,
+                  decoration: const InputDecoration(
+                    labelText: 'Banner type',
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                   ),
-                ],
-                onChanged: (v) => setLocal(() => type = v ?? type),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: titleCtrl,
-                decoration: const InputDecoration(labelText: 'Title'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: messageCtrl,
-                decoration: const InputDecoration(labelText: 'Message'),
-                maxLines: 3,
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: severity,
-                decoration: const InputDecoration(labelText: 'Severity'),
-                items: const [
-                  DropdownMenuItem(value: 'info', child: Text('Info')),
-                  DropdownMenuItem(value: 'warning', child: Text('Warning')),
-                  DropdownMenuItem(value: 'critical', child: Text('Critical')),
-                ],
-                onChanged: (v) => setLocal(() => severity = v ?? severity),
-              ),
-              const SizedBox(height: 12),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Starts'),
-                subtitle: Text(startsAt.toLocal().toString().substring(0, 16)),
-                trailing: IconButton(
-                  icon: const Icon(Icons.event),
-                  onPressed: () async {
-                    final d = await showDatePicker(
-                      context: ctx,
-                      initialDate: startsAt,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2100),
-                    );
-                    if (d != null)
-                      setLocal(
-                        () => startsAt = DateTime(
-                          d.year,
-                          d.month,
-                          d.day,
-                          startsAt.hour,
-                          startsAt.minute,
-                        ),
-                      );
-                  },
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'system_update',
+                      child: Text('System update'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'under_development',
+                      child: Text('Under development'),
+                    ),
+                  ],
+                  onChanged: (v) => setLocal(() => type = v ?? type),
                 ),
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Ends (optional)'),
-                subtitle: Text(
-                  endsAt == null
-                      ? 'No end — stays until disabled'
-                      : endsAt!.toLocal().toString().substring(0, 16),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: titleCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Title',
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                  ),
                 ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
+                const SizedBox(height: 12),
+                TextField(
+                  controller: messageCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Message',
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                  ),
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: severity,
+                  decoration: const InputDecoration(
+                    labelText: 'Severity',
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'info', child: Text('Info')),
+                    DropdownMenuItem(value: 'warning', child: Text('Warning')),
+                    DropdownMenuItem(value: 'critical', child: Text('Critical')),
+                  ],
+                  onChanged: (v) => setLocal(() => severity = v ?? severity),
+                ),
+                const SizedBox(height: 16),
+                Row(
                   children: [
-                    if (endsAt != null)
-                      IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () => setLocal(() => endsAt = null),
-                      ),
-                    IconButton(
-                      icon: const Icon(Icons.event),
-                      onPressed: () async {
-                        final d = await showDatePicker(
-                          context: ctx,
-                          initialDate:
-                              endsAt ??
-                              DateTime.now().add(const Duration(days: 1)),
-                          firstDate: DateTime(2020),
-                          lastDate: DateTime(2100),
-                        );
-                        if (d != null) {
-                          setLocal(
-                            () => endsAt = DateTime(
-                              d.year,
-                              d.month,
-                              d.day,
-                              23,
-                              59,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Starts',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey.shade500,
                             ),
-                          );
-                        }
-                      },
+                          ),
+                          const SizedBox(height: 4),
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              final d = await showDatePicker(
+                                context: ctx,
+                                initialDate: startsAt,
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime(2100),
+                              );
+                              if (d != null) {
+                                setLocal(
+                                  () => startsAt = DateTime(
+                                    d.year,
+                                    d.month,
+                                    d.day,
+                                    startsAt.hour,
+                                    startsAt.minute,
+                                  ),
+                                );
+                              }
+                            },
+                            icon: const Icon(Icons.calendar_today, size: 14),
+                            label: Text(
+                              startsAt.toLocal().toString().substring(0, 16),
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Ends (optional)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: () async {
+                                    final d = await showDatePicker(
+                                      context: ctx,
+                                      initialDate:
+                                          endsAt ??
+                                          DateTime.now().add(
+                                            const Duration(days: 1),
+                                          ),
+                                      firstDate: DateTime(2020),
+                                      lastDate: DateTime(2100),
+                                    );
+                                    if (d != null) {
+                                      setLocal(
+                                        () => endsAt = DateTime(
+                                          d.year,
+                                          d.month,
+                                          d.day,
+                                          23,
+                                          59,
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  icon: const Icon(
+                                    Icons.calendar_today,
+                                    size: 14,
+                                  ),
+                                  label: Text(
+                                    endsAt == null
+                                        ? 'No end'
+                                        : endsAt!
+                                            .toLocal()
+                                            .toString()
+                                            .substring(0, 16),
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              if (endsAt != null)
+                                IconButton(
+                                  icon: const Icon(Icons.close, size: 16),
+                                  onPressed: () =>
+                                      setLocal(() => endsAt = null),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -584,16 +890,19 @@ class _FeaturesPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Consumer<DeveloperControlsProvider>(
       builder: (context, dev, _) {
         if (dev.isLoading && dev.flags.isEmpty) {
           return const Center(child: CircularProgressIndicator());
         }
         if (dev.flags.isEmpty) {
-          return const Center(
+          return Center(
             child: Text(
               'No feature flags loaded.',
-              style: TextStyle(color: Colors.grey),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.textTheme.bodySmall?.color,
+              ),
             ),
           );
         }
@@ -601,56 +910,393 @@ class _FeaturesPanel extends StatelessWidget {
         final uid = auth.userProfile?.id;
         final email = auth.userProfile?.email;
 
-        return ListView.separated(
-          padding: const EdgeInsets.all(24),
-          itemCount: dev.flags.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 4),
-          itemBuilder: (context, i) {
-            final f = dev.flags[i];
-            return Card(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-                side: BorderSide(color: Theme.of(context).dividerColor),
-              ),
-              child: SwitchListTile(
-                secondary: Icon(
-                  f.enabled ? Icons.check_circle : Icons.block,
-                  color: f.enabled ? Colors.green : Colors.grey,
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+          children: [
+            // ─── Section header ───
+            Row(
+              children: [
+                Text(
+                  'Feature Flags',
+                  style: theme.textTheme.titleMedium,
                 ),
-                title: Text(f.label),
-                subtitle: Text(
-                  f.featureKey,
-                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '${dev.flags.length}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
                 ),
-                value: f.enabled,
-                activeThumbColor: AppTheme.primaryGold,
-                onChanged: dev.tablesMissing || uid == null
-                    ? null
-                    : (v) async {
-                        try {
-                          await dev.setFeatureFlag(
-                            featureKey: f.featureKey,
-                            enabled: v,
-                            developerId: uid,
-                            developerEmail: email,
-                          );
-                        } catch (e) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('$e'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          }
-                        }
-                      },
-              ),
-            );
-          },
+              ],
+            ),
+            const SizedBox(height: 16),
+            ...dev.flags.map((f) => _FeatureCard(
+                  flag: f,
+                  uid: uid,
+                  email: email,
+                  tablesMissing: dev.tablesMissing,
+                )),
+          ],
         );
       },
     );
+  }
+}
+
+class _FeatureCard extends StatelessWidget {
+  final FeatureFlagModel flag;
+  final String? uid;
+  final String? email;
+  final bool tablesMissing;
+
+  const _FeatureCard({
+    required this.flag,
+    required this.uid,
+    required this.email,
+    required this.tablesMissing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final dev = context.read<DeveloperControlsProvider>();
+    final hasAccessRules =
+        flag.allowedRoles.isNotEmpty || flag.allowedUsers.isNotEmpty;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: theme.dividerColor.withOpacity(0.12),
+          width: 0.5,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+        child: Row(
+          children: [
+            // ─── Status dot ───
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: flag.enabled ? Colors.green : Colors.grey.withOpacity(0.4),
+              ),
+            ),
+            const SizedBox(width: 12),
+            // ─── Label + key ───
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    flag.label,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    flag.featureKey,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.textTheme.bodySmall?.color?.withOpacity(0.6),
+                    ),
+                  ),
+                  if (hasAccessRules) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        if (flag.allowedRoles.isNotEmpty)
+                          _FeatureAccessBadge(
+                            label: flag.allowedRoles.join(', '),
+                          ),
+                        if (flag.allowedRoles.isNotEmpty &&
+                            flag.allowedUsers.isNotEmpty)
+                          const SizedBox(width: 6),
+                        if (flag.allowedUsers.isNotEmpty)
+                          _FeatureAccessBadge(
+                            label: '${flag.allowedUsers.length} user${flag.allowedUsers.length == 1 ? '' : 's'}',
+                          ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            // ─── Toggle ───
+            Switch(
+              value: flag.enabled,
+              activeThumbColor: AppTheme.primaryGold,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  onChanged: tablesMissing || uid == null
+                      ? null
+                      : (v) {
+                          runWithLoading(context, task: () async {
+                            await dev.setFeatureFlag(
+                              featureKey: flag.featureKey,
+                              enabled: v,
+                              developerId: uid!,
+                              developerEmail: email,
+                              allowedRoles: flag.allowedRoles,
+                              allowedUsers: flag.allowedUsers,
+                            );
+                          }, successMessage: v ? 'Feature enabled.' : 'Feature disabled.');
+                        },
+            ),
+            const SizedBox(width: 4),
+            // ─── Access config button ───
+            _MiniButton(
+              icon: Icons.settings_outlined,
+              label: 'Access',
+              onPressed: tablesMissing || uid == null
+                  ? null
+                  : () => _editFeatureAccess(
+                        context,
+                        dev,
+                        flag,
+                        uid!,
+                        email,
+                      ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FeatureAccessBadge extends StatelessWidget {
+  final String label;
+
+  const _FeatureAccessBadge({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryGold.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 9,
+          color: AppTheme.primaryGold,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+}
+
+const List<String> _allRoles = [
+  'Super Admin',
+  'Admin',
+  'Finance',
+  'Marketing',
+  'Development Facilitator',
+  'Verifying Operator',
+];
+
+Future<void> _editFeatureAccess(
+  BuildContext context,
+  DeveloperControlsProvider dev,
+  FeatureFlagModel flag,
+  String uid,
+  String? email,
+) async {
+  final roles = List<String>.from(flag.allowedRoles);
+  final users = List<String>.from(flag.allowedUsers);
+  final userCtrl = TextEditingController();
+
+  final enableState = <bool>[flag.enabled];
+
+  final saved = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setLocal) => AlertDialog(
+        title: Text('Access control: ${flag.label}'),
+        contentPadding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+        content: SizedBox(
+          width: 420,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'When this feature is disabled, who should still be able '
+                  'to access it for testing?',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade500,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // ─── Feature state ───
+                _SectionLabel(label: 'Feature state'),
+                const SizedBox(height: 4),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Enabled'),
+                  subtitle: const Text(
+                    'Toggle feature for all users',
+                  ),
+                  value: enableState[0],
+                  activeThumbColor: AppTheme.primaryGold,
+                  dense: true,
+                  onChanged: (v) => setLocal(() => enableState[0] = v),
+                ),
+                const SizedBox(height: 8),
+                // ─── Allowed roles ───
+                _SectionLabel(label: 'Allowed roles'),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: _allRoles.map((role) {
+                    final selected = roles.contains(role);
+                    return FilterChip(
+                      label: Text(role, style: const TextStyle(fontSize: 12)),
+                      selected: selected,
+                      selectedColor: AppTheme.primaryGold.withOpacity(0.2),
+                      checkmarkColor: AppTheme.primaryGold,
+                      side: BorderSide.none,
+                      onSelected: (v) {
+                        setLocal(() {
+                          if (v) {
+                            roles.add(role);
+                          } else {
+                            roles.remove(role);
+                          }
+                        });
+                      },
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 20),
+                // ─── Allowed users ───
+                _SectionLabel(label: 'Allowed users (email addresses)'),
+                const SizedBox(height: 4),
+                Text(
+                  'colane@mwelasefin.co.za always has access via '
+                  'Super Admin allowlist.',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey.shade500,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (users.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: users.asMap().entries.map((entry) {
+                        final i = entry.key;
+                        final u = entry.value;
+                        return Chip(
+                          label: Text(
+                            u,
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                          deleteIcon: const Icon(Icons.close, size: 16),
+                          visualDensity: VisualDensity.compact,
+                          onDeleted: () => setLocal(() => users.removeAt(i)),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: userCtrl,
+                        decoration: const InputDecoration(
+                          hintText: 'email@example.com',
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                        ),
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton.tonalIcon(
+                      onPressed: () {
+                        final text = userCtrl.text.trim();
+                        if (text.isNotEmpty && !users.contains(text)) {
+                          setLocal(() => users.add(text));
+                          userCtrl.clear();
+                        }
+                      },
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text('Add', style: TextStyle(fontSize: 12)),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  if (saved != true || !context.mounted) return;
+
+  try {
+    await dev.setFeatureFlag(
+      featureKey: flag.featureKey,
+      enabled: enableState[0],
+      developerId: uid,
+      developerEmail: email,
+      allowedRoles: roles,
+      allowedUsers: users,
+    );
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Feature access updated')),
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e'), backgroundColor: Colors.red),
+      );
+    }
   }
 }
 
@@ -668,19 +1314,13 @@ class _ActivityLogPanelState extends State<_ActivityLogPanel> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Consumer<DeveloperControlsProvider>(
       builder: (context, dev, _) {
         if (dev.isLoading && dev.recentLogs.isEmpty) {
           return const Center(child: CircularProgressIndicator());
         }
-        if (dev.recentLogs.isEmpty) {
-          return const Center(
-            child: Text(
-              'No developer actions logged yet.',
-              style: TextStyle(color: Colors.grey),
-            ),
-          );
-        }
+
         final filteredLogs = _applyFilters(dev.recentLogs);
         final developerOptions = _developerOptions(dev.recentLogs);
         final actionOptions = _actionOptions(dev.recentLogs);
@@ -688,143 +1328,292 @@ class _ActivityLogPanelState extends State<_ActivityLogPanel> {
         return RefreshIndicator(
           onRefresh: dev.reloadLogsOnly,
           child: ListView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
             children: [
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                crossAxisAlignment: WrapCrossAlignment.center,
+              // ─── Section header ───
+              Row(
                 children: [
-                  SizedBox(
-                    width: 260,
-                    child: DropdownButtonFormField<String>(
-                      value: _developerFilter,
-                      decoration: const InputDecoration(
-                        labelText: 'Developer',
-                        prefixIcon: Icon(Icons.person_search, size: 18),
+                  Text(
+                    'Activity Log',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '${filteredLogs.length}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.primary,
                       ),
-                      items: [
-                        const DropdownMenuItem<String>(
-                          value: null,
-                          child: Text('All developers'),
-                        ),
-                        ...developerOptions.map(
-                          (developer) => DropdownMenuItem(
-                            value: developer,
-                            child: Text(
-                              developer,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        setState(() => _developerFilter = value);
-                      },
                     ),
                   ),
-                  SizedBox(
-                    width: 220,
-                    child: DropdownButtonFormField<String>(
-                      value: _actionFilter,
-                      decoration: const InputDecoration(
-                        labelText: 'Action type',
-                        prefixIcon: Icon(Icons.tune, size: 18),
-                      ),
-                      items: [
-                        const DropdownMenuItem<String>(
-                          value: null,
-                          child: Text('All actions'),
-                        ),
-                        ...actionOptions.map(
-                          (action) => DropdownMenuItem(
-                            value: action,
-                            child: Text(
-                              action,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        setState(() => _actionFilter = value);
-                      },
-                    ),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () => _pickDateRange(context),
-                    icon: const Icon(Icons.date_range, size: 18),
-                    label: Text(
-                      _dateRangeFilter == null
-                          ? 'All dates'
-                          : '${_formatDate(_dateRangeFilter!.start)} - ${_formatDate(_dateRangeFilter!.end)}',
-                    ),
-                  ),
+                  const Spacer(),
                   TextButton.icon(
-                    onPressed: _hasFilters
-                        ? () {
-                            setState(() {
-                              _developerFilter = null;
-                              _actionFilter = null;
-                              _dateRangeFilter = null;
-                            });
-                          }
-                        : null,
-                    icon: const Icon(Icons.clear, size: 18),
-                    label: const Text('Clear filters'),
-                  ),
-                  FilledButton.icon(
                     onPressed: dev.tablesMissing || filteredLogs.isEmpty
                         ? null
                         : () => _downloadActivityLogsPdf(
-                            context,
-                            filteredLogs,
-                            filterSummary: _filterSummary,
-                          ),
-                    icon: const Icon(Icons.picture_as_pdf, size: 18),
-                    label: const Text('Download Logs (PDF)'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppTheme.primaryGold,
-                      foregroundColor: Colors.black,
+                              context,
+                              filteredLogs,
+                              filterSummary: _filterSummary,
+                            ),
+                    icon: const Icon(Icons.picture_as_pdf, size: 16),
+                    label: const Text('PDF'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppTheme.primaryGold,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      textStyle: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 16),
-              if (filteredLogs.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 48),
+              // ─── Filters ───
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.cardColor,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: theme.dividerColor.withOpacity(0.12),
+                    width: 0.5,
+                  ),
+                ),
+                child: Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 200,
+                      child: DropdownButtonFormField<String>(
+                        value: _developerFilter,
+                        decoration: const InputDecoration(
+                          hintText: 'Developer',
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                        ),
+                        isExpanded: true,
+                        items: [
+                          const DropdownMenuItem<String>(
+                            value: null,
+                            child: Text('All developers'),
+                          ),
+                          ...developerOptions.map(
+                            (d) => DropdownMenuItem(
+                              value: d,
+                              child: Text(
+                                d,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ),
+                          ),
+                        ],
+                        onChanged: (v) => setState(() => _developerFilter = v),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 180,
+                      child: DropdownButtonFormField<String>(
+                        value: _actionFilter,
+                        decoration: const InputDecoration(
+                          hintText: 'Action type',
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                        ),
+                        isExpanded: true,
+                        items: [
+                          const DropdownMenuItem<String>(
+                            value: null,
+                            child: Text('All actions'),
+                          ),
+                          ...actionOptions.map(
+                            (a) => DropdownMenuItem(
+                              value: a,
+                              child: Text(
+                                a,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ),
+                          ),
+                        ],
+                        onChanged: (v) => setState(() => _actionFilter = v),
+                      ),
+                    ),
+                    OutlinedButton(
+                      onPressed: () => _pickDateRange(context),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                        side: BorderSide(
+                          color: theme.dividerColor.withOpacity(0.3),
+                        ),
+                      ),
+                      child: Text(
+                        _dateRangeFilter == null
+                            ? 'All dates'
+                            : '${_formatDate(_dateRangeFilter!.start)} – ${_formatDate(_dateRangeFilter!.end)}',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                    if (_hasFilters)
+                      TextButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _developerFilter = null;
+                            _actionFilter = null;
+                            _dateRangeFilter = null;
+                          });
+                        },
+                        icon: const Icon(Icons.close, size: 14),
+                        label: const Text(
+                          'Clear',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              // ─── Log entries ───
+              if (filteredLogs.isEmpty && dev.recentLogs.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 48),
                   child: Center(
-                    child: Text(
-                      'No activity log entries match the selected filters.',
-                      style: TextStyle(color: Colors.grey),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.filter_alt_off_outlined,
+                          size: 32,
+                          color: theme.textTheme.bodySmall?.color?.withOpacity(0.4),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'No entries match the selected filters.',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.textTheme.bodySmall?.color,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else if (dev.recentLogs.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 48),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.history_outlined,
+                          size: 32,
+                          color: theme.textTheme.bodySmall?.color?.withOpacity(0.4),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'No developer actions logged yet.',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.textTheme.bodySmall?.color,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 )
               else
                 ...filteredLogs.map((log) {
                   final when = _formatDateTime(log.createdAt);
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: ListTile(
-                      leading: const Icon(
-                        Icons.bolt,
-                        color: AppTheme.primaryGold,
-                        size: 20,
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 4),
+                    decoration: BoxDecoration(
+                      color: theme.cardColor,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: theme.dividerColor.withOpacity(0.08),
+                        width: 0.5,
                       ),
-                      title: Text(
-                        log.actionType,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                        ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(5),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryGold.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Icon(
+                              Icons.bolt,
+                              size: 14,
+                              color: AppTheme.primaryGold,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  log.actionType,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '$when • ${_developerLabel(log)}',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.textTheme.bodySmall?.color?.withOpacity(0.6),
+                                  ),
+                                ),
+                                if (_logDescription(log).isNotEmpty &&
+                                    _logDescription(log) != '-')
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 2),
+                                    child: Text(
+                                      _logDescription(log),
+                                      style: theme.textTheme.bodySmall,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                      subtitle: Text(
-                        '$when • ${_developerLabel(log)}\n'
-                        '${_logDescription(log)}',
-                        style: const TextStyle(fontSize: 11, height: 1.4),
-                      ),
-                      isThreeLine: true,
                     ),
                   );
                 }),
@@ -915,7 +1704,7 @@ Future<void> _downloadActivityLogsPdf(
 }) async {
   if (logs.isEmpty) return;
 
-  try {
+  runWithLoading(context, task: () async {
     final generatedAt = DateTime.now();
     final sortedLogs = [...logs]
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
@@ -946,7 +1735,7 @@ Future<void> _downloadActivityLogsPdf(
           pw.SizedBox(height: 8),
           pw.Text(
             filterSummary,
-            style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+            style: const pw.TextStyle(fontSize: 10, color: PdfColors.black),
           ),
           pw.SizedBox(height: 24),
           pw.Text(
@@ -989,18 +1778,9 @@ Future<void> _downloadActivityLogsPdf(
     await Printing.layoutPdf(
       name: 'nsbsa_developer_activity_logs_${_fileDate(generatedAt)}.pdf',
       onLayout: (_) => pdf.save(),
-    );
-  } catch (e) {
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not generate activity log PDF: $e'),
-          backgroundColor: Colors.red,
-        ),
       );
-    }
+    }, successMessage: 'Activity log PDF generated.');
   }
-}
 
 pw.Widget _buildActivityLogPdfHeader({
   required pw.MemoryImage logo,
@@ -1040,11 +1820,11 @@ pw.Widget _buildActivityLogPdfFooter(pw.Context context) {
         children: [
           pw.Text(
             'Generated by NSBSA Developer Management System.',
-            style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+            style: const pw.TextStyle(fontSize: 9, color: PdfColors.black),
           ),
           pw.Text(
             'Page ${context.pageNumber} of ${context.pagesCount}',
-            style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+            style: const pw.TextStyle(fontSize: 9, color: PdfColors.black),
           ),
         ],
       ),
@@ -1104,11 +1884,23 @@ class _SystemAuditLogPanelState extends State<_SystemAuditLogPanel> {
 
   Future<void> _fetchLogs() async {
     setState(() => _isLoading = true);
-    final logs = await SystemAuditService.fetchLogs(limit: 500);
-    setState(() {
-      _logs = logs;
-      _isLoading = false;
-    });
+    try {
+      final logs = await SystemAuditService.fetchLogs(limit: 500);
+      setState(() {
+        _logs = logs;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error fetching audit logs: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   List<SystemAuditLogModel> get _filteredLogs {
@@ -1140,7 +1932,7 @@ class _SystemAuditLogPanelState extends State<_SystemAuditLogPanel> {
       _logs.map((e) => e.actionType).toSet().toList()..sort();
 
   Future<void> _downloadPdf(List<SystemAuditLogModel> filteredLogs) async {
-    try {
+    runWithLoading(context, task: () async {
       final auth = context.read<AuthProvider>();
       final currentUserEmail = auth.userProfile?.email ?? 'Developer';
 
@@ -1160,20 +1952,13 @@ class _SystemAuditLogPanelState extends State<_SystemAuditLogPanel> {
         bytes: pdfBytes,
         filename: 'nsbsa_system_audit_log_$timestamp.pdf',
       );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to generate PDF: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
+    }, successMessage: 'Audit PDF downloaded.');
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -1183,169 +1968,298 @@ class _SystemAuditLogPanelState extends State<_SystemAuditLogPanel> {
     return RefreshIndicator(
       onRefresh: _fetchLogs,
       child: ListView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
         children: [
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            crossAxisAlignment: WrapCrossAlignment.center,
+          // ─── Section header ───
+          Row(
             children: [
-              SizedBox(
-                width: 220,
-                child: DropdownButtonFormField<String>(
-                  value: _userFilter,
-                  decoration: const InputDecoration(
-                    labelText: 'User',
-                    prefixIcon: Icon(Icons.person, size: 18),
+              Text(
+                'System Audit Log',
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 7,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  '${filteredLogs.length}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.primary,
                   ),
-                  items: [
-                    const DropdownMenuItem<String>(
-                      value: null,
-                      child: Text('All users'),
-                    ),
-                    ..._uniqueUsers.map(
-                      (user) => DropdownMenuItem(
-                        value: user,
-                        child: Text(user, overflow: TextOverflow.ellipsis),
-                      ),
-                    ),
-                  ],
-                  onChanged: (value) => setState(() => _userFilter = value),
                 ),
               ),
-              SizedBox(
-                width: 220,
-                child: DropdownButtonFormField<String>(
-                  value: _actionFilter,
-                  decoration: const InputDecoration(
-                    labelText: 'Action Type',
-                    prefixIcon: Icon(Icons.tune, size: 18),
-                  ),
-                  items: [
-                    const DropdownMenuItem<String>(
-                      value: null,
-                      child: Text('All actions'),
-                    ),
-                    ..._uniqueActions.map(
-                      (action) => DropdownMenuItem(
-                        value: action,
-                        child: Text(action, overflow: TextOverflow.ellipsis),
-                      ),
-                    ),
-                  ],
-                  onChanged: (value) => setState(() => _actionFilter = value),
-                ),
-              ),
-              OutlinedButton.icon(
-                onPressed: () async {
-                  final picked = await showDateRangePicker(
-                    context: context,
-                    firstDate: DateTime(2020),
-                    lastDate: DateTime.now(),
-                    initialDateRange: _dateRangeFilter,
-                  );
-                  if (picked != null) {
-                    setState(() => _dateRangeFilter = picked);
-                  }
-                },
-                icon: const Icon(Icons.date_range, size: 18),
-                label: Text(
-                  _dateRangeFilter == null
-                      ? 'All dates'
-                      : '${DateFormat('yyyy-MM-dd').format(_dateRangeFilter!.start)} - ${DateFormat('yyyy-MM-dd').format(_dateRangeFilter!.end)}',
-                ),
-              ),
+              const Spacer(),
               TextButton.icon(
-                onPressed:
-                    (_userFilter != null ||
-                        _actionFilter != null ||
-                        _dateRangeFilter != null)
-                    ? () {
-                        setState(() {
-                          _userFilter = null;
-                          _actionFilter = null;
-                          _dateRangeFilter = null;
-                        });
-                      }
-                    : null,
-                icon: const Icon(Icons.clear, size: 18),
-                label: const Text('Clear filters'),
-              ),
-              FilledButton.icon(
                 onPressed: filteredLogs.isEmpty
                     ? null
                     : () => _downloadPdf(filteredLogs),
-                icon: const Icon(Icons.picture_as_pdf, size: 18),
-                label: const Text('Download Logs (PDF)'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.primaryGold,
-                  foregroundColor: Colors.black,
+                icon: const Icon(Icons.picture_as_pdf, size: 16),
+                label: const Text('PDF'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppTheme.primaryGold,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  textStyle: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
+          // ─── Filters ───
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: theme.dividerColor.withOpacity(0.12),
+                width: 0.5,
+              ),
+            ),
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                SizedBox(
+                  width: 200,
+                  child: DropdownButtonFormField<String>(
+                    value: _userFilter,
+                    decoration: const InputDecoration(
+                      hintText: 'User',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                    ),
+                    isExpanded: true,
+                    items: [
+                      const DropdownMenuItem<String>(
+                        value: null,
+                        child: Text('All users'),
+                      ),
+                      ..._uniqueUsers.map(
+                        (u) => DropdownMenuItem(
+                          value: u,
+                          child: Text(
+                            u,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                      ),
+                    ],
+                    onChanged: (v) => setState(() => _userFilter = v),
+                  ),
+                ),
+                SizedBox(
+                  width: 180,
+                  child: DropdownButtonFormField<String>(
+                    value: _actionFilter,
+                    decoration: const InputDecoration(
+                      hintText: 'Action Type',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                    ),
+                    isExpanded: true,
+                    items: [
+                      const DropdownMenuItem<String>(
+                        value: null,
+                        child: Text('All actions'),
+                      ),
+                      ..._uniqueActions.map(
+                        (a) => DropdownMenuItem(
+                          value: a,
+                          child: Text(
+                            a,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                      ),
+                    ],
+                    onChanged: (v) => setState(() => _actionFilter = v),
+                  ),
+                ),
+                OutlinedButton(
+                  onPressed: () async {
+                    final picked = await showDateRangePicker(
+                      context: context,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now(),
+                      initialDateRange: _dateRangeFilter,
+                    );
+                    if (picked != null) {
+                      setState(() => _dateRangeFilter = picked);
+                    }
+                  },
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    visualDensity: VisualDensity.compact,
+                    side: BorderSide(
+                      color: theme.dividerColor.withOpacity(0.3),
+                    ),
+                  ),
+                  child: Text(
+                    _dateRangeFilter == null
+                        ? 'All dates'
+                        : '${DateFormat('yyyy-MM-dd').format(_dateRangeFilter!.start)} – ${DateFormat('yyyy-MM-dd').format(_dateRangeFilter!.end)}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+                if (_userFilter != null ||
+                    _actionFilter != null ||
+                    _dateRangeFilter != null)
+                  TextButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _userFilter = null;
+                        _actionFilter = null;
+                        _dateRangeFilter = null;
+                      });
+                    },
+                    icon: const Icon(Icons.close, size: 14),
+                    label: const Text(
+                      'Clear',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          // ─── Log table ───
           if (filteredLogs.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 48),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 48),
               child: Center(
-                child: Text(
-                  'No system audit logs match the selected filters.',
-                  style: TextStyle(color: Colors.grey),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.filter_alt_off_outlined,
+                      size: 32,
+                      color: theme.textTheme.bodySmall?.color?.withOpacity(0.4),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'No system audit logs match the selected filters.',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.textTheme.bodySmall?.color,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             )
           else
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                headingRowColor: WidgetStateProperty.all(
-                  Theme.of(context).cardColor,
+            Container(
+              decoration: BoxDecoration(
+                color: theme.cardColor,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: theme.dividerColor.withOpacity(0.12),
+                  width: 0.5,
                 ),
-                columns: const [
-                  DataColumn(label: Text('Timestamp')),
-                  DataColumn(label: Text('Action Type')),
-                  DataColumn(label: Text('Performed By')),
-                  DataColumn(label: Text('Affected Entity')),
-                  DataColumn(label: Text('Description')),
-                ],
-                rows: filteredLogs.map((log) {
-                  return DataRow(
-                    cells: [
-                      DataCell(
-                        Text(
-                          DateFormat(
-                            'yyyy-MM-dd HH:mm:ss',
-                          ).format(log.timestamp),
+              ),
+              padding: const EdgeInsets.all(4),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  headingRowColor: WidgetStateProperty.all(
+                    theme.scaffoldBackgroundColor,
+                  ),
+                  headingRowHeight: 40,
+                  dataRowMinHeight: 36,
+                  dataRowMaxHeight: 48,
+                  horizontalMargin: 16,
+                  columnSpacing: 28,
+                  columns: const [
+                    DataColumn(label: Text('Timestamp')),
+                    DataColumn(label: Text('Action Type')),
+                    DataColumn(label: Text('Performed By')),
+                    DataColumn(label: Text('Affected Entity')),
+                    DataColumn(label: Text('Description')),
+                  ],
+                  rows: filteredLogs.map((log) {
+                    return DataRow(
+                      cells: [
+                        DataCell(
+                          Text(
+                            DateFormat(
+                              'yyyy-MM-dd HH:mm',
+                            ).format(log.timestamp),
+                            style: theme.textTheme.bodySmall,
+                          ),
                         ),
-                      ),
-                      DataCell(
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Theme.of(
-                              context,
-                            ).primaryColor.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            log.actionType,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
+                        DataCell(
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              log.actionType,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      DataCell(Text(log.performedBy)),
-                      DataCell(Text(log.affectedEntity)),
-                      DataCell(Text(log.description)),
-                    ],
-                  );
-                }).toList(),
+                        DataCell(
+                          Text(
+                            log.performedBy,
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                        DataCell(
+                          Text(
+                            log.affectedEntity,
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                        DataCell(
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 220),
+                            child: Text(
+                              log.description,
+                              style: theme.textTheme.bodySmall,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                ),
               ),
             ),
         ],

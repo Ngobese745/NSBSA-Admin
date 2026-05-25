@@ -703,7 +703,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
               pw.SizedBox(height: 8),
               pw.Text(
                 'All applicable fees are included in the amounts shown above.',
-                style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+                style: pw.TextStyle(fontSize: 9, color: PdfColors.black),
               ),
               pw.Text(
                 'Thank you for your business.',
@@ -733,7 +733,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             width: 120,
             child: pw.Text(
               label,
-              style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey800),
+              style: const pw.TextStyle(fontSize: 11, color: PdfColors.black),
             ),
           ),
           pw.Text(

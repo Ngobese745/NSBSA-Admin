@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/app_assets.dart';
 import '../core/app_breakpoints.dart';
+import '../models/profile.dart';
 import 'dashboard_screen.dart';
 import 'super_admin_dashboard_screen.dart';
 import 'groups_screen.dart';
@@ -590,11 +591,11 @@ class _MainShellState extends State<MainShell> {
                 navIndex,
                 dev,
                 featureKey: 'dashboard',
-                isCollapsed: isCollapsed,
+                profile: profile, isCollapsed: isCollapsed,
               ),
               if (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false)) ...[
-                _buildNavItem(Icons.group, 'Groups', 1, navIndex, dev, featureKey: 'groups', isCollapsed: isCollapsed),
-                _buildNavItem(Icons.person, 'Vendors', 2, navIndex, dev, featureKey: 'vendors', isCollapsed: isCollapsed),
+                _buildNavItem(Icons.group, 'Groups', 1, navIndex, dev, featureKey: 'groups', profile: profile, isCollapsed: isCollapsed),
+                _buildNavItem(Icons.person, 'Vendors', 2, navIndex, dev, featureKey: 'vendors', profile: profile, isCollapsed: isCollapsed),
               ],
               if (AccessControlService.canProcessPayments(profile) && (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false))) ...[
                 _buildNavItem(
@@ -604,7 +605,7 @@ class _MainShellState extends State<MainShell> {
                   navIndex,
                   dev,
                   featureKey: 'loans',
-                  isCollapsed: isCollapsed,
+                  profile: profile, isCollapsed: isCollapsed,
                 ),
                 _buildNavItem(
                   Icons.payment,
@@ -613,7 +614,7 @@ class _MainShellState extends State<MainShell> {
                   navIndex,
                   dev,
                   featureKey: 'payments',
-                  isCollapsed: isCollapsed,
+                  profile: profile, isCollapsed: isCollapsed,
                 ),
               ],
               if (AccessControlService.canViewReports(profile) && (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false)))
@@ -624,7 +625,7 @@ class _MainShellState extends State<MainShell> {
                   navIndex,
                   dev,
                   featureKey: 'analytics',
-                  isCollapsed: isCollapsed,
+                  profile: profile, isCollapsed: isCollapsed,
                 ),
               if (AccessControlService.canViewReports(profile) && 
                   (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false)) &&
@@ -636,7 +637,7 @@ class _MainShellState extends State<MainShell> {
                   navIndex,
                   dev,
                   featureKey: 'reports',
-                  isCollapsed: isCollapsed,
+                  profile: profile, isCollapsed: isCollapsed,
                 ),
               if (!AccessControlService.isFieldAgent(profile) && (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false)))
                 _buildNavItem(
@@ -646,7 +647,7 @@ class _MainShellState extends State<MainShell> {
                   navIndex,
                   dev,
                   featureKey: 'import',
-                  isCollapsed: isCollapsed,
+                  profile: profile, isCollapsed: isCollapsed,
                 ),
 
               if (profile?.isMarketing ?? false)
@@ -657,11 +658,11 @@ class _MainShellState extends State<MainShell> {
                   navIndex,
                   dev,
                   featureKey: 'marketing',
-                  isCollapsed: isCollapsed,
+                  profile: profile, isCollapsed: isCollapsed,
                 ),
 
               if (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false))
-                _buildNavItem(Icons.business, 'Centers', 9, navIndex, dev, isCollapsed: isCollapsed),
+                _buildNavItem(Icons.business, 'Centers', 9, navIndex, dev, profile: profile, isCollapsed: isCollapsed),
 
               if (AccessControlService.canManageUsers(profile)) ...[
                 const Divider(
@@ -677,7 +678,7 @@ class _MainShellState extends State<MainShell> {
                   navIndex,
                   dev,
                   featureKey: 'user_management',
-                  isCollapsed: isCollapsed,
+                  profile: profile, isCollapsed: isCollapsed,
                 ),
               ],
               if (AccessControlService.canAccessDeveloperTools(profile)) ...[
@@ -687,7 +688,7 @@ class _MainShellState extends State<MainShell> {
                   indent: 16,
                   endIndent: 16,
                 ),
-                _buildNavItem(Icons.developer_mode, 'Developer Management', 11, navIndex, dev, isCollapsed: isCollapsed),
+                _buildNavItem(Icons.developer_mode, 'Developer Management', 11, navIndex, dev, profile: profile, isCollapsed: isCollapsed),
               ],
             ],
           ),
@@ -714,11 +715,12 @@ class _MainShellState extends State<MainShell> {
     DeveloperControlsProvider dev, {
     String? featureKey,
     bool isCollapsed = false,
+    ProfileModel? profile,
   }) {
     final isSelected = selectedIndex == index;
     final theme = Theme.of(context);
     final isLight = theme.brightness == Brightness.light;
-    final featureOn = featureKey == null || dev.isFeatureEnabled(featureKey);
+    final featureOn = featureKey == null || dev.canAccessFeature(featureKey, profile);
 
     // In Light mode, sidebar is gold, so we need strong black contrast.
     final activeColor = isLight ? Colors.black : theme.primaryColor;
@@ -1006,11 +1008,10 @@ class FeatureGuard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isEnabled = context.select<DeveloperControlsProvider, bool>(
-      (dev) => dev.isFeatureEnabled(featureKey),
-    );
+    final dev = context.watch<DeveloperControlsProvider>();
+    final profile = context.watch<AuthProvider>().userProfile;
 
-    if (!isEnabled) {
+    if (!dev.canAccessFeature(featureKey, profile)) {
       return FeatureDisabledPlaceholder(featureKey: featureKey);
     }
 

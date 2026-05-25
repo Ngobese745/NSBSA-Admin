@@ -6,6 +6,174 @@ import '../providers/auth_provider.dart';
 import '../services/access_control_service.dart';
 import '../services/account_management_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/nsbsa_loading_overlay.dart';
+
+/// A small status badge for active/blocked.
+class _StatusBadge extends StatelessWidget {
+  final bool isBlocked;
+  const _StatusBadge({required this.isBlocked});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: isBlocked
+            ? Colors.red.withOpacity(0.08)
+            : Colors.green.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(
+          color: isBlocked
+              ? Colors.red.withOpacity(0.15)
+              : Colors.green.withOpacity(0.15),
+          width: 0.5,
+        ),
+      ),
+      child: Text(
+        isBlocked ? 'Blocked' : 'Active',
+        style: TextStyle(
+          fontSize: 11,
+          color: isBlocked ? Colors.red.shade400 : Colors.green.shade600,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+}
+
+/// Inline action buttons for a user row.
+class _UserActions extends StatelessWidget {
+  final bool canManage;
+  final bool canAdminister;
+  final bool isCurrentUser;
+  final bool isBlocked;
+  final VoidCallback onEdit;
+  final VoidCallback onRole;
+  final VoidCallback onToggleBlock;
+  final VoidCallback onDelete;
+
+  const _UserActions({
+    required this.canManage,
+    required this.canAdminister,
+    required this.isCurrentUser,
+    required this.isBlocked,
+    required this.onEdit,
+    required this.onRole,
+    required this.onToggleBlock,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _ActionButton(
+          icon: Icons.edit_outlined,
+          tooltip: 'Edit details',
+          enabled: canManage,
+          onPressed: onEdit,
+        ),
+        _ActionButton(
+          icon: Icons.admin_panel_settings_outlined,
+          tooltip: 'Change role',
+          enabled: canAdminister && !isCurrentUser,
+          onPressed: onRole,
+        ),
+        _ActionButton(
+          icon: isBlocked ? Icons.lock_open : Icons.block,
+          tooltip: isBlocked ? 'Unblock user' : 'Block user',
+          enabled: canAdminister && !isCurrentUser,
+          onPressed: onToggleBlock,
+        ),
+        _ActionButton(
+          icon: Icons.delete_outline,
+          tooltip: 'Delete user',
+          enabled: canAdminister && !isCurrentUser,
+          color: Colors.redAccent,
+          onPressed: onDelete,
+        ),
+      ],
+    );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final bool enabled;
+  final Color? color;
+  final VoidCallback onPressed;
+
+  const _ActionButton({
+    required this.icon,
+    required this.tooltip,
+    required this.enabled,
+    this.color,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final fgColor = color ?? theme.textTheme.bodySmall?.color;
+    return SizedBox(
+      width: 32,
+      height: 32,
+      child: IconButton(
+        icon: Icon(icon, size: 16),
+        tooltip: enabled
+            ? tooltip
+            : 'Only Super Admins can perform this action.',
+        onPressed: enabled ? onPressed : null,
+        padding: EdgeInsets.zero,
+        visualDensity: VisualDensity.compact,
+        color: enabled
+            ? fgColor
+            : (fgColor?.withOpacity(0.25)),
+        style: IconButton.styleFrom(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(6),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A compact icon button for the header.
+class _UserHeaderAction extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  const _UserHeaderAction({
+    required this.icon,
+    required this.tooltip,
+    this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 34,
+      height: 34,
+      child: IconButton(
+        icon: Icon(icon, size: 18),
+        tooltip: tooltip,
+        onPressed: onPressed,
+        padding: EdgeInsets.zero,
+        visualDensity: VisualDensity.compact,
+        style: IconButton.styleFrom(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(6),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class UserManagementScreen extends StatefulWidget {
   const UserManagementScreen({super.key});
@@ -199,7 +367,10 @@ class _UserManagementScreenState extends State<UserManagementScreen>
   }
 
   Future<void> _updateUserRole(ProfileModel profile, String newRole) async {
-    try {
+    final operatorEmail =
+        context.read<AuthProvider>().currentUser?.email ?? 'Unknown';
+    if (!mounted) return;
+    runWithLoading(context, task: () async {
       await AccountManagementService.updateStaffProfile(
         userId: profile.id,
         fullName: profile.fullName ?? '',
@@ -207,31 +378,11 @@ class _UserManagementScreenState extends State<UserManagementScreen>
         department: profile.department ?? '',
         role: newRole,
         status: profile.status,
-        operatorEmail:
-            context.read<AuthProvider>().currentUser?.email ?? 'Unknown',
+        operatorEmail: operatorEmail,
         canChangeCriticalFields: true,
       );
       await _fetchProfiles();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '${profile.fullName ?? profile.email ?? 'User'} role updated to $newRole',
-            ),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error updating role: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
+    }, successMessage: '${profile.fullName ?? profile.email ?? 'User'} role updated to $newRole');
   }
 
   void _showRoleDialog(ProfileModel profile) {
@@ -314,77 +465,125 @@ class _UserManagementScreenState extends State<UserManagementScreen>
     );
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('User Management'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        actions: [
-          if (canAdminister)
-            ElevatedButton.icon(
-              onPressed: () => _showCreateStaffDialog(context),
-              icon: const Icon(Icons.person_add, size: 18),
-              label: const Text('Add Staff'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryGold,
-                foregroundColor: Colors.black,
-              ),
-            ),
-          const SizedBox(width: 8),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              if (_tabController.index == 0) _fetchProfiles();
-              if (_tabController.index == 1) _fetchPendingResets();
-              if (_tabController.index == 2) _fetchAuditLog();
-            },
-            tooltip: 'Refresh',
-          ),
-          const SizedBox(width: 8),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          indicatorColor: AppTheme.primaryGold,
-          labelColor: AppTheme.primaryGold,
-          unselectedLabelColor: Colors.grey,
-          tabs: [
-            const Tab(text: 'Staff Directory'),
-            Tab(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text('Pending Resets'),
-                  if (_pendingResets.isNotEmpty) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        '${_pendingResets.length}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const Tab(text: 'Audit Log'),
-          ],
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
+      backgroundColor: theme.scaffoldBackgroundColor,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildUsersTab(theme, canManage, canAdminister, authProvider),
-          _buildPendingResetsTab(theme, canAdminister, authProvider),
-          _buildAuditLogTab(theme),
+          // ─── Header ───
+          Container(
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: theme.dividerColor.withOpacity(0.3),
+                  width: 0.5,
+                ),
+              ),
+            ),
+            padding: const EdgeInsets.fromLTRB(24, 16, 16, 12),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.manage_accounts,
+                  color: theme.colorScheme.primary,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'User Management',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                if (canAdminister)
+                  _UserHeaderAction(
+                    icon: Icons.person_add,
+                    tooltip: 'Add Staff',
+                    onPressed: () => _showCreateStaffDialog(context),
+                  ),
+                const SizedBox(width: 4),
+                _UserHeaderAction(
+                  icon: Icons.refresh,
+                  tooltip: 'Refresh',
+                  onPressed: () {
+                    if (_tabController.index == 0) _fetchProfiles();
+                    if (_tabController.index == 1) _fetchPendingResets();
+                    if (_tabController.index == 2) _fetchAuditLog();
+                  },
+                ),
+              ],
+            ),
+          ),
+          // ─── Tab bar ───
+          Container(
+            padding: const EdgeInsets.only(left: 20, right: 20, top: 4),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: theme.dividerColor.withOpacity(0.15),
+                  width: 0.5,
+                ),
+              ),
+            ),
+            child: TabBar(
+              controller: _tabController,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              indicatorColor: AppTheme.primaryGold,
+              indicatorSize: TabBarIndicatorSize.label,
+              labelColor: AppTheme.primaryGold,
+              unselectedLabelColor:
+                  theme.textTheme.bodyMedium?.color?.withOpacity(0.5),
+              labelStyle: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+              unselectedLabelStyle: theme.textTheme.bodyMedium,
+              dividerHeight: 0,
+              tabs: [
+                const Tab(text: 'Staff Directory'),
+                Tab(
+                  child: Row(
+                    children: [
+                      const Text('Pending Resets'),
+                      if (_pendingResets.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade400,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '${_pendingResets.length}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const Tab(text: 'Audit Log'),
+              ],
+            ),
+          ),
+          // ─── Tab content ───
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildUsersTab(theme, canManage, canAdminister, authProvider),
+                _buildPendingResetsTab(theme, canAdminister, authProvider),
+                _buildAuditLogTab(theme),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -398,342 +597,248 @@ class _UserManagementScreenState extends State<UserManagementScreen>
   ) {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Role Summary Cards
+          // ─── Role Summary ───
           Text(
             'Role Overview',
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+            style: theme.textTheme.titleMedium,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           _buildRoleSummaryGrid(theme),
-          const SizedBox(height: 32),
+          const SizedBox(height: 28),
 
-          // Users Table
+          // ─── Users List ───
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
                 'System Users',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+                style: theme.textTheme.titleMedium,
               ),
-              Text(
-                '${_profiles.length} accounts',
-                style: TextStyle(color: Colors.grey[500], fontSize: 13),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 7,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  '${_profiles.length}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           Container(
             decoration: BoxDecoration(
               color: theme.cardColor,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: theme.dividerColor),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: theme.dividerColor.withOpacity(0.12),
+                width: 0.5,
+              ),
             ),
+            clipBehavior: Clip.antiAlias,
             child: _profiles.isEmpty
-                ? const Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Center(
-                      child: Text(
-                        'No user profiles found.\nUsers must log in once to create their profile.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    ),
-                  )
+                ? _buildEmptyUsers(theme)
                 : Column(
                     children: _profiles.asMap().entries.map((entry) {
                       final profile = entry.value;
-                      final config =
-                          _roleConfig[profile.role] ??
+                      final config = _roleConfig[profile.role] ??
                           _roleConfig['Development Facilitator']!;
                       final isLast = entry.key == _profiles.length - 1;
                       final isCurrentUser =
                           profile.id == authProvider.currentUser?.id;
                       final isBlocked = profile.status == 'Blocked';
 
-                      return Column(
-                        children: [
-                          ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 8,
-                            ),
-                            leading: CircleAvatar(
-                              radius: 22,
-                              backgroundColor: (config['color'] as Color)
-                                  .withOpacity(0.12),
-                              child: Icon(
-                                config['icon'] as IconData,
-                                color: config['color'] as Color,
-                                size: 20,
-                              ),
-                            ),
-                            title: Row(
-                              children: [
-                                Text(
-                                  profile.fullName ??
-                                      profile.email ??
-                                      'Unknown User',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                                if (isCurrentUser) ...[
-                                  const SizedBox(width: 8),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.primaryGold.withOpacity(
-                                        0.15,
-                                      ),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: const Text(
-                                      'YOU',
-                                      style: TextStyle(
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.primaryGold,
-                                        letterSpacing: 0.8,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                            subtitle: Text(
-                              [
-                                profile.email ?? 'No email',
-                                if ((profile.department ?? '').isNotEmpty)
-                                  profile.department!,
-                              ].join(' • '),
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
-                              ),
-                            ),
-                            trailing: Builder(
-                              builder: (context) {
-                                final isSmall = MediaQuery.of(context).size.width < 1100;
-                                if (isSmall) {
-                                  return PopupMenuButton<String>(
-                                    icon: const Icon(Icons.more_vert),
-                                    onSelected: (value) {
-                                      if (value == 'edit') {
-                                        _showEditUserDialog(profile, canAdminister);
-                                      } else if (value == 'role') {
-                                        _showRoleDialog(profile);
-                                      } else if (value == 'block') {
-                                        if (isBlocked) {
-                                          _unblockUser(profile, authProvider);
-                                        } else {
-                                          _confirmBlockUser(profile, authProvider);
-                                        }
-                                      } else if (value == 'delete') {
-                                        _confirmDeleteUser(profile, authProvider);
-                                      }
-                                    },
-                                    itemBuilder: (context) => [
-                                      PopupMenuItem(
-                                        value: 'edit',
-                                        enabled: canManage,
-                                        child: const ListTile(
-                                          leading: Icon(Icons.edit, size: 20),
-                                          title: Text('Edit Details'),
-                                          dense: true,
-                                          contentPadding: EdgeInsets.zero,
-                                        ),
-                                      ),
-                                      if (canAdminister && !isCurrentUser) ...[
-                                        const PopupMenuItem(
-                                          value: 'role',
-                                          child: ListTile(
-                                            leading: Icon(Icons.admin_panel_settings, size: 20),
-                                            title: Text('Change Role'),
-                                            dense: true,
-                                            contentPadding: EdgeInsets.zero,
-                                          ),
-                                        ),
-                                        PopupMenuItem(
-                                          value: 'block',
-                                          child: ListTile(
-                                            leading: Icon(
-                                              isBlocked ? Icons.lock_open : Icons.block,
-                                              size: 20,
-                                            ),
-                                            title: Text(isBlocked ? 'Unblock User' : 'Block User'),
-                                            dense: true,
-                                            contentPadding: EdgeInsets.zero,
-                                          ),
-                                        ),
-                                        const PopupMenuItem(
-                                          value: 'delete',
-                                          child: ListTile(
-                                            leading: Icon(Icons.delete_outline, size: 20, color: Colors.redAccent),
-                                            title: Text('Delete User', style: TextStyle(color: Colors.redAccent)),
-                                            dense: true,
-                                            contentPadding: EdgeInsets.zero,
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  );
-                                }
-
-                                return Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: isBlocked
-                                            ? Colors.red.withOpacity(0.12)
-                                            : Colors.green.withOpacity(0.12),
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(
-                                          color: isBlocked
-                                              ? Colors.redAccent.withOpacity(0.4)
-                                              : Colors.green.withOpacity(0.35),
-                                        ),
-                                      ),
-                                      child: Text(
-                                        profile.status,
-                                        style: TextStyle(
-                                          color: isBlocked
-                                              ? Colors.redAccent
-                                              : Colors.green,
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: (config['color'] as Color)
-                                            .withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(
-                                          color: (config['color'] as Color)
-                                              .withOpacity(0.3),
-                                        ),
-                                      ),
-                                      child: Text(
-                                        profile.role,
-                                        style: TextStyle(
-                                          color: config['color'] as Color,
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    IconButton(
-                                      icon: const Icon(Icons.edit, size: 18),
-                                      color: canManage
-                                          ? Colors.grey
-                                          : Colors.grey.withOpacity(0.35),
-                                      tooltip: canManage
-                                          ? 'Edit user details'
-                                          : 'Only Admins can edit user details.',
-                                      onPressed: canManage
-                                          ? () => _showEditUserDialog(
-                                              profile,
-                                              canAdminister,
-                                            )
-                                          : null,
-                                    ),
-                                    _restrictedIconButton(
-                                      icon: Icons.admin_panel_settings,
-                                      tooltip: 'Change role',
-                                      enabled: canAdminister && !isCurrentUser,
-                                      onPressed: () => _showRoleDialog(profile),
-                                    ),
-                                    _restrictedIconButton(
-                                      icon: isBlocked
-                                          ? Icons.lock_open
-                                          : Icons.block,
-                                      tooltip: isBlocked
-                                          ? 'Unblock user'
-                                          : 'Block user',
-                                      enabled: canAdminister && !isCurrentUser,
-                                      onPressed: () => isBlocked
-                                          ? _unblockUser(profile, authProvider)
-                                          : _confirmBlockUser(
-                                              profile,
-                                              authProvider,
-                                            ),
-                                    ),
-                                    _restrictedIconButton(
-                                      icon: Icons.delete_outline,
-                                      tooltip: 'Delete user',
-                                      enabled: canAdminister && !isCurrentUser,
-                                      color: Colors.redAccent,
-                                      onPressed: () =>
-                                          _confirmDeleteUser(profile, authProvider),
-                                    ),
-                                  ],
-                                );
-                              },
-                            ),
-                          ),
-                          if (!isLast)
-                            Divider(
-                              height: 1,
-                              color: theme.dividerColor.withOpacity(0.5),
-                            ),
-                        ],
+                      return _buildUserRow(
+                        theme, profile, config, isLast,
+                        isCurrentUser, isBlocked,
+                        canManage, canAdminister, authProvider,
                       );
                     }).toList(),
                   ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
 
-          // Role Capability Reference
+          // ─── Role Capability Reference ───
           Text(
             'Role Capabilities',
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+            style: theme.textTheme.titleMedium,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           _buildCapabilityTable(theme),
         ],
       ),
     );
   }
 
-  Widget _restrictedIconButton({
-    required IconData icon,
-    required String tooltip,
-    required bool enabled,
-    required VoidCallback onPressed,
-    Color? color,
-  }) {
-    return Tooltip(
-      message: enabled ? tooltip : 'Only Super Admins can perform this action.',
-      child: IconButton(
-        icon: Icon(icon, size: 18),
-        color: enabled ? (color ?? Colors.grey) : Colors.grey.withOpacity(0.35),
-        onPressed: enabled ? onPressed : null,
+  Widget _buildEmptyUsers(ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 48),
+      child: Center(
+        child: Column(
+          children: [
+            Icon(
+              Icons.people_outline,
+              size: 36,
+              color: theme.textTheme.bodySmall?.color?.withOpacity(0.4),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'No users yet',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.textTheme.bodySmall?.color,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Users must log in once to create their profile.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUserRow(
+    ThemeData theme,
+    ProfileModel profile,
+    Map<String, dynamic> config,
+    bool isLast,
+    bool isCurrentUser,
+    bool isBlocked,
+    bool canManage,
+    bool canAdminister,
+    AuthProvider authProvider,
+  ) {
+    final roleColor = config['color'] as Color;
+    return Container(
+      decoration: BoxDecoration(
+        border: isLast
+            ? null
+            : Border(
+                bottom: BorderSide(
+                  color: theme.dividerColor.withOpacity(0.08),
+                  width: 0.5,
+                ),
+              ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+        child: Row(
+          children: [
+            // ─── Avatar ───
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: roleColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                config['icon'] as IconData,
+                color: roleColor,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 12),
+            // ─── Name + Email ───
+            Expanded(
+              flex: 3,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          profile.fullName ?? 'Unknown',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (isCurrentUser) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryGold.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                          child: Text(
+                            'YOU',
+                            style: TextStyle(
+                              fontSize: 8,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.primaryGold,
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    profile.email ?? 'No email',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.textTheme.bodySmall?.color?.withOpacity(0.6),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            // ─── Role badge ───
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: roleColor.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                profile.role,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: roleColor,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            // ─── Status badge ───
+            _StatusBadge(isBlocked: isBlocked),
+            const SizedBox(width: 10),
+            // ─── Actions ───
+            _UserActions(
+              canManage: canManage,
+              canAdminister: canAdminister,
+              isCurrentUser: isCurrentUser,
+              isBlocked: isBlocked,
+              onEdit: () => _showEditUserDialog(profile, canAdminister),
+              onRole: () => _showRoleDialog(profile),
+              onToggleBlock: () => isBlocked
+                  ? _unblockUser(profile, authProvider)
+                  : _confirmBlockUser(profile, authProvider),
+              onDelete: () => _confirmDeleteUser(profile, authProvider),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -753,146 +858,161 @@ class _UserManagementScreenState extends State<UserManagementScreen>
       barrierDismissible: false,
       builder: (dialogCtx) => StatefulBuilder(
         builder: (dialogCtx, setDialogState) => AlertDialog(
-          title: const Text('Edit User Details'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Full Name',
-                    prefixIcon: Icon(Icons.person),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: emailCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Email Address',
-                    prefixIcon: Icon(Icons.email),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: departmentCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Department',
-                    prefixIcon: Icon(Icons.business),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: selectedRole,
-                  decoration: const InputDecoration(
-                    labelText: 'Role',
-                    prefixIcon: Icon(Icons.admin_panel_settings),
-                  ),
-                  items: _roles
-                      .map((r) => DropdownMenuItem(value: r, child: Text(r)))
-                      .toList(),
-                  onChanged: canAdminister
-                      ? (v) => setDialogState(() => selectedRole = v!)
-                      : null,
-                ),
-                if (!canAdminister)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 6),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Only Super Admins can change roles.',
-                        style: TextStyle(color: Colors.grey, fontSize: 11),
+          title: Text('Edit ${profile.fullName ?? 'User'}'),
+          contentPadding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+          content: SizedBox(
+            width: 400,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Full Name',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
                       ),
                     ),
                   ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: selectedStatus,
-                  decoration: const InputDecoration(
-                    labelText: 'Status',
-                    prefixIcon: Icon(Icons.verified_user),
-                  ),
-                  items: const [
-                    DropdownMenuItem(value: 'Active', child: Text('Active')),
-                    DropdownMenuItem(value: 'Blocked', child: Text('Blocked')),
-                  ],
-                  onChanged: canAdminister
-                      ? (v) => setDialogState(() => selectedStatus = v!)
-                      : null,
-                ),
-                if (!canAdminister)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 6),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Only Super Admins can block or unblock accounts.',
-                        style: TextStyle(color: Colors.grey, fontSize: 11),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: emailCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Email Address',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
                       ),
                     ),
                   ),
-              ],
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: departmentCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Department',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: selectedRole,
+                    decoration: const InputDecoration(
+                      labelText: 'Role',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                    ),
+                    items: _roles
+                        .map((r) => DropdownMenuItem(value: r, child: Text(r)))
+                        .toList(),
+                    onChanged: canAdminister
+                        ? (v) => setDialogState(() => selectedRole = v!)
+                        : null,
+                  ),
+                  if (!canAdminister)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Only Super Admins can change roles.',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.6),
+                          ),
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: selectedStatus,
+                    decoration: const InputDecoration(
+                      labelText: 'Status',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'Active', child: Text('Active')),
+                      DropdownMenuItem(value: 'Blocked', child: Text('Blocked')),
+                    ],
+                    onChanged: canAdminister
+                        ? (v) => setDialogState(() => selectedStatus = v!)
+                        : null,
+                  ),
+                  if (!canAdminister)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Only Super Admins can block or unblock accounts.',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.6),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
           actions: [
             TextButton(
               onPressed: isSubmitting ? null : () => Navigator.pop(dialogCtx),
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: isSubmitting
-                  ? null
-                  : () async {
-                      if (nameCtrl.text.trim().isEmpty ||
-                          emailCtrl.text.trim().isEmpty ||
-                          !emailCtrl.text.contains('@')) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Please enter a valid name and email.',
-                            ),
-                          ),
-                        );
-                        return;
-                      }
-                      setDialogState(() => isSubmitting = true);
-                      try {
-                        await AccountManagementService.updateStaffProfile(
-                          userId: profile.id,
-                          fullName: nameCtrl.text.trim(),
-                          email: emailCtrl.text.trim(),
-                          department: departmentCtrl.text.trim(),
-                          role: selectedRole,
-                          status: selectedStatus,
-                          operatorEmail:
-                              context.read<AuthProvider>().currentUser?.email ??
-                              'Unknown',
-                          canChangeCriticalFields: canAdminister,
-                        );
-                        if (!mounted) return;
-                        Navigator.pop(dialogCtx);
-                        await _fetchProfiles();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('User details updated.'),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
-                      } catch (e) {
-                        setDialogState(() => isSubmitting = false);
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Error updating user: $e'),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
-                        }
-                      }
+              onPressed: () async {
+                  if (nameCtrl.text.trim().isEmpty ||
+                      emailCtrl.text.trim().isEmpty ||
+                      !emailCtrl.text.contains('@')) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Please enter a valid name and email.',
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+                  final operatorEmail =
+                      context.read<AuthProvider>().currentUser?.email ?? 'Unknown';
+                  runWithLoadingAfterPop(
+                    dialogCtx, task: () async {
+                      await AccountManagementService.updateStaffProfile(
+                        userId: profile.id,
+                        fullName: nameCtrl.text.trim(),
+                        email: emailCtrl.text.trim(),
+                        department: departmentCtrl.text.trim(),
+                        role: selectedRole,
+                        status: selectedStatus,
+                        operatorEmail: operatorEmail,
+                        canChangeCriticalFields: canAdminister,
+                      );
+                      await _fetchProfiles();
                     },
+                    successMessage: 'User details updated.',
+                  );
+                },
               child: isSubmitting
-                  ? const CircularProgressIndicator()
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : const Text('Save'),
             ),
           ],
@@ -909,29 +1029,51 @@ class _UserManagementScreenState extends State<UserManagementScreen>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Are you sure you want to block this user?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(profile.email ?? profile.fullName ?? 'Unknown user'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: reasonCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Reason',
-                prefixIcon: Icon(Icons.notes),
+        title: Text('Block ${profile.fullName ?? 'User'}'),
+        contentPadding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+        content: SizedBox(
+          width: 380,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, size: 16, color: Colors.red.shade400),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      profile.email ?? 'Unknown user',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                ],
               ),
-              maxLines: 2,
-            ),
-          ],
+              const SizedBox(height: 16),
+              TextField(
+                controller: reasonCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Reason for blocking',
+                  hintText: 'Required',
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                ),
+                maxLines: 2,
+              ),
+            ],
+          ),
         ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Block User'),
           ),
@@ -939,49 +1081,33 @@ class _UserManagementScreenState extends State<UserManagementScreen>
       ),
     );
     if (confirmed != true) return;
-    try {
+    final operatorEmail = authProvider.currentUser?.email ?? 'Unknown';
+    runWithLoading(context, task: () async {
       await AccountManagementService.blockUser(
         userId: profile.id,
         targetEmail: profile.email ?? 'Unknown',
-        operatorEmail: authProvider.currentUser?.email ?? 'Unknown',
+        operatorEmail: operatorEmail,
         reason: reasonCtrl.text.trim().isEmpty
             ? 'No reason provided'
             : reasonCtrl.text.trim(),
       );
       await _fetchProfiles();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error blocking user: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
+    }, successMessage: 'User blocked successfully.');
   }
 
   Future<void> _unblockUser(
     ProfileModel profile,
     AuthProvider authProvider,
   ) async {
-    try {
+    final operatorEmail = authProvider.currentUser?.email ?? 'Unknown';
+    runWithLoading(context, task: () async {
       await AccountManagementService.unblockUser(
         userId: profile.id,
         targetEmail: profile.email ?? 'Unknown',
-        operatorEmail: authProvider.currentUser?.email ?? 'Unknown',
+        operatorEmail: operatorEmail,
       );
       await _fetchProfiles();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error unblocking user: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
+    }, successMessage: 'User unblocked successfully.');
   }
 
   Future<void> _confirmDeleteUser(
@@ -991,16 +1117,41 @@ class _UserManagementScreenState extends State<UserManagementScreen>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete user permanently?'),
-        content: Text(
-          'This will permanently delete ${profile.email ?? profile.fullName ?? 'this user'} and cannot be undone.',
+        title: Text('Delete ${profile.fullName ?? 'User'}?'),
+        contentPadding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+        content: SizedBox(
+          width: 380,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.delete_outline, size: 16, color: Colors.red.shade400),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(profile.email ?? 'Unknown user'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'This action cannot be undone. All data associated with this account will be permanently removed.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.6),
+                ),
+              ),
+            ],
+          ),
         ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Delete'),
           ),
@@ -1008,23 +1159,15 @@ class _UserManagementScreenState extends State<UserManagementScreen>
       ),
     );
     if (confirmed != true) return;
-    try {
+    final operatorEmail = authProvider.currentUser?.email ?? 'Unknown';
+    runWithLoading(context, task: () async {
       await AccountManagementService.deleteUserAccount(
         userId: profile.id,
         targetEmail: profile.email ?? 'Unknown',
-        operatorEmail: authProvider.currentUser?.email ?? 'Unknown',
+        operatorEmail: operatorEmail,
       );
       await _fetchProfiles();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error deleting user: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
+    }, successMessage: 'User deleted successfully.');
   }
 
   Widget _buildRoleSummaryGrid(ThemeData theme) {
@@ -1040,39 +1183,40 @@ class _UserManagementScreenState extends State<UserManagementScreen>
         children: _roles.map((role) {
           final config = _roleConfig[role]!;
           final count = roleCounts[role] ?? 0;
+          final color = config['color'] as Color;
           return Container(
-            width: 160,
-            margin: const EdgeInsets.only(right: 12),
-            padding: const EdgeInsets.all(16),
+            width: 130,
+            margin: const EdgeInsets.only(right: 8),
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
             decoration: BoxDecoration(
               color: theme.cardColor,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: (config['color'] as Color).withOpacity(0.2),
+                color: color.withOpacity(0.15),
+                width: 0.5,
               ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  config['icon'] as IconData,
-                  color: config['color'] as Color,
-                  size: 20,
+                Row(
+                  children: [
+                    Icon(config['icon'] as IconData, color: color, size: 16),
+                    const Spacer(),
+                    Text(
+                      count.toString(),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: color,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  count.toString(),
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: config['color'] as Color,
-                  ),
-                ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 6),
                 Text(
                   role,
-                  style: const TextStyle(fontSize: 10, color: Colors.grey),
+                  style: TextStyle(fontSize: 10, color: color),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -1160,96 +1304,80 @@ class _UserManagementScreenState extends State<UserManagementScreen>
       },
     ];
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final minTableWidth =
-            constraints.maxWidth.isFinite && constraints.maxWidth > 0
-            ? constraints.maxWidth
-            : 800.0;
-
-        return Container(
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: theme.cardColor,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: theme.dividerColor),
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: theme.dividerColor.withOpacity(0.12),
+          width: 0.5,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          headingRowColor: WidgetStateProperty.all(
+            theme.scaffoldBackgroundColor,
           ),
-          clipBehavior: Clip.antiAlias,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minWidth: minTableWidth),
-              child: DataTable(
-                headingRowColor: WidgetStateProperty.all(
-                  theme.dividerColor.withOpacity(0.1),
+          headingRowHeight: 40,
+          dataRowMinHeight: 34,
+          dataRowMaxHeight: 34,
+          horizontalMargin: 16,
+          columnSpacing: 20,
+          columns: [
+            DataColumn(
+              label: Text(
+                'Capability',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w600,
                 ),
-                columns: [
-                  const DataColumn(
-                    label: Text(
-                      'Capability',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                  ..._roles.map((role) {
-                    final config = _roleConfig[role]!;
-                    return DataColumn(
-                      label: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            config['icon'] as IconData,
-                            color: config['color'] as Color,
-                            size: 14,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            role.replaceAll(' ', '\n'),
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: config['color'] as Color,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-                ],
-                rows: capabilities.map((cap) {
-                  return DataRow(
-                    cells: [
-                      DataCell(
-                        Text(
-                          cap['capability'] as String,
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      ),
-                      ..._roles.map((role) {
-                        final hasAccess = cap[role] as bool;
-                        return DataCell(
-                          Center(
-                            child: Icon(
-                              hasAccess ? Icons.check_circle : Icons.remove,
-                              color: hasAccess
-                                  ? Colors.green
-                                  : Colors.grey.withOpacity(0.3),
-                              size: 16,
-                            ),
-                          ),
-                        );
-                      }),
-                    ],
-                  );
-                }).toList(),
               ),
             ),
-          ),
-        );
-      },
+            ..._roles.map((role) {
+              final config = _roleConfig[role]!;
+              return DataColumn(
+                label: Text(
+                  role == 'Development Facilitator' ? 'Field Agent' : role,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: config['color'] as Color,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              );
+            }),
+          ],
+          rows: capabilities.map((cap) {
+            return DataRow(
+              cells: [
+                DataCell(
+                  Text(
+                    cap['capability'] as String,
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+                ..._roles.map((role) {
+                  final hasAccess = cap[role] as bool;
+                  return DataCell(
+                    Center(
+                      child: Icon(
+                        hasAccess
+                            ? Icons.check_circle
+                            : Icons.horizontal_rule,
+                        color: hasAccess
+                            ? Colors.green
+                            : theme.textTheme.bodySmall?.color?.withOpacity(0.2),
+                        size: 14,
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            );
+          }).toList(),
+        ),
+      ),
     );
   }
 
@@ -1267,13 +1395,15 @@ class _UserManagementScreenState extends State<UserManagementScreen>
           children: [
             Icon(
               Icons.check_circle_outline,
-              size: 64,
-              color: Colors.green.withOpacity(0.5),
+              size: 36,
+              color: Colors.green.withOpacity(0.4),
             ),
-            const SizedBox(height: 16),
-            const Text(
+            const SizedBox(height: 12),
+            Text(
               'No pending password reset requests.',
-              style: TextStyle(color: Colors.grey),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.textTheme.bodySmall?.color,
+              ),
             ),
           ],
         ),
@@ -1281,7 +1411,7 @@ class _UserManagementScreenState extends State<UserManagementScreen>
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
       itemCount: _pendingResets.length,
       itemBuilder: (context, index) {
         final req = _pendingResets[index];
@@ -1290,41 +1420,66 @@ class _UserManagementScreenState extends State<UserManagementScreen>
           req['created_at'],
         ).toLocal().toString().substring(0, 16);
 
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: theme.dividerColor),
+        return Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: theme.dividerColor.withOpacity(0.12),
+              width: 0.5,
+            ),
           ),
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: Colors.orange.withOpacity(0.2),
-              child: const Icon(Icons.lock_reset, color: Colors.orange),
-            ),
-            title: Text(
-              email,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            subtitle: Text(
-              'Requested on: $date',
-              style: const TextStyle(color: Colors.grey, fontSize: 12),
-            ),
-            trailing: canManage
-                ? Row(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.lock_reset,
+                    color: Colors.orange,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        email,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Requested on $date',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.textTheme.bodySmall?.color?.withOpacity(0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (canManage)
+                  Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      TextButton.icon(
-                        icon: const Icon(Icons.close, color: Colors.redAccent),
-                        label: const Text(
-                          'Reject',
-                          style: TextStyle(color: Colors.redAccent),
-                        ),
+                      TextButton(
                         onPressed: () async {
                           final reasonCtrl = TextEditingController();
                           final confirmed = await showDialog<bool>(
                             context: context,
                             builder: (ctx) => AlertDialog(
                               title: const Text('Reject Reset Request'),
+                              contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
                               content: TextField(
                                 controller: reasonCtrl,
                                 decoration: const InputDecoration(
@@ -1333,6 +1488,7 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                                 ),
                                 maxLines: 3,
                               ),
+                              actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                               actions: [
                                 TextButton(
                                   onPressed: () => Navigator.pop(ctx, false),
@@ -1350,27 +1506,34 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                           );
 
                           if (confirmed == true) {
-                            await AccountManagementService.rejectPasswordReset(
-                              requestId: req['id'],
-                              targetEmail: email,
-                              operatorEmail:
-                                  authProvider.currentUser?.email ?? 'Unknown',
-                              reason: reasonCtrl.text.trim().isEmpty
-                                  ? null
-                                  : reasonCtrl.text.trim(),
-                            );
-                            _fetchPendingResets();
+                            final operatorEmail =
+                                authProvider.currentUser?.email ?? 'Unknown';
+                            runWithLoading(context, task: () async {
+                              await AccountManagementService.rejectPasswordReset(
+                                requestId: req['id'],
+                                targetEmail: email,
+                                operatorEmail: operatorEmail,
+                                reason: reasonCtrl.text.trim().isEmpty
+                                    ? null
+                                    : reasonCtrl.text.trim(),
+                              );
+                              _fetchPendingResets();
+                            }, successMessage: 'Password reset request rejected.');
                           }
                         },
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.check, color: Colors.black),
-                        label: const Text('Approve'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          foregroundColor: Colors.black,
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.redAccent,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
+                        child: const Text('Reject'),
+                      ),
+                      const SizedBox(width: 4),
+                      ElevatedButton(
                         onPressed: () async {
                           final confirm = await showDialog<bool>(
                             context: context,
@@ -1379,6 +1542,7 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                               content: Text(
                                 'A secure temporary password will be generated and sent to $email.',
                               ),
+                              actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                               actions: [
                                 TextButton(
                                   onPressed: () => Navigator.pop(ctx, false),
@@ -1393,32 +1557,46 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                           );
 
                           if (confirm == true) {
-                            await AccountManagementService.approvePasswordReset(
-                              requestId: req['id'],
-                              targetEmail: email,
-                              operatorEmail:
-                                  authProvider.currentUser?.email ?? 'Unknown',
-                            );
-                            _fetchPendingResets();
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Reset approved. Temporary credentials sent to user.',
-                                  ),
-                                  backgroundColor: Colors.green,
-                                ),
+                            final operatorEmail =
+                                authProvider.currentUser?.email ?? 'Unknown';
+                            runWithLoading(context, task: () async {
+                              await AccountManagementService.approvePasswordReset(
+                                requestId: req['id'],
+                                targetEmail: email,
+                                operatorEmail: operatorEmail,
                               );
-                            }
+                              _fetchPendingResets();
+                            }, successMessage: 'Reset approved. Temporary credentials sent to user.');
                           }
                         },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        ),
+                        child: const Text('Approve'),
                       ),
                     ],
                   )
-                : const Text(
+                else
+                  Text(
                     'Requires Admin',
-                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.textTheme.bodySmall?.color?.withOpacity(0.5),
+                    ),
                   ),
+              ],
+            ),
           ),
         );
       },
@@ -1428,96 +1606,131 @@ class _UserManagementScreenState extends State<UserManagementScreen>
   Widget _buildAuditLogTab(ThemeData theme) {
     return Column(
       children: [
+        // ─── Filters ───
         Padding(
-          padding: const EdgeInsets.all(24),
-          child: Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  value: _auditFilterEvent.isEmpty ? null : _auditFilterEvent,
-                  decoration: const InputDecoration(
-                    labelText: 'Event Type',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: const [
-                    DropdownMenuItem(value: '', child: Text('All Events')),
-                    DropdownMenuItem(
-                      value: 'account_created',
-                      child: Text('Account Created'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'password_set',
-                      child: Text('Password Set'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'reset_requested',
-                      child: Text('Reset Requested'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'reset_approved',
-                      child: Text('Reset Approved'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'reset_rejected',
-                      child: Text('Reset Rejected'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'user_updated',
-                      child: Text('User Updated'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'user_blocked',
-                      child: Text('User Blocked'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'user_unblocked',
-                      child: Text('User Unblocked'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'user_deleted',
-                      child: Text('User Deleted'),
-                    ),
-                  ],
-                  onChanged: (val) {
-                    setState(() => _auditFilterEvent = val ?? '');
-                    _fetchAuditLog();
-                  },
-                ),
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: theme.dividerColor.withOpacity(0.12),
+                width: 0.5,
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                flex: 2,
-                child: TextField(
-                  decoration: const InputDecoration(
-                    labelText: 'Search by Email',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.search),
+            ),
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                SizedBox(
+                  width: 200,
+                  child: DropdownButtonFormField<String>(
+                    value: _auditFilterEvent.isEmpty ? null : _auditFilterEvent,
+                    decoration: const InputDecoration(
+                      hintText: 'Event Type',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                    ),
+                    isExpanded: true,
+                    items: const [
+                      DropdownMenuItem(value: '', child: Text('All Events')),
+                      DropdownMenuItem(
+                        value: 'account_created',
+                        child: Text('Account Created'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'password_set',
+                        child: Text('Password Set'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'reset_requested',
+                        child: Text('Reset Requested'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'reset_approved',
+                        child: Text('Reset Approved'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'reset_rejected',
+                        child: Text('Reset Rejected'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'user_updated',
+                        child: Text('User Updated'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'user_blocked',
+                        child: Text('User Blocked'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'user_unblocked',
+                        child: Text('User Unblocked'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'user_deleted',
+                        child: Text('User Deleted'),
+                      ),
+                    ],
+                    onChanged: (val) {
+                      setState(() => _auditFilterEvent = val ?? '');
+                      _fetchAuditLog();
+                    },
                   ),
-                  onChanged: (val) {
-                    _auditFilterEmail = val;
-                    // Debounce in a real app, but direct for now
-                    _fetchAuditLog();
-                  },
                 ),
-              ),
-            ],
+                SizedBox(
+                  width: 240,
+                  child: TextField(
+                    decoration: const InputDecoration(
+                      hintText: 'Search by email',
+                      isDense: true,
+                      prefixIcon: Icon(Icons.search, size: 16),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                    ),
+                    onChanged: (val) {
+                      _auditFilterEmail = val;
+                      _fetchAuditLog();
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
+        const SizedBox(height: 16),
+        // ─── Log entries ───
         Expanded(
           child: _isLoadingAudit
               ? const Center(child: CircularProgressIndicator())
               : _auditLogs.isEmpty
-              ? const Center(
-                  child: Text(
-                    'No audit logs found.',
-                    style: TextStyle(color: Colors.grey),
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.history_outlined,
+                        size: 36,
+                        color: theme.textTheme.bodySmall?.color?.withOpacity(0.4),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'No audit logs found.',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.textTheme.bodySmall?.color,
+                        ),
+                      ),
+                    ],
                   ),
                 )
               : ListView.builder(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 8,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
                   itemCount: _auditLogs.length,
                   itemBuilder: (context, index) {
                     final log = _auditLogs[index];
@@ -1525,82 +1738,94 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                       log['created_at'],
                     ).toLocal().toString().substring(0, 16);
 
-                    IconData icon;
-                    Color color;
-                    switch (log['event_type']) {
-                      case 'account_created':
-                        icon = Icons.person_add;
-                        color = Colors.blue;
-                        break;
-                      case 'password_set':
-                        icon = Icons.lock;
-                        color = Colors.green;
-                        break;
-                      case 'reset_requested':
-                        icon = Icons.help_outline;
-                        color = Colors.orange;
-                        break;
-                      case 'reset_approved':
-                        icon = Icons.check_circle;
-                        color = Colors.green;
-                        break;
-                      case 'reset_rejected':
-                        icon = Icons.cancel;
-                        color = Colors.red;
-                        break;
-                      case 'user_updated':
-                        icon = Icons.manage_accounts;
-                        color = Colors.blue;
-                        break;
-                      case 'user_blocked':
-                        icon = Icons.block;
-                        color = Colors.red;
-                        break;
-                      case 'user_unblocked':
-                        icon = Icons.lock_open;
-                        color = Colors.green;
-                        break;
-                      case 'user_deleted':
-                        icon = Icons.delete;
-                        color = Colors.redAccent;
-                        break;
-                      default:
-                        icon = Icons.info;
-                        color = Colors.grey;
-                    }
+                    final (icon, color) = switch (log['event_type']) {
+                      'account_created' => (Icons.person_add, Colors.blue),
+                      'password_set' => (Icons.lock, Colors.green),
+                      'reset_requested' => (Icons.help_outline, Colors.orange),
+                      'reset_approved' => (Icons.check_circle, Colors.green),
+                      'reset_rejected' => (Icons.cancel, Colors.red),
+                      'user_updated' => (Icons.manage_accounts, Colors.blue),
+                      'user_blocked' => (Icons.block, Colors.red),
+                      'user_unblocked' => (Icons.lock_open, Colors.green),
+                      'user_deleted' => (Icons.delete, Colors.redAccent),
+                      _ => (Icons.info, Colors.grey),
+                    };
 
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: color.withOpacity(0.2),
-                          child: Icon(icon, color: color, size: 20),
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 4),
+                      decoration: BoxDecoration(
+                        color: theme.cardColor,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: theme.dividerColor.withOpacity(0.08),
+                          width: 0.5,
                         ),
-                        title: Text(
-                          '${log['event_type'].toString().toUpperCase()} - ${log['target_email']}',
-                        ),
-                        subtitle: Text(
-                          'By: ${log['operator_email'] ?? 'Self-Service'} • At: $date',
-                        ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.code, size: 20),
-                          onPressed: () {
-                            showDialog(
-                              context: context,
-                              builder: (ctx) => AlertDialog(
-                                title: const Text('Audit Metadata'),
-                                content: Text(
-                                  log['metadata']?.toString() ?? 'No metadata',
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(ctx),
-                                    child: const Text('Close'),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: color.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Icon(icon, size: 16, color: color),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${log['event_type'].toString().replaceAll('_', ' ')} — ${log['target_email']}',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'By ${log['operator_email'] ?? 'Self-Service'} • $date',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.textTheme.bodySmall?.color?.withOpacity(0.6),
+                                    ),
                                   ),
                                 ],
                               ),
-                            );
-                          },
+                            ),
+                            SizedBox(
+                              width: 28,
+                              height: 28,
+                              child: IconButton(
+                                icon: const Icon(Icons.code, size: 14),
+                                tooltip: 'View metadata',
+                                onPressed: () {
+                                  showDialog(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      title: const Text('Audit Metadata'),
+                                      contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                                      content: Text(
+                                        log['metadata']?.toString() ??
+                                            'No metadata',
+                                        style: theme.textTheme.bodyMedium,
+                                      ),
+                                      actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(ctx),
+                                          child: const Text('Close'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                                padding: EdgeInsets.zero,
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     );
@@ -1622,104 +1847,96 @@ class _UserManagementScreenState extends State<UserManagementScreen>
       barrierDismissible: false,
       builder: (dialogCtx) => StatefulBuilder(
         builder: (dialogCtx, setDialogState) => AlertDialog(
-          title: const Text('Create Staff Account'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Full Name',
-                  prefixIcon: Icon(Icons.person),
-                ),
+          title: const Text('Add Staff Member'),
+          contentPadding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+          content: SizedBox(
+            width: 400,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Full Name',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: emailCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Email Address',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: selectedRole,
+                    decoration: const InputDecoration(
+                      labelText: 'Role',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                    ),
+                    items: _roles
+                        .map((r) => DropdownMenuItem(value: r, child: Text(r)))
+                        .toList(),
+                    onChanged: (v) => setDialogState(() => selectedRole = v!),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: emailCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Email Address',
-                  prefixIcon: Icon(Icons.email),
-                ),
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: selectedRole,
-                decoration: const InputDecoration(
-                  labelText: 'Role',
-                  prefixIcon: Icon(Icons.admin_panel_settings),
-                ),
-                items: _roles
-                    .map((r) => DropdownMenuItem(value: r, child: Text(r)))
-                    .toList(),
-                onChanged: (v) => setDialogState(() => selectedRole = v!),
-              ),
-            ],
+            ),
           ),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
           actions: [
             TextButton(
               onPressed: isSubmitting ? null : () => Navigator.pop(dialogCtx),
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: isSubmitting
-                  ? null
-                  : () async {
-                      if (nameCtrl.text.isEmpty ||
-                          emailCtrl.text.isEmpty ||
-                          !emailCtrl.text.contains('@')) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Please fill all fields correctly.'),
-                          ),
-                        );
-                        return;
-                      }
-                      setDialogState(() => isSubmitting = true);
-                      try {
-                        await AccountManagementService.createStaffAccount(
-                          email: emailCtrl.text.trim(),
-                          fullName: nameCtrl.text.trim(),
-                          role: selectedRole,
-                          operatorEmail:
-                              context.read<AuthProvider>().currentUser?.email ??
-                              'Unknown',
-                        );
-                        if (mounted) {
-                          Navigator.pop(dialogCtx);
-                          _fetchProfiles();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Account created successfully! User notified via email.',
-                              ),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
-                        }
-                      } catch (e) {
-                        setDialogState(() => isSubmitting = false);
-                        if (!mounted) return;
-                        final rateLimited =
-                            AccountManagementService.isAuthEmailRateLimit(e);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              rateLimited
-                                  ? AccountManagementService.staffInviteErrorMessage(
-                                      e,
-                                    )
-                                  : 'Error: ${AccountManagementService.staffInviteErrorMessage(e)}',
-                            ),
-                            backgroundColor: rateLimited
-                                ? Colors.deepOrange
-                                : Colors.red,
-                            duration: Duration(seconds: rateLimited ? 14 : 6),
-                          ),
-                        );
-                      }
+              onPressed: () async {
+                  if (nameCtrl.text.isEmpty ||
+                      emailCtrl.text.isEmpty ||
+                      !emailCtrl.text.contains('@')) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please fill all fields correctly.'),
+                      ),
+                    );
+                    return;
+                  }
+                  final operatorEmail =
+                      context.read<AuthProvider>().currentUser?.email ?? 'Unknown';
+                  runWithLoadingAfterPop(
+                    dialogCtx, task: () async {
+                      await AccountManagementService.createStaffAccount(
+                        email: emailCtrl.text.trim(),
+                        fullName: nameCtrl.text.trim(),
+                        role: selectedRole,
+                        operatorEmail: operatorEmail,
+                      );
+                      _fetchProfiles();
                     },
+                    successMessage: 'Account created successfully! User notified via email.',
+                  );
+                },
               child: isSubmitting
-                  ? const CircularProgressIndicator()
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : const Text('Send Invite'),
             ),
           ],

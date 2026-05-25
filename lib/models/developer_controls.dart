@@ -71,6 +71,8 @@ class FeatureFlagModel {
   final int sortOrder;
   final DateTime updatedAt;
   final String? updatedBy;
+  final List<String> allowedRoles;
+  final List<String> allowedUsers;
 
   const FeatureFlagModel({
     required this.featureKey,
@@ -79,6 +81,8 @@ class FeatureFlagModel {
     required this.sortOrder,
     required this.updatedAt,
     this.updatedBy,
+    this.allowedRoles = const [],
+    this.allowedUsers = const [],
   });
 
   factory FeatureFlagModel.fromJson(Map<String, dynamic> json) {
@@ -89,6 +93,37 @@ class FeatureFlagModel {
       sortOrder: json['sort_order'] as int? ?? 0,
       updatedAt: DateTime.parse(json['updated_at'] as String),
       updatedBy: json['updated_by'] as String?,
+      allowedRoles: _parseStringList(json['allowed_roles']),
+      allowedUsers: _parseStringList(json['allowed_users']),
+    );
+  }
+
+  static List<String> _parseStringList(dynamic value) {
+    if (value is List) return value.cast<String>();
+    if (value is String && value.isNotEmpty) {
+      return value.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    }
+    return [];
+  }
+
+  FeatureFlagModel copyWith({
+    bool? enabled,
+    String? label,
+    int? sortOrder,
+    DateTime? updatedAt,
+    String? updatedBy,
+    List<String>? allowedRoles,
+    List<String>? allowedUsers,
+  }) {
+    return FeatureFlagModel(
+      featureKey: featureKey,
+      enabled: enabled ?? this.enabled,
+      label: label ?? this.label,
+      sortOrder: sortOrder ?? this.sortOrder,
+      updatedAt: updatedAt ?? this.updatedAt,
+      updatedBy: updatedBy ?? this.updatedBy,
+      allowedRoles: allowedRoles ?? this.allowedRoles,
+      allowedUsers: allowedUsers ?? this.allowedUsers,
     );
   }
 }

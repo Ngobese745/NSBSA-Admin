@@ -12,3 +12,4 @@ export 'payment.dart';
 export 'profile.dart';
 export 'savings_history.dart';
 export 'vendor.dart';
+export 'reminder_log.dart';

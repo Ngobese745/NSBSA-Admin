@@ -150,7 +150,7 @@ class VendorPdfService {
                             comment.createdAt.toString().substring(0, 10),
                             style: const pw.TextStyle(
                               fontSize: 8,
-                              color: PdfColors.grey,
+                              color: PdfColors.black,
                             ),
                           ),
                         ],
@@ -237,7 +237,7 @@ class VendorPdfService {
             loans.isEmpty
                 ? pw.Text(
                     'No loan history found.',
-                    style: const pw.TextStyle(color: PdfColors.grey),
+                    style: const pw.TextStyle(color: PdfColors.black),
                   )
                 : pw.Table(
                     border: pw.TableBorder.all(
@@ -290,7 +290,7 @@ class VendorPdfService {
             vendorPayments.isEmpty
                 ? pw.Text(
                     'No payment history found.',
-                    style: const pw.TextStyle(color: PdfColors.grey),
+                    style: const pw.TextStyle(color: PdfColors.black),
                   )
                 : pw.Table(
                     border: pw.TableBorder.all(
@@ -351,7 +351,7 @@ class VendorPdfService {
                     'All applicable fees are included in the amounts shown above.',
                     style: const pw.TextStyle(
                       fontSize: 8,
-                      color: PdfColors.grey700,
+                      color: PdfColors.black,
                     ),
                   ),
                   pw.Text(
@@ -467,7 +467,7 @@ class VendorPdfService {
       children: [
         pw.Text(
           label,
-          style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+          style: const pw.TextStyle(fontSize: 9, color: PdfColors.black),
         ),
         pw.Text(
           value,

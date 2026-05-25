@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../providers/auth_provider.dart';
 import '../providers/developer_controls_provider.dart';
 
 /// Shown when a shell module is turned off via [DeveloperControlsProvider].
@@ -19,13 +20,20 @@ class FeatureDisabledPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+    final dev = context.watch<DeveloperControlsProvider>();
+    final auth = context.watch<AuthProvider>();
+
     String label = customLabel ?? featureKey ?? 'Feature Unavailable';
     if (featureKey != null && customLabel == null) {
-      label = context.watch<DeveloperControlsProvider>().flagFor(featureKey!)?.label ?? featureKey!;
+      label = dev.flagFor(featureKey!)?.label ?? featureKey!;
     }
 
-    final message = customMessage ?? 'This feature is temporarily unavailable.';
+    final canBypass = featureKey != null &&
+        dev.canAccessFeature(featureKey!, auth.userProfile);
+
+    final message = canBypass
+        ? 'This feature is currently disabled for general users. You have access as a test reviewer.'
+        : (customMessage ?? 'This feature is temporarily unavailable.');
 
     return Center(
       child: ConstrainedBox(
@@ -36,9 +44,11 @@ class FeatureDisabledPlaceholder extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                Icons.construction,
+                canBypass ? Icons.science : Icons.construction,
                 size: 64,
-                color: theme.colorScheme.primary.withOpacity(0.6),
+                color: canBypass
+                    ? theme.colorScheme.secondary.withOpacity(0.8)
+                    : theme.colorScheme.primary.withOpacity(0.6),
               ),
               const SizedBox(height: 24),
               Text(
@@ -52,7 +62,9 @@ class FeatureDisabledPlaceholder extends StatelessWidget {
               Text(
                 message,
                 textAlign: TextAlign.center,
-                style: theme.textTheme.bodyLarge?.copyWith(color: Colors.grey),
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: canBypass ? Colors.amber.shade300 : Colors.grey,
+                ),
               ),
             ],
           ),

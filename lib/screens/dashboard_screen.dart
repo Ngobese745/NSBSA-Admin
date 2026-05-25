@@ -8,7 +8,9 @@ import '../providers/loan_provider.dart';
 import '../providers/payment_provider.dart';
 import '../providers/vendor_provider.dart';
 import '../providers/analytics_provider.dart';
+import '../providers/reminder_provider.dart';
 import '../theme/app_theme.dart';
+import '../widgets/reminder_preview_panel.dart';
 import 'loan_details_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -205,6 +207,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
               _buildRiskHeatmapCard(theme, groupRisks),
               _buildCreditProfileCard(theme, groupRisks),
             ]),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 24),
+              child: ReminderPreviewPanel(),
+            ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 40)),
         ],

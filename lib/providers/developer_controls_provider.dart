@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/developer_controls.dart';
+import '../models/profile.dart';
+import '../services/access_control_service.dart';
 import '../services/developer_controls_service.dart';
 import '../services/system_audit_service.dart';
 
@@ -27,6 +29,38 @@ class DeveloperControlsProvider extends ChangeNotifier {
       if (f.featureKey == featureKey) return f.enabled;
     }
     return true;
+  }
+
+  /// Whether the current user can access a feature.
+  /// Returns true if:
+  ///  - The feature is enabled for everyone, OR
+  ///  - The user is Super Admin (by role or allowlisted email), OR
+  ///  - The user's role is in the flag's [allowedRoles], OR
+  ///  - The user's email is in the flag's [allowedUsers].
+  bool canAccessFeature(String featureKey, ProfileModel? profile) {
+    if (_tablesMissing || _flags.isEmpty) return true;
+    final flag = flagFor(featureKey);
+    if (flag == null) return true;
+    if (flag.enabled) return true;
+
+    // Feature is disabled — check bypass rules.
+    if (profile == null) return false;
+    if (profile.isSuperAdmin) return true;
+    if (AccessControlService.isSuperAdminEmail(profile.email)) return true;
+
+    if (flag.allowedRoles.isNotEmpty &&
+        flag.allowedRoles.contains(profile.role)) {
+      return true;
+    }
+
+    if (flag.allowedUsers.isNotEmpty && profile.email != null) {
+      final email = profile.email!.trim().toLowerCase();
+      if (flag.allowedUsers.any((u) => u.trim().toLowerCase() == email)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   FeatureFlagModel? flagFor(String featureKey) {
@@ -92,11 +126,15 @@ class DeveloperControlsProvider extends ChangeNotifier {
     required bool enabled,
     required String developerId,
     required String? developerEmail,
+    List<String>? allowedRoles,
+    List<String>? allowedUsers,
   }) async {
     await DeveloperControlsService.setFeatureEnabled(
-      featureKey,
-      enabled,
-      developerId,
+      featureKey: featureKey,
+      enabled: enabled,
+      userId: developerId,
+      allowedRoles: allowedRoles,
+      allowedUsers: allowedUsers,
     );
     await DeveloperControlsService.logAction(
       developerId: developerId,
@@ -104,7 +142,12 @@ class DeveloperControlsProvider extends ChangeNotifier {
       actionType: enabled ? 'feature_enabled' : 'feature_disabled',
       resourceType: 'feature_flag',
       resourceId: featureKey,
-      payload: {'feature_key': featureKey, 'enabled': enabled},
+      payload: {
+        'feature_key': featureKey,
+        'enabled': enabled,
+        if (allowedRoles != null) 'allowed_roles': allowedRoles,
+        if (allowedUsers != null) 'allowed_users': allowedUsers,
+      },
     );
     SystemAuditService.logAction(
       actionType: 'TOGGLE_FEATURE',

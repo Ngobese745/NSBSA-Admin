@@ -30,5 +30,6 @@ List<SingleChildWidget> buildAppProviders() {
     ChangeNotifierProvider(create: (_) => ImportProvider()),
     ChangeNotifierProvider(create: (_) => ShellNavigationProvider()),
     ChangeNotifierProvider(create: (_) => StaffPerformanceProvider()),
+    ChangeNotifierProvider(create: (_) => ReminderProvider()),
   ];
 }

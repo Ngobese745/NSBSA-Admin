@@ -26,7 +26,7 @@ class PdfService {
       logoPlaceholder = pw.Image(logoImage, width: 100);
     } catch (e) {
       logoPlaceholder = pw.Text('NSBSA', 
-        style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColors.amber));
+        style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColors.black));
     }
 
     pdf.addPage(
@@ -51,7 +51,7 @@ class PdfService {
                         pw.Text('PAYMENT RECEIPT', 
                           style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
                         pw.Text(dateFormat.format(paymentDate), 
-                          style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+                          style: const pw.TextStyle(fontSize: 10, color: PdfColors.black)),
                       ],
                     ),
                   ],
@@ -130,7 +130,7 @@ class PdfService {
       logoPlaceholder = pw.Image(logoImage, width: 100);
     } catch (e) {
       logoPlaceholder = pw.Text('NSBSA', 
-        style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColors.amber));
+        style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColors.black));
     }
 
     pdf.addPage(
@@ -149,7 +149,7 @@ class PdfService {
                     pw.Text('VENDOR PROFILE REPORT', 
                       style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
                     pw.Text('Generated: ${dateFormat.format(DateTime.now())}', 
-                      style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+                      style: const pw.TextStyle(fontSize: 10, color: PdfColors.black)),
                   ],
                 ),
               ],
@@ -159,7 +159,7 @@ class PdfService {
             pw.SizedBox(height: 20),
 
             pw.Text('PERSONAL INFORMATION', 
-              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.amber900)),
+              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
             pw.SizedBox(height: 10),
             pw.Row(
               children: [
@@ -179,7 +179,7 @@ class PdfService {
 
             pw.SizedBox(height: 25),
             pw.Text('ASSOCIATION DETAILS', 
-              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.amber900)),
+              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
             pw.SizedBox(height: 10),
             pw.Row(
               children: [
@@ -202,14 +202,14 @@ class PdfService {
                   pw.Text('CURRENT SAVINGS BALANCE', 
                     style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
                   pw.Text(currencyFormat.format(currentBalance), 
-                    style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: PdfColors.green700)),
+                    style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
                 ],
               ),
             ),
 
             pw.SizedBox(height: 30),
             pw.Text('RECENT SAVINGS HISTORY', 
-              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.amber900)),
+              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
             pw.SizedBox(height: 10),
             pw.Table(
               border: pw.TableBorder.all(color: PdfColors.grey300),
@@ -243,7 +243,7 @@ class PdfService {
             if (savingsHistory.isEmpty) 
               pw.Padding(
                 padding: const pw.EdgeInsets.all(10),
-                child: pw.Center(child: pw.Text('No recent transactions found.', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600))),
+                child: pw.Center(child: pw.Text('No recent transactions found.', style: const pw.TextStyle(fontSize: 10, color: PdfColors.black))),
               ),
 
             pw.SizedBox(height: 30),
@@ -293,7 +293,7 @@ class PdfService {
       logoPlaceholder = pw.Image(logoImage, width: 100);
     } catch (e) {
       logoPlaceholder = pw.Text('NSBSA', 
-        style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColors.amber));
+        style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColors.black));
     }
 
     pdf.addPage(

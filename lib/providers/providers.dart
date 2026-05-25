@@ -20,3 +20,4 @@ export 'api_management_provider.dart';
 export 'import_provider.dart';
 export 'shell_navigation_provider.dart';
 export 'staff_performance_provider.dart';
+export 'reminder_provider.dart';

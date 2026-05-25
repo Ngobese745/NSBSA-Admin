@@ -10,6 +10,7 @@ import '../providers/vendor_provider.dart';
 import '../providers/loan_provider.dart';
 import '../core/pdf_branding.dart';
 import 'package:pdf/pdf.dart';
+import '../widgets/nsbsa_loading_overlay.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../services/loan_calculation_service.dart';
@@ -304,29 +305,27 @@ class LoanDetailsScreen extends StatelessWidget {
                   return;
                 }
 
-                if (amount > 0) {
-                  await context.read<PaymentProvider>().addPayment(
-                    PaymentModel(
-                      id: '',
-                      loanId: loan.id,
-                      amountPaid: amount,
-                      paymentMethod: selectedType,
-                      datePaid: DateTime.now(),
-                      createdAt: DateTime.now(),
-                    ),
-                    loan: loan,
-                  );
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Payment recorded successfully!'),
+                if (amount <= 0) return;
+                final dialogCtx = context;
+                final payProvider = context.read<PaymentProvider>();
+                final loanProvider = context.read<LoanProvider>();
+                runWithLoadingAfterPop(
+                  dialogCtx, task: () async {
+                    await payProvider.addPayment(
+                      PaymentModel(
+                        id: '',
+                        loanId: loan.id,
+                        amountPaid: amount,
+                        paymentMethod: selectedType,
+                        datePaid: DateTime.now(),
+                        createdAt: DateTime.now(),
                       ),
+                      loan: loan,
                     );
-                    Navigator.pop(context);
-                    // Refresh loan provider to show updated status
-                    context.read<LoanProvider>().fetchLoans(forceRefresh: true);
-                  }
-                }
+                    await loanProvider.fetchLoans(forceRefresh: true);
+                  },
+                  successMessage: 'Payment recorded successfully!',
+                );
               },
               child: const Text('Confirm Payment'),
             ),
@@ -588,26 +587,15 @@ class LoanDetailsScreen extends StatelessWidget {
                             ),
                           );
                           if (confirm == true && context.mounted) {
-                            try {
-                              await context
-                                  .read<PaymentProvider>()
-                                  .deletePayment(payment.id);
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Payment deleted successfully',
-                                    ),
-                                  ),
-                                );
-                              }
-                            } catch (e) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Error: $e')),
-                                );
-                              }
-                            }
+                            final ctx = context;
+                            runWithLoadingAfterPop(
+                              ctx, task: () async {
+                                await ctx
+                                    .read<PaymentProvider>()
+                                    .deletePayment(payment.id);
+                              },
+                              successMessage: 'Payment deleted successfully',
+                            );
                           }
                         },
                       ),
@@ -640,20 +628,14 @@ class LoanDetailsScreen extends StatelessWidget {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () async {
-              try {
-                await context.read<LoanProvider>().deleteLoan(loan.id);
-                if (context.mounted) {
-                  Navigator.pop(c); // close dialog
-                  Navigator.pop(context); // close screen
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Loan deleted successfully')),
-                  );
-                }
-              } catch (e) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text('Error: $e')));
-              }
+              final ctx = context;
+              final deleted = await runWithLoadingAfterPop(
+                ctx, task: () async {
+                  await ctx.read<LoanProvider>().deleteLoan(loan.id);
+                },
+                successMessage: 'Loan deleted successfully',
+              );
+              if (deleted != null && ctx.mounted) Navigator.pop(ctx);
             },
             child: const Text('Delete'),
           ),
@@ -681,6 +663,7 @@ class LoanDetailsScreen extends StatelessWidget {
     final monthlyController = TextEditingController(
       text: loan.monthlyPayment.toStringAsFixed(0),
     );
+    DateTime selectedFirstDate = loan.firstInstalmentDate ?? DateTime.now().add(const Duration(days: 30));
 
     showDialog(
       context: context,
@@ -740,6 +723,27 @@ class LoanDetailsScreen extends StatelessWidget {
                   ),
                   keyboardType: TextInputType.number,
                 ),
+                const SizedBox(height: 8),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('First Instalment Date', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  subtitle: Text(
+                    '${selectedFirstDate.toLocal()}'.split(' ')[0],
+                    style: TextStyle(color: Theme.of(c).textTheme.bodyMedium?.color, fontSize: 14),
+                  ),
+                  trailing: const Icon(Icons.calendar_today, color: Colors.amber, size: 18),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: c,
+                      initialDate: selectedFirstDate,
+                      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                    );
+                    if (picked != null) {
+                      setState(() => selectedFirstDate = picked);
+                    }
+                  },
+                ),
               ],
             ),
           ),
@@ -766,30 +770,22 @@ class LoanDetailsScreen extends StatelessWidget {
                     double.tryParse(monthlyController.text) ??
                     loan.monthlyPayment;
 
-                try {
-                  await context.read<LoanProvider>().updateLoan(loan.id, {
-                    'amount': amount,
-                    'duration_months': term,
-                    'initiation_fee': initFee,
-                    'monthly_admin_fee': adminFee,
-                    'penalty_fee': penalty,
-                    'monthly_payment': monthly,
-                  });
-                  if (context.mounted) {
-                    Navigator.pop(c);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Loan updated successfully. Please close and re-open to see changes.',
-                        ),
-                      ),
-                    );
-                  }
-                } catch (e) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text('Error: $e')));
-                }
+                final ctx = context;
+                runWithLoadingAfterPop(
+                  ctx, task: () async {
+                    await ctx.read<LoanProvider>().updateLoan(loan.id, {
+                      'amount': amount,
+                      'duration_months': term,
+                      'initiation_fee': initFee,
+                      'monthly_admin_fee': adminFee,
+                      'penalty_fee': penalty,
+                      'monthly_payment': monthly,
+                      'first_instalment_date': selectedFirstDate.toIso8601String(),
+                    });
+                  },
+                  successMessage:
+                      'Loan updated successfully. Please close and re-open to see changes.',
+                );
               },
               child: const Text('Save'),
             ),
@@ -807,6 +803,7 @@ class LoanDetailsScreen extends StatelessWidget {
     double balance,
     List<PaymentModel> payments,
   ) async {
+    runWithLoading(context, task: () async {
     final pdf = pw.Document();
     final logo = await PdfBranding.loadLogo();
 
@@ -835,11 +832,11 @@ class LoanDetailsScreen extends StatelessWidget {
                     pw.SizedBox(height: 4),
                     pw.Text(
                       'Date: ${DateTime.now().toString().substring(0, 10)}',
-                      style: const pw.TextStyle(color: PdfColors.grey700),
+                      style: const pw.TextStyle(color: PdfColors.black),
                     ),
                     pw.Text(
                       'Loan ID: L-${loan.id.substring(0, 8)}',
-                      style: const pw.TextStyle(color: PdfColors.grey700),
+                      style: const pw.TextStyle(color: PdfColors.black),
                     ),
                   ],
                 ),
@@ -907,13 +904,14 @@ class LoanDetailsScreen extends StatelessWidget {
                 children: [
                   _pdfBreakdownRow('Principal Amount', 'R ${loan.amount.toStringAsFixed(2)}'),
                   _pdfBreakdownRow('Monthly Instalment', 'R ${loan.monthlyPayment.toStringAsFixed(2)}'),
+                  _pdfBreakdownRow('First Instalment', loan.firstInstalmentDate?.toLocal().toString().substring(0, 10) ?? 'N/A'),
                   _pdfBreakdownRow('Initiation Fee', 'R ${loan.initiationFee?.toStringAsFixed(2) ?? '0.00'}'),
                   _pdfBreakdownRow('Total Admin Fees (${loan.durationMonths} months)', 'R ${((loan.monthlyAdminFee ?? 0) * loan.durationMonths).toStringAsFixed(2)}'),
                   _pdfBreakdownRow('Applied Penalties', 'R ${LoanCalculationService.calculateAppliedPenalty(loan, payments).toStringAsFixed(2)}'),
                   pw.Divider(color: PdfColors.grey300),
                   _pdfBreakdownRow('Total Loan Liability', 'R ${((loan.monthlyPayment * loan.durationMonths) + (loan.initiationFee ?? 0) + ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) + LoanCalculationService.calculateAppliedPenalty(loan, payments)).toStringAsFixed(2)}', isBold: true),
                   _pdfBreakdownRow('Total Amount Paid', 'R ${totalPaid.toStringAsFixed(2)}'),
-                  _pdfBreakdownRow('Outstanding Balance', 'R ${balance.toStringAsFixed(2)}', isBold: true, color: PdfColors.orange700),
+                  _pdfBreakdownRow('Outstanding Balance', 'R ${balance.toStringAsFixed(2)}', isBold: true),
                 ],
               ),
             ),
@@ -956,16 +954,17 @@ class LoanDetailsScreen extends StatelessWidget {
       filename:
           'Loan_Statement_${vendor?.name.replaceAll(" ", "_") ?? "Unknown"}.pdf',
     );
+    }, successMessage: 'Loan PDF generated.');
   }
 
-  pw.Widget _pdfBreakdownRow(String label, String value, {bool isBold = false, PdfColor? color}) {
+  pw.Widget _pdfBreakdownRow(String label, String value, {bool isBold = false}) {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(vertical: 4),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text(label, style: pw.TextStyle(fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal)),
-          pw.Text(value, style: pw.TextStyle(fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal, color: color)),
+          pw.Text(value, style: pw.TextStyle(fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal, color: PdfColors.black)),
         ],
       ),
     );

@@ -31,6 +31,7 @@ import '../models/document.dart';
 import '../providers/document_provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../widgets/nsbsa_loading_overlay.dart';
 
 class GroupDetailsScreen extends StatefulWidget {
   final GroupModel group;
@@ -284,16 +285,18 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                               groupId: widget.group.id,
                               authorName:
                                   authProvider.currentUser?.email ?? 'Admin',
-                              authorRole: 'Staff', // Default for now
+                              authorRole: 'Staff',
                               content: _commentController.text.trim(),
                               mentionedVendorIds: _selectedMentionIds,
                               createdAt: DateTime.now(),
                             );
 
-                            await commentProvider.addComment(comment);
-                            _commentController.clear();
-                            _selectedMentionIds = [];
-                            (context as Element).markNeedsBuild();
+                            runWithLoading(context, task: () async {
+                              await commentProvider.addComment(comment);
+                              _commentController.clear();
+                              _selectedMentionIds = [];
+                              (context as Element).markNeedsBuild();
+                            }, successMessage: 'Comment posted.');
                           },
                           child: const Text('Post Comment'),
                         ),
@@ -1074,16 +1077,20 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              if (controller.text.isNotEmpty) {
-                await context.read<GroupProvider>().updateGroup(
-                  widget.group.id,
-                  controller.text,
-                );
-                setState(() {
-                  _currentName = controller.text;
-                });
-                if (mounted) Navigator.pop(context);
-              }
+              if (controller.text.isEmpty) return;
+              final name = controller.text;
+              final state = this;
+              runWithLoadingAfterPop(
+                context,
+                task: () async {
+                  await context.read<GroupProvider>().updateGroup(
+                    widget.group.id,
+                    name,
+                  );
+                  state.setState(() => state._currentName = name);
+                },
+                successMessage: 'Group name updated.',
+              );
             },
             child: const Text('Update'),
           ),
@@ -1380,29 +1387,33 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             ),
             ElevatedButton(
               onPressed: () async {
-                try {
-                  await context.read<VendorProvider>().updateVendor(member.id, {
-                    'name': nameController.text,
-                    'phone': phoneController.text,
-                    'id_number': idController.text,
-                    'gender': selectedGender,
-                    'business_type': businessController.text,
-                    'df_name': dfController.text,
-                    'whatsapp_number': whatsappController.text,
-                    'address': addressController.text,
-                    'role': selectedRole,
-                    'savings_amount':
-                        double.tryParse(savingsAmountController.text) ?? 0,
-                    'savings_frequency': selectedFrequency,
-                    'savings_start_date': selectedSavingsDate.toIso8601String(),
-                  });
-                  _loadData();
-                  if (context.mounted) Navigator.pop(context);
-                } catch (e) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text('Error: $e')));
-                }
+                if (nameController.text.trim().isEmpty) return;
+                final dialogCtx = context;
+                final vendorData = {
+                  'name': nameController.text,
+                  'phone': phoneController.text,
+                  'id_number': idController.text,
+                  'gender': selectedGender,
+                  'business_type': businessController.text,
+                  'df_name': dfController.text,
+                  'whatsapp_number': whatsappController.text,
+                  'address': addressController.text,
+                  'role': selectedRole,
+                  'savings_amount':
+                      double.tryParse(savingsAmountController.text) ?? 0,
+                  'savings_frequency': selectedFrequency,
+                  'savings_start_date': selectedSavingsDate.toIso8601String(),
+                };
+                runWithLoadingAfterPop(
+                  dialogCtx, task: () async {
+                    await dialogCtx.read<VendorProvider>().updateVendor(
+                      member.id,
+                      vendorData,
+                    );
+                    _loadData();
+                  },
+                  successMessage: 'Member updated.',
+                );
               },
               child: const Text('Save'),
             ),
@@ -1416,6 +1427,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     final amountController = TextEditingController();
     final termController = TextEditingController(text: '6');
     final monthlyController = TextEditingController();
+    DateTime selectedFirstDate = DateTime.now().add(const Duration(days: 30));
 
     String? selectedVendorId;
 
@@ -1502,6 +1514,27 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 ),
                 keyboardType: TextInputType.number,
               ),
+              const SizedBox(height: 12),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('First Instalment Date', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                subtitle: Text(
+                  '${selectedFirstDate.toLocal()}'.split(' ')[0],
+                  style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color, fontSize: 14),
+                ),
+                trailing: const Icon(Icons.calendar_today, color: AppTheme.primaryGold, size: 18),
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: selectedFirstDate,
+                    firstDate: DateTime.now(),
+                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                  );
+                  if (picked != null) {
+                    setState(() => selectedFirstDate = picked);
+                  }
+                },
+              ),
             ],
           ),
           actions: [
@@ -1522,16 +1555,17 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   try {
                     final newLoan = await context.read<LoanProvider>().addLoan(
                       LoanModel(
-                        id: '', // Empty ID will be ignored by toJson now
+                        id: '',
                         groupId: widget.group.id,
                         vendorId: selectedVendorId,
                         amount: amount,
                         durationMonths: term,
                         monthlyPayment: monthly,
-                        initiationFee: 150, // Default based on document
-                        monthlyAdminFee: 65, // Default based on document
-                        penaltyFee: 59, // Default based on document
+                        initiationFee: 150,
+                        monthlyAdminFee: 65,
+                        penaltyFee: 59,
                         status: 'Active',
+                        firstInstalmentDate: selectedFirstDate,
                         createdAt: DateTime.now(),
                       ),
                     );
@@ -1668,9 +1702,12 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             ElevatedButton(
               onPressed: () async {
                 final amount = double.tryParse(amountController.text) ?? 0;
-                if (amount > 0) {
-                  try {
-                    await context.read<PaymentProvider>().addPayment(
+                if (amount <= 0) return;
+                final dialogCtx = context;
+                final payProvider = context.read<PaymentProvider>();
+                runWithLoadingAfterPop(
+                  dialogCtx, task: () async {
+                    await payProvider.addPayment(
                       PaymentModel(
                         id: '',
                         loanId: loan.id,
@@ -1681,20 +1718,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                       ),
                       loan: loan,
                     );
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Payment recorded successfully!'),
-                        ),
-                      );
-                      Navigator.pop(context);
-                    }
-                  } catch (e) {
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(SnackBar(content: Text('Error: $e')));
-                  }
-                }
+                  },
+                  successMessage: 'Payment recorded successfully!',
+                );
               },
               child: const Text('Confirm Payment'),
             ),
@@ -2019,32 +2045,36 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   return;
                 }
 
-                await vendorProvider.addVendor(
-                  VendorModel(
-                    id: '',
-                    groupId: widget.group.id,
-                    name: nameController.text,
-                    phone: phoneController.text,
-                    idNumber: idController.text,
-                    gender: selectedGender,
-                    businessType: businessController.text,
-                    dfName: dfController.text,
-                    whatsappNumber: whatsappController.text,
-                    email: emailController.text,
-                    address: addressController.text,
-                    role: selectedRole,
-                    savingsAmount:
-                        double.tryParse(savingsAmountController.text) ?? 0,
-                    savingsFrequency: selectedFrequency,
-                    savingsStartDate: selectedSavingsDate,
-                    referenceNumber: widget.group.name
-                        .substring(0, 3)
-                        .toUpperCase(),
-                    createdAt: DateTime.now(),
-                  ),
+                final dialogCtx = context;
+                final vendor = VendorModel(
+                  id: '',
+                  groupId: widget.group.id,
+                  name: nameController.text,
+                  phone: phoneController.text,
+                  idNumber: idController.text,
+                  gender: selectedGender,
+                  businessType: businessController.text,
+                  dfName: dfController.text,
+                  whatsappNumber: whatsappController.text,
+                  email: emailController.text,
+                  address: addressController.text,
+                  role: selectedRole,
+                  savingsAmount:
+                      double.tryParse(savingsAmountController.text) ?? 0,
+                  savingsFrequency: selectedFrequency,
+                  savingsStartDate: selectedSavingsDate,
+                  referenceNumber: widget.group.name
+                      .substring(0, 3)
+                      .toUpperCase(),
+                  createdAt: DateTime.now(),
                 );
-                _loadData();
-                if (mounted) Navigator.pop(context);
+                runWithLoadingAfterPop(
+                  dialogCtx, task: () async {
+                    await vendorProvider.addVendor(vendor);
+                    _loadData();
+                  },
+                  successMessage: 'Member added successfully.',
+                );
               },
               child: const Text('Add'),
             ),
@@ -2326,9 +2356,14 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           ),
           TextButton(
             onPressed: () async {
-              await context.read<VendorProvider>().deleteVendor(member.id);
-              _loadData();
-              if (mounted) Navigator.pop(context);
+              final ctx = context;
+              runWithLoadingAfterPop(
+                ctx, task: () async {
+                  await ctx.read<VendorProvider>().deleteVendor(member.id);
+                  _loadData();
+                },
+                successMessage: 'Member deleted.',
+              );
             },
             child: const Text(
               'Delete',
@@ -2341,7 +2376,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   }
 
   Future<void> _downloadGroupStatement(List<VendorModel> members) async {
-    try {
+    runWithLoading(context, task: () async {
       final commentProvider = context.read<CommentProvider>();
       final paymentProvider = context.read<PaymentProvider>();
       final allPayments = paymentProvider.payments;
@@ -2511,7 +2546,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               members.isEmpty
                   ? pw.Text(
                       'No members found.',
-                      style: const pw.TextStyle(color: PdfColors.grey),
+                      style: const pw.TextStyle(color: PdfColors.black),
                     )
                   : pw.Table(
                       border: pw.TableBorder.all(
@@ -2628,7 +2663,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                               _formatDate(comment.createdAt),
                               style: const pw.TextStyle(
                                 fontSize: 8,
-                                color: PdfColors.grey700,
+                                color: PdfColors.black,
                               ),
                             ),
                           ],
@@ -2647,7 +2682,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                                 style: pw.TextStyle(
                                   fontSize: 8,
                                   fontWeight: pw.FontWeight.bold,
-                                  color: PdfColors.blue,
+                                  color: PdfColors.black,
                                 ),
                               ),
                               pw.Text(
@@ -2660,9 +2695,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                                           'Unknown';
                                     })
                                     .join(', '),
-                                style: const pw.TextStyle(
+                                  style: const pw.TextStyle(
                                   fontSize: 8,
-                                  color: PdfColors.blue,
+                                  color: PdfColors.black,
                                 ),
                               ),
                             ],
@@ -2687,7 +2722,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               _loans.isEmpty
                   ? pw.Text(
                       'No loans found.',
-                      style: const pw.TextStyle(color: PdfColors.grey),
+                      style: const pw.TextStyle(color: PdfColors.black),
                     )
                   : pw.Table(
                       border: pw.TableBorder.all(
@@ -2735,7 +2770,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               sortedPayments.isEmpty
                   ? pw.Text(
                       'No payment history found.',
-                      style: const pw.TextStyle(color: PdfColors.grey),
+                      style: const pw.TextStyle(color: PdfColors.black),
                     )
                   : pw.Table(
                       border: pw.TableBorder.all(
@@ -2790,12 +2825,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         name:
             'Group_Statement_${widget.group.referenceNumber}_${DateTime.now().toString().substring(0, 10)}',
       );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not generate statement: $e')),
-      );
-    }
+    }, successMessage: 'Group statement generated.');
   }
 
   pw.Widget _pdfInfoRow(String label, String value) {
@@ -2830,7 +2860,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       children: [
         pw.Text(
           label,
-          style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+          style: const pw.TextStyle(fontSize: 9, color: PdfColors.black),
         ),
         pw.Text(
           value,
@@ -2917,31 +2947,26 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
               final groupId = widget.group.id;
-              await context.read<GroupProvider>().deleteGroup(groupId);
-
-              if (context.mounted) {
-                // Refresh all providers to remove orphaned records (due to cascade delete)
-                await Future.wait<void>([
-                  context.read<LoanProvider>().fetchLoans(forceRefresh: true),
-                  context.read<VendorProvider>().fetchVendors(
-                    forceRefresh: true,
-                  ),
-                  context.read<PaymentProvider>().fetchPayments(
-                    forceRefresh: true,
-                  ),
-                ]);
-
-                if (context.mounted) {
-                  Navigator.pop(context); // Close dialog
-                  Navigator.pop(context); // Return to groups screen
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Group "$_currentName" and all associated data deleted',
-                      ),
+              final groupName = _currentName;
+              final ctx = context;
+              final deleted = await runWithLoadingAfterPop(
+                ctx, task: () async {
+                  await ctx.read<GroupProvider>().deleteGroup(groupId);
+                  await Future.wait<void>([
+                    ctx.read<LoanProvider>().fetchLoans(forceRefresh: true),
+                    ctx.read<VendorProvider>().fetchVendors(
+                      forceRefresh: true,
                     ),
-                  );
-                }
+                    ctx.read<PaymentProvider>().fetchPayments(
+                      forceRefresh: true,
+                    ),
+                  ]);
+                },
+                successMessage:
+                    'Group "$groupName" and all associated data deleted',
+              );
+              if (deleted != null && ctx.mounted) {
+                Navigator.pop(ctx); // Return to groups screen
               }
             },
             child: const Text('Delete'),
@@ -3259,13 +3284,14 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                         ),
                         TextButton(
                           onPressed: () async {
-                                                        await commentProvider.deleteComment(comment.id);
-
+                            await commentProvider.deleteComment(comment.id);
                             Navigator.pop(context); // Close confirm
                             Navigator.pop(context); // Close details
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Comment deleted')),
-                            );
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Comment deleted')),
+                              );
+                            }
                           },
                           child: const Text(
                             'Delete',
@@ -3299,13 +3325,13 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               ElevatedButton(
                 onPressed: () async {
                   if (_editController.text.trim().isEmpty) return;
-                  await commentProvider.updateComment(
-                    comment.id,
-                    _editController.text.trim(),
-                  );
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Comment updated')),
+                  final text = _editController.text.trim();
+                  final ctx = context;
+                  runWithLoadingAfterPop(
+                    ctx, task: () async {
+                      await commentProvider.updateComment(comment.id, text);
+                    },
+                    successMessage: 'Comment updated',
                   );
                 },
                 child: const Text('Save Changes'),

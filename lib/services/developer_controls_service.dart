@@ -163,18 +163,23 @@ class DeveloperControlsService {
     await _client.from('system_banners').delete().eq('id', id);
   }
 
-  static Future<void> setFeatureEnabled(
-    String featureKey,
-    bool enabled,
+  static Future<void> setFeatureEnabled({
+    required String featureKey,
+    required bool enabled,
     String? userId,
-  ) async {
+    List<String>? allowedRoles,
+    List<String>? allowedUsers,
+  }) async {
+    final updates = <String, dynamic>{
+      'enabled': enabled,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
+    if (userId != null) updates['updated_by'] = userId;
+    if (allowedRoles != null) updates['allowed_roles'] = allowedRoles;
+    if (allowedUsers != null) updates['allowed_users'] = allowedUsers;
     await _client
         .from('feature_flags')
-        .update({
-          'enabled': enabled,
-          'updated_at': DateTime.now().toUtc().toIso8601String(),
-          if (userId != null) 'updated_by': userId,
-        })
+        .update(updates)
         .eq('feature_key', featureKey);
   }
 }

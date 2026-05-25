@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/system_audit_service.dart';
-import '../services/sms_messenger_service.dart';
+import '../services/smsworx_service.dart';
 import '../services/wesender_service.dart';
 
 class ApiManagementProvider with ChangeNotifier {
@@ -103,7 +103,7 @@ class ApiManagementProvider with ChangeNotifier {
     if (serviceName.toLowerCase() == 'smsworx') {
       final parts = apiKey.split(':');
       if (parts.length != 2) return false;
-      return await SMSMessengerService().testConnection();
+      return await SMSWorxService().testConnection(parts[0], parts[1]);
     } else if (serviceName.toLowerCase() == 'wesender') {
       return await WeSenderService().testConnection(apiKey);
     }

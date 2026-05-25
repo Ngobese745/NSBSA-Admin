@@ -4,12 +4,23 @@ class AccessControlService {
   /// Allowlisted identity for developer tools (in addition to Super Admin).
   static const String developerToolsAllowlistEmail = 'colane@mwelasefin.co.za';
 
+  /// Whether the given email matches the Super Admin allowlist.
+  static bool isSuperAdminEmail(String? email) {
+    if (email == null) return false;
+    return email.trim().toLowerCase() == developerToolsAllowlistEmail;
+  }
+
+  /// Super Admin by role OR allowlisted email.
+  static bool isSuperAdmin(ProfileModel? profile) {
+    if (profile == null) return false;
+    return profile.isSuperAdmin || isSuperAdminEmail(profile.email);
+  }
+
   /// Developer Management: Super Admin or allowlisted developer email only.
   static bool canAccessDeveloperTools(ProfileModel? profile) {
     if (profile == null) return false;
     if (profile.role == 'Super Admin') return true;
-    final em = profile.email?.trim().toLowerCase();
-    return em == developerToolsAllowlistEmail;
+    return isSuperAdminEmail(profile.email);
   }
 
   /// Check if the current user has a specific role

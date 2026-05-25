@@ -19,6 +19,55 @@ import '../models/payment.dart';
 import '../models/vendor.dart';
 import '../models/group.dart';
 
+class _ReportHeaderAction extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  const _ReportHeaderAction({
+    required this.icon,
+    required this.tooltip,
+    this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 34,
+      height: 34,
+      child: IconButton(
+        icon: Icon(icon, size: 18),
+        tooltip: tooltip,
+        onPressed: onPressed,
+        padding: EdgeInsets.zero,
+        visualDensity: VisualDensity.compact,
+        style: IconButton.styleFrom(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(6),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  final String label;
+  const _SectionLabel({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Text(
+      label,
+      style: theme.textTheme.bodySmall?.copyWith(
+        fontWeight: FontWeight.w600,
+        color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
+      ),
+    );
+  }
+}
+
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
 
@@ -28,7 +77,7 @@ class ReportsScreen extends StatefulWidget {
 
 class _ReportsScreenState extends State<ReportsScreen> {
   String? _selectedLoanId;
-  String? _editingFieldKey; // format: "loanId_fieldName"
+  String? _editingFieldKey;
   final Map<String, TextEditingController> _controllers = {};
   int _selectedMonthFilter = DateTime.now().month;
 
@@ -36,21 +85,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final now = DateTime.now();
     final currentMonth = now.month;
     final currentYear = now.year;
-    
+
     final List<String> monthNames = [
-      '', 'January', 'February', 'March', 'April', 'May', 'June', 
+      '', 'January', 'February', 'March', 'April', 'May', 'June',
       'July', 'August', 'September', 'October', 'November', 'December'
     ];
 
     List<Map<String, dynamic>> options = [];
-    
-    // Add cumulative option at the top
+
     options.add({
-      'value': 0, // 0 represents cumulative "All Months"
+      'value': 0,
       'label': 'All Months (Cumulative: Jan - ${monthNames[currentMonth]} $currentYear)',
     });
 
-    // Add specific months up to current month
     for (int m = 1; m <= currentMonth; m++) {
       final isCurrent = m == currentMonth;
       options.add({
@@ -58,7 +105,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         'label': '${monthNames[m]} $currentYear${isCurrent ? ' (Current)' : ''}',
       });
     }
-    
+
     return options;
   }
 
@@ -67,7 +114,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final currentYear = now.year;
     final currentMonth = now.month;
     final List<String> monthNames = [
-      '', 'January', 'February', 'March', 'April', 'May', 'June', 
+      '', 'January', 'February', 'March', 'April', 'May', 'June',
       'July', 'August', 'September', 'October', 'November', 'December'
     ];
     if (_selectedMonthFilter == 0) {
@@ -102,7 +149,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final newValue = controller.text;
     Map<String, dynamic> updates = {};
 
-    // Map field name to model property
     if (fieldName == 'amount')
       updates['amount'] = double.tryParse(newValue) ?? 0.0;
     else if (fieldName == 'durationMonths')
@@ -113,6 +159,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
       updates['monthly_admin_fee'] = double.tryParse(newValue) ?? 0.0;
     else if (fieldName == 'penaltyFee')
       updates['penalty_fee'] = double.tryParse(newValue) ?? 0.0;
+    else if (fieldName == 'firstInstalmentDate') {
+      final parsed = DateTime.tryParse(newValue);
+      if (parsed != null) updates['first_instalment_date'] = parsed.toIso8601String();
+    }
 
     if (updates.isNotEmpty) {
       try {
@@ -145,20 +195,46 @@ class _ReportsScreenState extends State<ReportsScreen> {
   void _confirmDelete(String loanId) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Confirm Delete'),
-        content: const Text(
-          'Are you sure you want to delete this loan record? This action cannot be undone.',
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Loan Record?'),
+        contentPadding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+        content: SizedBox(
+          width: 380,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.delete_outline, size: 16, color: Colors.red.shade400),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Are you sure you want to delete this loan record?',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'This action cannot be undone.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.6),
+                ),
+              ),
+            ],
+          ),
         ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(ctx),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
-              Navigator.pop(context);
+              Navigator.pop(ctx);
               await context.read<LoanProvider>().deleteLoan(loanId);
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -185,13 +261,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final currentYear = now.year;
     final currentMonth = now.month;
 
-    // Filter loans & payments based on selected month
     final List<LoanModel> filteredLoans;
     final List<PaymentModel> filteredPayments;
     final List<VendorModel> filteredVendors;
 
     if (_selectedMonthFilter == 0) {
-      // Cumulative: from start of year up to current month
       filteredLoans = loanProvider.loans.where((l) {
         final date = l.firstInstalmentDate ?? l.createdAt;
         return date.year == currentYear && date.month <= currentMonth;
@@ -201,7 +275,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
       ).toList();
       filteredVendors = vendorProvider.vendors;
     } else {
-      // Specific month
       filteredLoans = loanProvider.loans.where((l) {
         final date = l.firstInstalmentDate ?? l.createdAt;
         return date.year == currentYear && date.month == _selectedMonthFilter;
@@ -212,7 +285,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
       filteredVendors = vendorProvider.vendors;
     }
 
-    // Calculate Summary Data
     final totalDisbursed = filteredLoans.fold(
       0.0,
       (sum, l) => sum + l.amount,
@@ -221,7 +293,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
       0.0,
       (sum, p) => sum + p.amountPaid,
     );
-    // Calculate Total Outstanding by summing individual loan balances
     double totalOutstanding = 0;
     for (final loan in filteredLoans) {
       final loanPayments = filteredPayments
@@ -237,7 +308,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
       (sum, v) => sum + (v.savingsAmount ?? 0.0),
     );
 
-    // Fee Calculations
     final totalInitiationFees = filteredLoans.fold(
       0.0,
       (sum, l) => sum + (l.initiationFee ?? 0),
@@ -256,13 +326,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final totalExpectedFees =
         totalInitiationFees + totalAdminFees + totalPenaltyFees;
 
-    // Calculate local filtered Arrears Aging
     double aging30 = 0;
     double aging60 = 0;
     double aging90 = 0;
     double aging90Plus = 0;
 
-    // Calculate local filtered Loan Book Breakdown
     final Map<String, double> breakdownByDF = {};
     final Map<String, double> breakdownByCenter = {};
     final Map<String, double> breakdownByType = {};
@@ -272,7 +340,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     for (var loan in filteredLoans) {
       final loanPayments = filteredPayments.where((p) => p.loanId == loan.id).toList();
       final balance = LoanCalculationService.calculateBalance(loan, loanPayments);
-      
+
       if (balance > 0) {
         final group = groupMap[loan.groupId];
         final dfName = group?.dfName ?? 'Unassigned';
@@ -301,515 +369,481 @@ class _ReportsScreenState extends State<ReportsScreen> {
       }
     }
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Financial Performance',
-                    style: theme.textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).textTheme.bodyMedium?.color,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Comprehensive summary of all group lending activities',
-                    style: TextStyle(color: Colors.grey[400]),
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  ElevatedButton.icon(
-                    onPressed: () => _exportToExcel(
-                      filteredLoans,
-                      filteredPayments,
-                      vendorProvider,
-                      groupProvider,
-                    ),
-                    icon: const Icon(Icons.table_view),
-                    label: const Text('Export Excel'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white10,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 20,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  ElevatedButton.icon(
-                    onPressed: () => _generatePDF(
-                      context,
-                      totalDisbursed,
-                      totalCollected,
-                      totalOutstanding,
-                      totalExpectedFees,
-                      totalSavings,
-                      filteredLoans,
-                      filteredPayments,
-                    ),
-                    icon: const Icon(Icons.download),
-                    label: const Text('Export PDF Report'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryGold,
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 20,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 40),
-
-          // Month Filter Bar
-          _buildFilterBar(context),
-          const SizedBox(height: 32),
-
-          // Main Stats Row
-          Row(
-            children: [
-              Expanded(
-                child: _buildReportCard(
-                  theme,
-                  'Total Disbursed',
-                  'R ${totalDisbursed.toStringAsFixed(0)}',
-                  Icons.payments_outlined,
-                  AppTheme.primaryGold,
-                ),
-              ),
-              const SizedBox(width: 20),
-              Expanded(
-                child: _buildReportCard(
-                  theme,
-                  'Total Collected',
-                  'R ${totalCollected.toStringAsFixed(0)}',
-                  Icons.account_balance_wallet_outlined,
-                  AppTheme.primaryGold,
-                ),
-              ),
-              const SizedBox(width: 20),
-              Expanded(
-                child: _buildReportCard(
-                  theme,
-                  'Outstanding Capital',
-                  'R ${totalOutstanding.toStringAsFixed(0)}',
-                  Icons.pending_actions,
-                  AppTheme.primaryGold,
-                ),
-              ),
-              const SizedBox(width: 20),
-              Expanded(
-                child: _buildReportCard(
-                  theme,
-                  'Total Savings',
-                  'R ${totalSavings.toStringAsFixed(0)}',
-                  Icons.savings_outlined,
-                  AppTheme.primaryGold,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 32),
-
-          // Secondary Stats Row (Fees)
-          Row(
-            children: [
-              Expanded(
-                child: _buildReportCard(
-                  theme,
-                  'Initiation Fees',
-                  'R ${totalInitiationFees.toStringAsFixed(0)}',
-                  Icons.fiber_new,
-                  AppTheme.primaryGold,
-                ),
-              ),
-              const SizedBox(width: 20),
-              Expanded(
-                child: _buildReportCard(
-                  theme,
-                  'Admin & Service Fees',
-                  'R ${totalAdminFees.toStringAsFixed(0)}',
-                  Icons.admin_panel_settings_outlined,
-                  AppTheme.primaryGold,
-                ),
-              ),
-              const SizedBox(width: 20),
-              Expanded(
-                child: _buildReportCard(
-                  theme,
-                  'Total Expected Fees',
-                  'R ${totalExpectedFees.toStringAsFixed(0)}',
-                  Icons.summarize_outlined,
-                  AppTheme.primaryGold,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 40),
-
-          // Detailed Breakdown Table Header
+          // ─── Header ───
           Container(
-            padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: theme.cardColor,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: theme.dividerColor),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Master Loan Ledger (Detailed)',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                      ),
-                    ),
-                  ],
+              border: Border(
+                bottom: BorderSide(
+                  color: theme.dividerColor.withOpacity(0.3),
+                  width: 0.5,
                 ),
-                const SizedBox(height: 24),
-                Container(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: theme.dividerColor),
-                    borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            padding: const EdgeInsets.fromLTRB(24, 16, 16, 12),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.bar_chart_rounded,
+                  color: theme.colorScheme.primary,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Financial Reports',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
-                  child: Table(
-                    border: TableBorder.all(
-                      color: theme.dividerColor,
-                      width: 0.5,
-                    ),
-                    defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-                    columnWidths: const {
-                      0: FlexColumnWidth(2.5), // Name
-                      1: FlexColumnWidth(1.8), // ID Number
-                      2: FlexColumnWidth(1.8), // Phone
-                      3: FlexColumnWidth(1.8), // Group
-                      4: FlexColumnWidth(2), // Business
-                      5: FlexColumnWidth(1.2), // Principal
-                      6: FlexColumnWidth(0.8), // Term
-                      7: FlexColumnWidth(0.8), // Init Fee
-                      8: FlexColumnWidth(0.8), // Admin Fee
-                      9: FlexColumnWidth(0.8), // Penalty
-                      10: FlexColumnWidth(1.2), // Monthly
-                      11: FlexColumnWidth(1.2), // Total Paid
-                      12: FlexColumnWidth(1.2), // Balance
-                      13: FlexColumnWidth(0.6), // Actions
-                    },
-                    children: [
-                      TableRow(
-                        decoration: BoxDecoration(
-                          color: Theme.of(
-                            context,
-                          ).textTheme.bodyMedium?.color?.withOpacity(0.03),
-                        ),
-                        children: [
-                          _buildTableHeader('Member Name'),
-                          _buildTableHeader('ID Number'),
-                          _buildTableHeader('Phone'),
-                          _buildTableHeader('Group'),
-                          _buildTableHeader('Business'),
-                          _buildTableHeader('Principal'),
-                          _buildTableHeader('Term'),
-                          _buildTableHeader('Init Fee'),
-                          _buildTableHeader('Admin Fee'),
-                          _buildTableHeader('Penalty'),
-                          _buildTableHeader('Monthly'),
-                          _buildTableHeader('Total Paid'),
-                          _buildTableHeader('Balance'),
-                          _buildTableHeader(''), // Actions
-                        ],
-                      ),
-                      ...filteredLoans.map((loan) {
-                        final isSelected = loan.id == _selectedLoanId;
-                        final vendor = vendorProvider.vendors
-                            .where((v) => v.id == loan.vendorId)
-                            .firstOrNull;
-                        final group = groupProvider.groups
-                            .where((g) => g.id == loan.groupId)
-                            .firstOrNull;
-                        final loanPayments = filteredPayments
-                            .where((p) => p.loanId == loan.id)
-                            .toList();
-                        final totalPaid = loanPayments.fold(
-                          0.0,
-                          (sum, p) => sum + p.amountPaid,
-                        );
-                        final appliedPenalty =
-                            LoanCalculationService.calculateAppliedPenalty(
-                              loan,
-                              loanPayments,
-                            );
-                        final balance = LoanCalculationService.calculateBalance(
-                          loan,
-                          loanPayments,
-                        );
-
-                        void _goToLoan() {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  LoanDetailsScreen(loan: loan),
-                            ),
-                          );
-                        }
-
-                        return TableRow(
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? AppTheme.primaryGold.withOpacity(0.1)
-                                : null,
-                          ),
-                          children: [
-                            _buildTableCell(
-                              vendor?.name ?? 'Unknown',
-                              isBold: true,
-                              onTap: () =>
-                                  setState(() => _selectedLoanId = loan.id),
-                              onDoubleTap: _goToLoan,
-                            ),
-                            _buildTableCell(
-                              vendor?.idNumber ?? '-',
-                              onTap: () =>
-                                  setState(() => _selectedLoanId = loan.id),
-                            ),
-                            _buildTableCell(
-                              vendor?.phone ?? '-',
-                              onTap: () =>
-                                  setState(() => _selectedLoanId = loan.id),
-                            ),
-                            _buildTableCell(
-                              group?.name ?? '-',
-                              onTap: () =>
-                                  setState(() => _selectedLoanId = loan.id),
-                            ),
-                            _buildTableCell(
-                              vendor?.businessType ?? '-',
-                              onTap: () =>
-                                  setState(() => _selectedLoanId = loan.id),
-                            ),
-                            _buildEditableTableCell(
-                              loan.id,
-                              'amount',
-                              loan.amount.toStringAsFixed(0),
-                              prefix: 'R ',
-                            ),
-                            _buildEditableTableCell(
-                              loan.id,
-                              'durationMonths',
-                              loan.durationMonths.toString(),
-                              suffix: 'm',
-                            ),
-                            _buildEditableTableCell(
-                              loan.id,
-                              'initiationFee',
-                              loan.initiationFee?.toStringAsFixed(0) ?? '0',
-                              prefix: 'R ',
-                            ),
-                            _buildEditableTableCell(
-                              loan.id,
-                              'monthlyAdminFee',
-                              loan.monthlyAdminFee?.toStringAsFixed(0) ?? '0',
-                              prefix: 'R ',
-                            ),
-                            _buildEditableTableCell(
-                              loan.id,
-                              'penaltyFee',
-                              appliedPenalty.toStringAsFixed(0),
-                              prefix: 'R ',
-                            ),
-                            _buildTableCell(
-                              'R ${loan.monthlyPayment.toStringAsFixed(0)}',
-                              color: AppTheme.primaryGold,
-                              onTap: () =>
-                                  setState(() => _selectedLoanId = loan.id),
-                            ),
-                            _buildTableCell(
-                              'R ${totalPaid.toStringAsFixed(0)}',
-                              color: Colors.greenAccent,
-                              onTap: () =>
-                                  setState(() => _selectedLoanId = loan.id),
-                            ),
-                            _buildTableCell(
-                              'R ${balance.toStringAsFixed(0)}',
-                              color: Colors.orangeAccent,
-                              onTap: () =>
-                                  setState(() => _selectedLoanId = loan.id),
-                            ),
-                            _buildActionsCell(loan.id),
-                          ],
-                        );
-                      }).toList(),
-                    ],
+                ),
+                const Spacer(),
+                _ReportHeaderAction(
+                  icon: Icons.table_view_outlined,
+                  tooltip: 'Export Excel',
+                  onPressed: () => _exportToExcel(
+                    filteredLoans,
+                    filteredPayments,
+                    vendorProvider,
+                    groupProvider,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                _ReportHeaderAction(
+                  icon: Icons.download_rounded,
+                  tooltip: 'Export PDF Report',
+                  onPressed: () => _generatePDF(
+                    context,
+                    totalDisbursed,
+                    totalCollected,
+                    totalOutstanding,
+                    totalExpectedFees,
+                    totalSavings,
+                    filteredLoans,
+                    filteredPayments,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 40),
-          const Divider(),
-          const SizedBox(height: 40),
 
-          // Advanced Insights Section
-          Text(
-            'Advanced Insights & Aging Analysis',
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.bold,
+          // ─── Body ───
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Period filter
+                  _buildFilterBar(context, theme),
+                  const SizedBox(height: 24),
+
+                  // Stats row 1
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildStatCard(
+                          theme: theme,
+                          icon: Icons.payments_outlined,
+                          iconColor: theme.colorScheme.primary,
+                          title: 'Total Disbursed',
+                          value: 'R ${totalDisbursed.toStringAsFixed(0)}',
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildStatCard(
+                          theme: theme,
+                          icon: Icons.account_balance_wallet_outlined,
+                          iconColor: Colors.green,
+                          title: 'Total Collected',
+                          value: 'R ${totalCollected.toStringAsFixed(0)}',
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildStatCard(
+                          theme: theme,
+                          icon: Icons.pending_actions,
+                          iconColor: Colors.orange,
+                          title: 'Outstanding Capital',
+                          value: 'R ${totalOutstanding.toStringAsFixed(0)}',
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildStatCard(
+                          theme: theme,
+                          icon: Icons.savings_outlined,
+                          iconColor: Colors.blue,
+                          title: 'Total Savings',
+                          value: 'R ${totalSavings.toStringAsFixed(0)}',
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Stats row 2
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildStatCard(
+                          theme: theme,
+                          icon: Icons.fiber_new,
+                          iconColor: Colors.teal,
+                          title: 'Initiation Fees',
+                          value: 'R ${totalInitiationFees.toStringAsFixed(0)}',
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildStatCard(
+                          theme: theme,
+                          icon: Icons.admin_panel_settings_outlined,
+                          iconColor: Colors.indigo,
+                          title: 'Admin & Service Fees',
+                          value: 'R ${totalAdminFees.toStringAsFixed(0)}',
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildStatCard(
+                          theme: theme,
+                          icon: Icons.summarize_outlined,
+                          iconColor: Colors.deepPurple,
+                          title: 'Total Expected Fees',
+                          value: 'R ${totalExpectedFees.toStringAsFixed(0)}',
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
+
+                  // ─── Master Loan Ledger ───
+                  _SectionLabel(label: 'MASTER LOAN LEDGER'),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: theme.cardColor,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: theme.dividerColor.withOpacity(0.5),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Detailed Breakdown',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Table(
+                          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                          columnWidths: const {
+                            0: FlexColumnWidth(2.5),
+                            1: FlexColumnWidth(1.3),
+                            2: FlexColumnWidth(1.2),
+                            3: FlexColumnWidth(1.5),
+                            4: FlexColumnWidth(1.5),
+                            5: FlexColumnWidth(0.9),
+                            6: FlexColumnWidth(0.6),
+                            7: FlexColumnWidth(0.7),
+                            8: FlexColumnWidth(0.7),
+                            9: FlexColumnWidth(0.7),
+                            10: FlexColumnWidth(1),
+                            11: FlexColumnWidth(1),
+                            12: FlexColumnWidth(1),
+                            13: FlexColumnWidth(0.5),
+                          },
+                          children: [
+                            TableRow(
+                              decoration: BoxDecoration(
+                                border: Border(
+                                  bottom: BorderSide(
+                                    color: theme.dividerColor.withOpacity(0.15),
+                                    width: 0.5,
+                                  ),
+                                ),
+                              ),
+                              children: [
+                                _th('Member Name'),
+                                _th('ID Number'),
+                                _th('Phone'),
+                                _th('Group'),
+                                _th('Business'),
+                                _th('Principal'),
+                                _th('Term'),
+                                _th('Init Fee'),
+                                _th('Admin Fee'),
+                                _th('Penalty'),
+                                _th('Monthly'),
+                                _th('Total Paid'),
+                                _th('Balance'),
+                                _th(''),
+                              ],
+                            ),
+                            ...filteredLoans.map((loan) {
+                              final isSelected = loan.id == _selectedLoanId;
+                              final vendor = vendorProvider.vendors
+                                  .where((v) => v.id == loan.vendorId)
+                                  .firstOrNull;
+                              final group = groupProvider.groups
+                                  .where((g) => g.id == loan.groupId)
+                                  .firstOrNull;
+                              final loanPayments = filteredPayments
+                                  .where((p) => p.loanId == loan.id)
+                                  .toList();
+                              final totalPaid = loanPayments.fold(
+                                0.0,
+                                (sum, p) => sum + p.amountPaid,
+                              );
+                              final appliedPenalty =
+                                  LoanCalculationService.calculateAppliedPenalty(
+                                    loan,
+                                    loanPayments,
+                                  );
+                              final balance = LoanCalculationService.calculateBalance(
+                                loan,
+                                loanPayments,
+                              );
+
+                              void _goToLoan() {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        LoanDetailsScreen(loan: loan),
+                                  ),
+                                );
+                              }
+
+                              return TableRow(
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? AppTheme.primaryGold.withOpacity(0.08)
+                                      : null,
+                                  border: Border(
+                                    bottom: BorderSide(
+                                      color: theme.dividerColor.withOpacity(0.08),
+                                      width: 0.5,
+                                    ),
+                                  ),
+                                ),
+                                children: [
+                                  _td(vendor?.name ?? 'Unknown', isBold: true),
+                                  _td(vendor?.idNumber ?? '-'),
+                                  _td(vendor?.phone ?? '-'),
+                                  _td(group?.name ?? '-'),
+                                  _td(vendor?.businessType ?? '-'),
+                                  _tdEditable(
+                                    loan.id, 'amount',
+                                    loan.amount.toStringAsFixed(0),
+                                    prefix: 'R ',
+                                  ),
+                                  _tdEditable(
+                                    loan.id, 'durationMonths',
+                                    loan.durationMonths.toString(),
+                                    suffix: 'm',
+                                  ),
+                                  _tdEditable(
+                                    loan.id, 'initiationFee',
+                                    loan.initiationFee?.toStringAsFixed(0) ?? '0',
+                                    prefix: 'R ',
+                                  ),
+                                  _tdEditable(
+                                    loan.id, 'monthlyAdminFee',
+                                    loan.monthlyAdminFee?.toStringAsFixed(0) ?? '0',
+                                    prefix: 'R ',
+                                  ),
+                                  _tdEditable(
+                                    loan.id, 'penaltyFee',
+                                    appliedPenalty.toStringAsFixed(0),
+                                    prefix: 'R ',
+                                  ),
+                                  _td(
+                                    'R ${loan.monthlyPayment.toStringAsFixed(0)}',
+                                    color: AppTheme.primaryGold,
+                                  ),
+                                  _td(
+                                    'R ${totalPaid.toStringAsFixed(0)}',
+                                    color: Colors.green,
+                                  ),
+                                  _td(
+                                    'R ${balance.toStringAsFixed(0)}',
+                                    color: Colors.orange,
+                                  ),
+                                  _actionsCell(loan.id),
+                                ],
+                              );
+                            }).toList(),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+
+                  // ─── Advanced Insights ───
+                  _SectionLabel(label: 'ADVANCED INSIGHTS & AGING ANALYSIS'),
+                  const SizedBox(height: 12),
+
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: _buildInsightCard(
+                          theme: theme,
+                          title: 'Monthly Financial Breakdown',
+                          child: _buildMonthlyBreakdownTable(context),
+                        ),
+                      ),
+                      const SizedBox(width: 20),
+                      Expanded(
+                        flex: 2,
+                        child: _buildInsightCard(
+                          theme: theme,
+                          title: 'Arrears Aging Analysis',
+                          child: _buildAgingTable(
+                            context, aging30, aging60, aging90, aging90Plus,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: _buildInsightCard(
+                          theme: theme,
+                          title: 'Loan Book by Facilitator',
+                          child: _buildBreakdownTable(context, 'DF', breakdownByDF),
+                        ),
+                      ),
+                      const SizedBox(width: 20),
+                      Expanded(
+                        child: _buildInsightCard(
+                          theme: theme,
+                          title: 'Loan Book by Center',
+                          child: _buildBreakdownTable(context, 'Center', breakdownByCenter),
+                        ),
+                      ),
+                      const SizedBox(width: 20),
+                      Expanded(
+                        child: _buildInsightCard(
+                          theme: theme,
+                          title: 'Loan Book by Type',
+                          child: _buildBreakdownTable(context, 'Type', breakdownByType),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
+
+                  // ─── Collection Rate Footer ───
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: theme.cardColor,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: theme.dividerColor.withOpacity(0.5),
+                        ),
+                      ),
+                      child: Text(
+                        'Collection Rate: ${totalDisbursed > 0 ? (totalCollected / totalDisbursed * 100).toStringAsFixed(1) : '0'}%',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 24),
-
-          // Monthly Breakdown & Aging Row
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Monthly Financial Breakdown
-              Expanded(
-                flex: 3,
-                child: _buildInsightCard(
-                  theme,
-                  'Monthly Financial Breakdown',
-                  _buildMonthlyBreakdownTable(context),
-                ),
-              ),
-              const SizedBox(width: 24),
-              // Arrears Aging
-              Expanded(
-                flex: 2,
-                child: _buildInsightCard(
-                  theme,
-                  'Arrears Aging Analysis',
-                  _buildAgingTable(context, aging30, aging60, aging90, aging90Plus),
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 24),
-
-          // Loan Book Breakdown Row
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // By DF
-              Expanded(
-                child: _buildInsightCard(
-                  theme,
-                  'Loan Book by Facilitator (DF)',
-                  _buildBreakdownTable(context, 'DF', breakdownByDF),
-                ),
-              ),
-              const SizedBox(width: 24),
-              // By Center
-              Expanded(
-                child: _buildInsightCard(
-                  theme,
-                  'Loan Book by Center',
-                  _buildBreakdownTable(context, 'Center', breakdownByCenter),
-                ),
-              ),
-              const SizedBox(width: 24),
-              // By Loan Type
-              Expanded(
-                child: _buildInsightCard(
-                  theme,
-                  'Loan Book by Type',
-                  _buildBreakdownTable(context, 'Type', breakdownByType),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 60),
         ],
       ),
     );
   }
 
-  Widget _buildFilterBar(BuildContext context) {
-    final theme = Theme.of(context);
+  // ─── Filter Bar ───
+
+  Widget _buildFilterBar(BuildContext context, ThemeData theme) {
     final options = _getMonthFilterOptions();
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: theme.cardColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.primaryGold.withOpacity(0.15)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: theme.dividerColor.withOpacity(0.5),
+        ),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
+          Icon(
+            Icons.calendar_month_outlined,
+            size: 18,
+            color: theme.textTheme.bodySmall?.color?.withOpacity(0.6),
+          ),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.calendar_month, color: AppTheme.primaryGold, size: 24),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'REPORTING PERIOD',
-                    style: TextStyle(
-                      color: AppTheme.primaryGold,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 11,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _getSelectedPeriodString(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
+              Text(
+                'REPORTING PERIOD',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
+                ),
+              ),
+              Text(
+                _getSelectedPeriodString(),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
+          const Spacer(),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
             decoration: BoxDecoration(
-              color: Colors.black38,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.white10),
+              color: theme.dividerColor.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: theme.dividerColor.withOpacity(0.3),
+              ),
             ),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<int>(
                 value: _selectedMonthFilter,
+                isDense: true,
                 dropdownColor: theme.cardColor,
-                icon: const Icon(Icons.keyboard_arrow_down, color: AppTheme.primaryGold),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
+                icon: Icon(
+                  Icons.keyboard_arrow_down,
+                  size: 18,
+                  color: theme.textTheme.bodySmall?.color,
+                ),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
                 ),
                 onChanged: (int? newValue) {
                   if (newValue != null) {
@@ -823,7 +857,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     value: option['value'] as int,
                     child: Text(
                       option['label'] as String,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                   );
                 }).toList(),
@@ -835,53 +869,53 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Widget _buildReportCard(
-    ThemeData theme,
-    String title,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
+  // ─── Stat Card ───
+
+  Widget _buildStatCard({
+    required ThemeData theme,
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String value,
+  }) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: theme.cardColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.1)),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: theme.dividerColor.withOpacity(0.5),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Icon(icon, color: color, size: 20),
               Container(
-                padding: const EdgeInsets.all(2),
+                width: 32,
+                height: 32,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  shape: BoxShape.circle,
+                  color: iconColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
                 ),
-                child: Icon(Icons.trending_up, color: color, size: 10),
+                child: Icon(icon, size: 16, color: iconColor),
               ),
             ],
           ),
           const SizedBox(height: 12),
           Text(
             title,
-            style: TextStyle(
-              color: Colors.grey[400],
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.textTheme.bodySmall?.color?.withOpacity(0.6),
             ),
           ),
           const SizedBox(height: 4),
           Text(
             value,
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: color,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: iconColor,
             ),
           ),
         ],
@@ -889,54 +923,42 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Widget _buildTableHeader(String text) {
+  // ─── Table helpers ───
+
+  Widget _th(String text) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
       child: Text(
         text,
-        style: const TextStyle(
-          fontWeight: FontWeight.bold,
-          color: Colors.grey,
-          fontSize: 10,
+        style: TextStyle(
+          fontWeight: FontWeight.w600,
+          color: Colors.grey.shade600,
+          fontSize: 11,
         ),
       ),
     );
   }
 
-  Widget _buildTableCell(
+  Widget _td(
     String text, {
     bool isBold = false,
     Color? color,
-    VoidCallback? onTap,
-    VoidCallback? onDoubleTap,
   }) {
-    Widget content = Padding(
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
       child: Text(
         text,
         style: TextStyle(
-          fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+          fontWeight: isBold ? FontWeight.w600 : FontWeight.normal,
           color: color,
           fontSize: 11,
         ),
         overflow: TextOverflow.ellipsis,
       ),
     );
-
-    if (onTap != null || onDoubleTap != null) {
-      return InkWell(
-        onTap: onTap,
-        onDoubleTap: onDoubleTap,
-        mouseCursor: SystemMouseCursors.click,
-        hoverColor: AppTheme.primaryGold.withOpacity(0.05),
-        child: content,
-      );
-    }
-
-    return content;
   }
 
-  Widget _buildEditableTableCell(
+  Widget _tdEditable(
     String loanId,
     String fieldName,
     String value, {
@@ -948,39 +970,32 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
     if (isEditing) {
       return Padding(
-        padding: const EdgeInsets.all(4.0),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(4),
-          ),
+        padding: const EdgeInsets.all(2),
+        child: SizedBox(
+          height: 32,
           child: TextField(
             controller: _controllers[key],
             autofocus: true,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 12,
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
             decoration: InputDecoration(
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(
-                horizontal: 8,
-                vertical: 12,
+                horizontal: 6,
+                vertical: 6,
               ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(4),
-                borderSide: const BorderSide(color: AppTheme.primaryGold, width: 2),
+                borderSide: const BorderSide(color: AppTheme.primaryGold, width: 1.5),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(4),
-                borderSide: const BorderSide(color: AppTheme.primaryGold, width: 2),
+                borderSide: const BorderSide(color: AppTheme.primaryGold, width: 1.5),
               ),
               prefixText: prefix,
-              prefixStyle: const TextStyle(color: AppTheme.primaryGold, fontSize: 10),
+              prefixStyle: const TextStyle(color: AppTheme.primaryGold, fontSize: 9),
               suffixText: suffix,
-              suffixStyle: const TextStyle(color: AppTheme.primaryGold, fontSize: 10),
+              suffixStyle: const TextStyle(color: AppTheme.primaryGold, fontSize: 9),
             ),
             onSubmitted: (_) => _saveEdit(loanId, fieldName),
             onTapOutside: (_) => _saveEdit(loanId, fieldName),
@@ -989,28 +1004,34 @@ class _ReportsScreenState extends State<ReportsScreen> {
       );
     }
 
-    return Stack(
-      children: [
-        _buildTableCell(
-          "$prefix$value$suffix",
-          onTap: () => _onCellTap(loanId, fieldName, value),
-        ),
-        Positioned(
-          top: 2,
-          right: 2,
-          child: Icon(
-            Icons.edit_note,
-            size: 10,
-            color: AppTheme.primaryGold.withOpacity(0.3),
+    return InkWell(
+      onTap: () => _onCellTap(loanId, fieldName, value),
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+            child: Text(
+              "$prefix$value$suffix",
+              style: const TextStyle(fontSize: 11),
+            ),
           ),
-        ),
-      ],
+          Positioned(
+            top: 1,
+            right: 1,
+            child: Icon(
+              Icons.edit_note,
+              size: 10,
+              color: AppTheme.primaryGold.withOpacity(0.3),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildActionsCell(String loanId) {
+  Widget _actionsCell(String loanId) {
     return PopupMenuButton<String>(
-      icon: const Icon(Icons.more_vert, size: 16, color: Colors.grey),
+      icon: const Icon(Icons.more_vert, size: 14, color: Colors.grey),
       padding: EdgeInsets.zero,
       onSelected: (value) {
         if (value == 'view') {
@@ -1024,7 +1045,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
           );
         } else if (value == 'edit') {
-          // Trigger inline edit for the first editable field (amount)
           final loan = context.read<LoanProvider>().loans.firstWhere(
             (l) => l.id == loanId,
           );
@@ -1067,6 +1087,185 @@ class _ReportsScreenState extends State<ReportsScreen> {
       ],
     );
   }
+
+  // ─── Insight Card ───
+
+  Widget _buildInsightCard({
+    required ThemeData theme,
+    required String title,
+    required Widget child,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: theme.dividerColor.withOpacity(0.5),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 16),
+          child,
+        ],
+      ),
+    );
+  }
+
+  // ─── Monthly Breakdown Table ───
+
+  Widget _buildMonthlyBreakdownTable(BuildContext context) {
+    final trend = context.watch<AnalyticsProvider>().monthlyTrend;
+    final theme = Theme.of(context);
+
+    final List<String> shortMonths = [
+      '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Table(
+        border: TableBorder.all(color: theme.dividerColor.withOpacity(0.3), width: 0.5),
+        columnWidths: const {
+          0: FixedColumnWidth(70),
+          1: FixedColumnWidth(90),
+          2: FixedColumnWidth(80),
+          3: FixedColumnWidth(80),
+          4: FixedColumnWidth(80),
+          5: FixedColumnWidth(90),
+        },
+        children: [
+          TableRow(
+            decoration: BoxDecoration(color: theme.dividerColor.withOpacity(0.08)),
+            children: [
+              _th('Month'),
+              _th('Principal'),
+              _th('Interest'),
+              _th('Admin Fee'),
+              _th('Init Fee'),
+              _th('Actual Coll'),
+            ],
+          ),
+          ...trend.map((t) {
+            final isSelectedMonth = _selectedMonthFilter > 0 &&
+                shortMonths[_selectedMonthFilter] == t.month;
+
+            return TableRow(
+              decoration: isSelectedMonth
+                  ? BoxDecoration(color: AppTheme.primaryGold.withOpacity(0.1))
+                  : null,
+              children: [
+                _td(
+                  t.month,
+                  isBold: isSelectedMonth,
+                  color: isSelectedMonth ? AppTheme.primaryGold : null,
+                ),
+                _td('R ${t.disbursed.toStringAsFixed(0)}', isBold: isSelectedMonth),
+                _td('R ${t.interest.toStringAsFixed(0)}', isBold: isSelectedMonth),
+                _td('R ${t.adminFees.toStringAsFixed(0)}', isBold: isSelectedMonth),
+                _td('R ${t.initiationFees.toStringAsFixed(0)}', isBold: isSelectedMonth),
+                _td(
+                  'R ${t.collected.toStringAsFixed(0)}',
+                  color: isSelectedMonth ? AppTheme.primaryGold : Colors.green,
+                  isBold: isSelectedMonth,
+                ),
+              ],
+            );
+          }).toList(),
+        ],
+      ),
+    );
+  }
+
+  // ─── Aging Table ───
+
+  Widget _buildAgingTable(
+    BuildContext context,
+    double aging30,
+    double aging60,
+    double aging90,
+    double aging90Plus,
+  ) {
+    final totalArrears = aging30 + aging60 + aging90 + aging90Plus;
+    final theme = Theme.of(context);
+
+    return Table(
+      border: TableBorder.all(color: theme.dividerColor.withOpacity(0.3), width: 0.5),
+      columnWidths: const {
+        0: FlexColumnWidth(2),
+        1: FlexColumnWidth(2),
+      },
+      children: [
+        TableRow(
+          decoration: BoxDecoration(color: theme.dividerColor.withOpacity(0.08)),
+          children: [
+            _th('Aging Bracket'),
+            _th('Amount'),
+          ],
+        ),
+        _agingRow('30 Days', aging30, Colors.orange),
+        _agingRow('60 Days', aging60, Colors.deepOrange),
+        _agingRow('90 Days', aging90, Colors.red),
+        _agingRow('90+ Days', aging90Plus, Colors.red.shade900),
+        TableRow(
+          decoration: BoxDecoration(color: theme.dividerColor.withOpacity(0.12)),
+          children: [
+            _th('Total Arrears'),
+            _th('R ${totalArrears.toStringAsFixed(0)}'),
+          ],
+        ),
+      ],
+    );
+  }
+
+  TableRow _agingRow(String label, double amount, Color color) {
+    return TableRow(
+      children: [
+        _td(label),
+        _td('R ${amount.toStringAsFixed(0)}', color: color, isBold: true),
+      ],
+    );
+  }
+
+  // ─── Breakdown Table ───
+
+  Widget _buildBreakdownTable(BuildContext context, String mode, Map<String, double> data) {
+    final theme = Theme.of(context);
+
+    return Table(
+      border: TableBorder.all(color: theme.dividerColor.withOpacity(0.3), width: 0.5),
+      columnWidths: const {
+        0: FlexColumnWidth(2),
+        1: FlexColumnWidth(2),
+      },
+      children: [
+        TableRow(
+          decoration: BoxDecoration(color: theme.dividerColor.withOpacity(0.08)),
+          children: [
+            _th(mode),
+            _th('Balance'),
+          ],
+        ),
+        ...data.entries.map((e) => TableRow(
+          children: [
+            _td(e.key),
+            _td('R ${e.value.toStringAsFixed(0)}', isBold: true),
+          ],
+        )).toList(),
+      ],
+    );
+  }
+
+  // ─── Export ───
 
   Future<void> _generatePDF(
     BuildContext context,
@@ -1130,14 +1329,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
-                _pdfStat(
-                  'Total Disbursed',
-                  'R ${disbursed.toStringAsFixed(2)}',
-                ),
-                _pdfStat(
-                  'Total Collected',
-                  'R ${collected.toStringAsFixed(2)}',
-                ),
+                _pdfStat('Total Disbursed', 'R ${disbursed.toStringAsFixed(2)}'),
+                _pdfStat('Total Collected', 'R ${collected.toStringAsFixed(2)}'),
                 _pdfStat('Outstanding', 'R ${outstanding.toStringAsFixed(2)}'),
                 _pdfStat('Total Savings', 'R ${savings.toStringAsFixed(2)}'),
               ],
@@ -1323,7 +1516,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
       ]);
     }
 
-    // Calculate Summary Data
     final totalDisbursed = filteredLoans.fold(0.0, (sum, l) => sum + l.amount);
     final totalCollected = filteredPayments.fold(0.0, (sum, p) => sum + p.amountPaid);
     double totalOutstanding = 0;
@@ -1331,10 +1523,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
       final lp = filteredPayments.where((p) => p.loanId == l.id).toList();
       totalOutstanding += LoanCalculationService.calculateBalance(l, lp);
     }
-    // Filter vendors to selected period
-    final now = DateTime.now();
-    final currentYear = now.year;
-    final currentMonth = now.month;
     final filteredVendors = vendorProvider.vendors.where((v) =>
       true
     ).toList();
@@ -1356,147 +1544,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
         'collectionRate': collectionRate,
       },
       ledgerData: data,
-    );
-  }
-
-  Widget _buildInsightCard(ThemeData theme, String title, Widget child) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            const SizedBox(height: 20),
-            child,
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMonthlyBreakdownTable(BuildContext context) {
-    final trend = context.watch<AnalyticsProvider>().monthlyTrend;
-    final theme = Theme.of(context);
-
-    // List of months for matching
-    final List<String> shortMonths = [
-      '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-    ];
-
-    return Table(
-      border: TableBorder.all(color: theme.dividerColor, width: 0.5),
-      children: [
-        TableRow(
-          decoration: BoxDecoration(color: theme.dividerColor.withOpacity(0.05)),
-          children: [
-            _buildTableHeader('Month'),
-            _buildTableHeader('Principal'),
-            _buildTableHeader('Interest'),
-            _buildTableHeader('Admin Fee'),
-            _buildTableHeader('Init Fee'),
-            _buildTableHeader('Actual Coll'),
-          ],
-        ),
-        ...trend.map((t) {
-          final isSelectedMonth = _selectedMonthFilter > 0 && 
-              shortMonths[_selectedMonthFilter] == t.month;
-
-          return TableRow(
-            decoration: isSelectedMonth
-                ? BoxDecoration(
-                    color: AppTheme.primaryGold.withOpacity(0.15),
-                  )
-                : null,
-            children: [
-              _buildTableCell(
-                t.month,
-                isBold: isSelectedMonth,
-                color: isSelectedMonth ? AppTheme.primaryGold : null,
-              ),
-              _buildTableCell('R ${t.disbursed.toStringAsFixed(0)}', isBold: isSelectedMonth),
-              _buildTableCell('R ${t.interest.toStringAsFixed(0)}', isBold: isSelectedMonth),
-              _buildTableCell('R ${t.adminFees.toStringAsFixed(0)}', isBold: isSelectedMonth),
-              _buildTableCell('R ${t.initiationFees.toStringAsFixed(0)}', isBold: isSelectedMonth),
-              _buildTableCell(
-                'R ${t.collected.toStringAsFixed(0)}',
-                color: isSelectedMonth ? AppTheme.primaryGold : Colors.greenAccent,
-                isBold: isSelectedMonth,
-              ),
-            ],
-          );
-        }).toList(),
-      ],
-    );
-  }
-
-  Widget _buildAgingTable(
-    BuildContext context,
-    double aging30,
-    double aging60,
-    double aging90,
-    double aging90Plus,
-  ) {
-    final totalArrears = aging30 + aging60 + aging90 + aging90Plus;
-    final theme = Theme.of(context);
-
-    return Table(
-      border: TableBorder.all(color: theme.dividerColor, width: 0.5),
-      children: [
-        TableRow(
-          decoration: BoxDecoration(color: theme.dividerColor.withOpacity(0.05)),
-          children: [
-            _buildTableHeader('Aging Bracket'),
-            _buildTableHeader('Amount'),
-          ],
-        ),
-        _buildAgingRow('30 Days', aging30, Colors.yellowAccent),
-        _buildAgingRow('60 Days', aging60, Colors.orangeAccent),
-        _buildAgingRow('90 Days', aging90, Colors.redAccent),
-        _buildAgingRow('90+ Days', aging90Plus, Colors.red[900]!),
-        TableRow(
-          decoration: BoxDecoration(color: theme.dividerColor.withOpacity(0.1)),
-          children: [
-            _buildTableHeader('Total Arrears'),
-            _buildTableHeader('R ${totalArrears.toStringAsFixed(0)}'),
-          ],
-        ),
-      ],
-    );
-  }
-
-  TableRow _buildAgingRow(String label, double amount, Color color) {
-    return TableRow(
-      children: [
-        _buildTableCell(label),
-        _buildTableCell('R ${amount.toStringAsFixed(0)}', color: color, isBold: true),
-      ],
-    );
-  }
-
-  Widget _buildBreakdownTable(BuildContext context, String mode, Map<String, double> data) {
-    final theme = Theme.of(context);
-
-    return Table(
-      border: TableBorder.all(color: theme.dividerColor, width: 0.5),
-      children: [
-        TableRow(
-          decoration: BoxDecoration(color: theme.dividerColor.withOpacity(0.05)),
-          children: [
-            _buildTableHeader(mode),
-            _buildTableHeader('Balance'),
-          ],
-        ),
-        ...data.entries.map((e) => TableRow(
-          children: [
-            _buildTableCell(e.key),
-            _buildTableCell('R ${e.value.toStringAsFixed(0)}', isBold: true),
-          ],
-        )).toList(),
-      ],
     );
   }
 }

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/group.dart';
-
 import '../services/cache_service.dart';
 import '../services/system_audit_service.dart';
 import '../services/communication_service.dart';
+import '../services/connectivity_service.dart';
+import '../services/offline_queue_service.dart';
 
 class GroupProvider with ChangeNotifier {
   final _supabase = Supabase.instance.client;
@@ -16,13 +17,12 @@ class GroupProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
 
   Future<void> fetchGroups({bool forceRefresh = false}) async {
-    // 1. Try to load from cache first
     if (!forceRefresh) {
       final cachedData = await CacheService.getCache('groups_cache');
       if (cachedData != null) {
         _groups = cachedData.map((e) => GroupModel.fromJson(e)).toList();
         notifyListeners();
-        return; // Cache hit, return early
+        return;
       }
     }
 
@@ -35,8 +35,6 @@ class GroupProvider with ChangeNotifier {
           .select()
           .order('created_at', ascending: false);
       _groups = (response as List).map((e) => GroupModel.fromJson(e)).toList();
-
-      // Save fresh data to cache
       await CacheService.saveCache(
         'groups_cache',
         _groups.map((e) => e.toJson()).toList(),
@@ -58,7 +56,6 @@ class GroupProvider with ChangeNotifier {
     String? creatorName,
   }) async {
     try {
-      // Fetch Center to get DF and Center Name
       final centerRes = await _supabase
           .from('centers')
           .select('name, df_id, df_name')
@@ -111,7 +108,6 @@ class GroupProvider with ChangeNotifier {
 
         await _supabase.from('vendors').insert(vendorData).select();
 
-        // Populate Leadership table for targeted communication
         final List<Map<String, dynamic>> leadershipEntries = [];
         final vendorsResponse = await _supabase
             .from('vendors')
@@ -119,7 +115,7 @@ class GroupProvider with ChangeNotifier {
             .eq('group_id', groupId);
 
         final List vendorsList = vendorsResponse as List? ?? [];
-        
+
         for (var vendor in vendorsList) {
           final role = vendor['role'];
           if (['Chairperson', 'Secretary', 'Treasurer'].contains(role)) {
@@ -135,7 +131,6 @@ class GroupProvider with ChangeNotifier {
           await _supabase.from('leadership').insert(leadershipEntries);
         }
 
-        // Send notifications to all new members (fire-and-forget — never blocks save)
         for (var vendor in vendorsList) {
           final vendorId = vendor['id']?.toString() ?? '';
           final vendorName = vendor['name']?.toString() ?? '';
@@ -186,6 +181,32 @@ class GroupProvider with ChangeNotifier {
   }
 
   Future<void> updateGroup(String id, String name, {String? centerId}) async {
+    final index = _groups.indexWhere((g) => g.id == id);
+    if (index == -1) return;
+
+    final oldGroup = _groups[index];
+    _groups[index] = GroupModel(
+      id: id,
+      name: name,
+      referenceNumber: oldGroup.referenceNumber,
+      centerId: centerId ?? oldGroup.centerId,
+      dfId: oldGroup.dfId,
+      dfName: oldGroup.dfName,
+      createdAt: oldGroup.createdAt,
+    );
+    notifyListeners();
+
+    if (ConnectivityService().currentStatus == AppConnectivityStatus.offline) {
+      await OfflineQueueService().queueAction(OfflineAction(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        table: 'groups',
+        type: OfflineActionType.update,
+        data: {'id': id, 'name': name, if (centerId != null) 'center_id': centerId},
+        timestamp: DateTime.now(),
+      ));
+      return;
+    }
+
     try {
       final Map<String, dynamic> updates = {'name': name};
       if (centerId != null) updates['center_id'] = centerId;
@@ -194,22 +215,41 @@ class GroupProvider with ChangeNotifier {
       SystemAuditService.logAction(
         actionType: 'UPDATE_GROUP',
         affectedEntity: 'Group ID: $id',
-        description:
-            'Updated group $name (Center: ${centerId ?? "unchanged"}).',
+        description: 'Updated group $name (Center: ${centerId ?? "unchanged"}).',
       );
-      await fetchGroups(forceRefresh: true);
+      CacheService.saveCache(
+        'groups_cache',
+        _groups.map((e) => e.toJson()).toList(),
+      );
     } catch (e) {
+      _groups[index] = oldGroup;
+      notifyListeners();
       debugPrint('Error updating group: $e');
       rethrow;
     }
   }
 
   Future<void> deleteGroup(String id) async {
+    final index = _groups.indexWhere((g) => g.id == id);
+    if (index == -1) return;
+
+    final deletedGroup = _groups.removeAt(index);
+    notifyListeners();
+
+    if (ConnectivityService().currentStatus == AppConnectivityStatus.offline) {
+      await OfflineQueueService().queueAction(OfflineAction(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        table: 'groups',
+        type: OfflineActionType.delete,
+        data: {'id': id},
+        timestamp: DateTime.now(),
+      ));
+      return;
+    }
+
     try {
       await _supabase.from('groups').delete().eq('id', id);
-      _groups.removeWhere((g) => g.id == id);
-      notifyListeners();
-      await CacheService.saveCache(
+      CacheService.saveCache(
         'groups_cache',
         _groups.map((e) => e.toJson()).toList(),
       );
@@ -219,6 +259,8 @@ class GroupProvider with ChangeNotifier {
         description: 'Deleted group from the system.',
       );
     } catch (e) {
+      _groups.insert(index, deletedGroup);
+      notifyListeners();
       debugPrint('Error deleting group: $e');
       rethrow;
     }
