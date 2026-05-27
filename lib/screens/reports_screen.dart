@@ -618,7 +618,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         ),
                         // Data rows (virtualized)
                         SizedBox(
-                          height: (loanRows.length * 44).clamp(0, 480),
+                          height: (loanRows.length * 44).clamp(0, 480).toDouble(),
                           child: ListView.builder(
                             itemCount: loanRows.length,
                             itemExtent: 44,
