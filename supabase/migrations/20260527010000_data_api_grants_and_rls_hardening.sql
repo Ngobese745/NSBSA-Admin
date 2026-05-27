@@ -131,60 +131,74 @@ CREATE POLICY "Admins can manage leadership"
 -- ══════════════════════════════════════════════════════════════════════════════
 -- PART 7: Harden notifications RLS — use has_role() for role checks
 -- ══════════════════════════════════════════════════════════════════════════════
-DROP POLICY IF EXISTS "Users can view their own notifications"
-  ON notifications;
-DROP POLICY IF EXISTS "Users can update their own notifications (mark as read)"
-  ON notifications;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables
+             WHERE table_schema = 'public'
+             AND table_name = 'notifications') THEN
 
-CREATE POLICY "Users can view their own notifications"
-  ON notifications FOR SELECT
-  USING (
-    recipient_id = auth.uid()
-    OR recipient_role = 'ALL'
-    OR (recipient_role = 'SUPER_ADMIN' AND public.has_role(ARRAY['Super Admin']))
-    OR (recipient_role = 'ADMIN' AND public.has_role(ARRAY['Admin', 'Super Admin']))
-  );
+    DROP POLICY IF EXISTS "Users can view their own notifications"
+      ON public.notifications;
+    DROP POLICY IF EXISTS "Users can update their own notifications (mark as read)"
+      ON public.notifications;
 
-CREATE POLICY "Authenticated users can insert notifications"
-  ON notifications FOR INSERT
-  WITH CHECK (auth.role() = 'authenticated');
+    CREATE POLICY "Users can view their own notifications"
+      ON public.notifications FOR SELECT
+      USING (
+        recipient_id = auth.uid()
+        OR recipient_role = 'ALL'
+        OR (recipient_role = 'SUPER_ADMIN' AND public.has_role(ARRAY['Super Admin']))
+        OR (recipient_role = 'ADMIN' AND public.has_role(ARRAY['Admin', 'Super Admin']))
+      );
 
-CREATE POLICY "Users can update their own notifications (mark as read)"
-  ON notifications FOR UPDATE
-  USING (recipient_id = auth.uid() OR recipient_role = 'ALL' OR recipient_role IS NULL);
+    CREATE POLICY "Authenticated users can insert notifications"
+      ON public.notifications FOR INSERT
+      WITH CHECK (auth.role() = 'authenticated');
 
--- ══════════════════════════════════════════════════════════════════════════════
--- PART 8: Harden account_setup_tokens
--- ══════════════════════════════════════════════════════════════════════════════
--- account_setup_tokens needs public SELECT (by token) but should restrict
--- writes to the service role. Since the service role bypasses RLS entirely,
--- the existing permissive INSERT/DELETE policies are effectively no-ops for
--- service role. We keep the public SELECT policy as-is.
-DROP POLICY IF EXISTS "Service role insert" ON public.account_setup_tokens;
-DROP POLICY IF EXISTS "Service role delete" ON public.account_setup_tokens;
-
--- Allow unauthenticated read by exact token match (for account setup flow).
--- This is safe because SELECT USING (true) still requires the caller to
--- know the token value; it just allows the Data API to route the request.
-COMMENT ON POLICY "Public read by token"
-  ON public.account_setup_tokens IS
-  'Anyone can SELECT account_setup_tokens (lookup by token during setup flow).';
+    CREATE POLICY "Users can update their own notifications (mark as read)"
+      ON public.notifications FOR UPDATE
+      USING (recipient_id = auth.uid() OR recipient_role = 'ALL' OR recipient_role IS NULL);
+  END IF;
+END $$;
 
 -- ══════════════════════════════════════════════════════════════════════════════
--- PART 9: Add RLS to email_outbox
+-- PART 8: Harden account_setup_tokens (if table exists)
 -- ══════════════════════════════════════════════════════════════════════════════
-ALTER TABLE public.email_outbox ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables
+             WHERE table_schema = 'public'
+             AND table_name = 'account_setup_tokens') THEN
 
-DROP POLICY IF EXISTS "Staff can view email outbox" ON public.email_outbox;
-DROP POLICY IF EXISTS "System can insert email outbox" ON public.email_outbox;
+    DROP POLICY IF EXISTS "Service role insert" ON public.account_setup_tokens;
+    DROP POLICY IF EXISTS "Service role delete" ON public.account_setup_tokens;
 
-CREATE POLICY "Staff can view email outbox"
-  ON public.email_outbox FOR SELECT
-  USING (auth.role() = 'authenticated');
+    COMMENT ON POLICY "Public read by token"
+      ON public.account_setup_tokens IS
+      'Anyone can SELECT account_setup_tokens (lookup by token during setup flow).';
+  END IF;
+END $$;
 
-CREATE POLICY "System can insert email outbox"
-  ON public.email_outbox FOR INSERT
-  WITH CHECK (auth.role() = 'authenticated');
+-- ══════════════════════════════════════════════════════════════════════════════
+-- PART 9: Add RLS to email_outbox (if table exists)
+-- ══════════════════════════════════════════════════════════════════════════════
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables
+             WHERE table_schema = 'public'
+             AND table_name = 'email_outbox') THEN
+
+    ALTER TABLE public.email_outbox ENABLE ROW LEVEL SECURITY;
+
+    DROP POLICY IF EXISTS "Staff can view email outbox" ON public.email_outbox;
+    DROP POLICY IF EXISTS "System can insert email outbox" ON public.email_outbox;
+
+    CREATE POLICY "Staff can view email outbox"
+      ON public.email_outbox FOR SELECT
+      USING (auth.role() = 'authenticated');
+
+    CREATE POLICY "System can insert email outbox"
+      ON public.email_outbox FOR INSERT
+      WITH CHECK (auth.role() = 'authenticated');
+  END IF;
+END $$;
 
 -- ══════════════════════════════════════════════════════════════════════════════
 -- PART 10: Verify centers hardened policies are in place
