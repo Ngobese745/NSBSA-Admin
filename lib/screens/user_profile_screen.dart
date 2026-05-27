@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../services/inactivity_timeout_service.dart';
 
 class UserProfileScreen extends StatefulWidget {
   const UserProfileScreen({super.key});
@@ -18,10 +19,18 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   String _displayName = 'User';
   bool _isSaving = false;
 
+  // Timeout settings state
+  int _timeoutMinutes = 15;
+  bool _timeoutDisabled = false;
+  bool _isSavingTimeout = false;
+
+  static const List<int> _timeoutOptions = [5, 10, 15, 30, 60];
+
   @override
   void initState() {
     super.initState();
     _loadProfileData();
+    _loadTimeoutPreference();
   }
 
   Future<void> _loadProfileData() async {
@@ -44,6 +53,24 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         }
       });
     }
+  }
+
+  Future<void> _loadTimeoutPreference() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+    try {
+      final data = await Supabase.instance.client
+          .from('profiles')
+          .select('timeout_minutes, timeout_disabled')
+          .eq('id', user.id)
+          .maybeSingle();
+      if (data != null) {
+        setState(() {
+          _timeoutMinutes = data['timeout_minutes'] as int? ?? 15;
+          _timeoutDisabled = data['timeout_disabled'] == true;
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _saveProfileData() async {
@@ -75,6 +102,40 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _saveTimeoutPreference() async {
+    if (_isSavingTimeout) return;
+    setState(() => _isSavingTimeout = true);
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+    try {
+      await Supabase.instance.client.from('profiles').update({
+        'timeout_minutes': _timeoutDisabled ? null : _timeoutMinutes,
+        'timeout_disabled': _timeoutDisabled,
+      }).eq('id', user.id);
+
+      await InactivityTimeoutService.instance.refreshPreference();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Timeout settings saved.'),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save timeout settings: $error'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSavingTimeout = false);
     }
   }
 
@@ -225,6 +286,106 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       ),
                     );
                   },
+                ),
+                const SizedBox(height: 32),
+
+                // Timeout Settings Section
+                Text(
+                  'Session Timeout',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.primaryColor,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Automatically log out after a period of inactivity.',
+                  style: TextStyle(
+                    color: Colors.grey[500],
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Disable timeout toggle
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(
+                    'Disable timeout',
+                    style: TextStyle(fontSize: 14),
+                  ),
+                  subtitle: Text(
+                    _timeoutDisabled
+                        ? 'Session will not expire due to inactivity'
+                        : 'Session will expire after the selected duration',
+                    style: TextStyle(color: Colors.grey[500], fontSize: 11),
+                  ),
+                  value: _timeoutDisabled,
+                  activeColor: theme.primaryColor,
+                  onChanged: (val) => setState(() => _timeoutDisabled = val),
+                ),
+
+                if (!_timeoutDisabled) ...[
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<int>(
+                    value: _timeoutOptions.contains(_timeoutMinutes)
+                        ? _timeoutMinutes
+                        : 15,
+                    dropdownColor: Theme.of(context).cardColor,
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                      fontSize: 13,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Timeout Duration',
+                      labelStyle: TextStyle(color: Colors.grey),
+                      border: OutlineInputBorder(),
+                    ),
+                    items: _timeoutOptions.map((minutes) {
+                      return DropdownMenuItem(
+                        value: minutes,
+                        child: Text('$minutes minute${minutes == 1 ? '' : 's'}'),
+                      );
+                    }).toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        setState(() => _timeoutMinutes = val);
+                      }
+                    },
+                  ),
+                ],
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: theme.primaryColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    onPressed: _isSavingTimeout ? null : _saveTimeoutPreference,
+                    child: _isSavingTimeout
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.black,
+                              ),
+                            ),
+                          )
+                        : const Text(
+                            'Save Timeout Settings',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black,
+                              letterSpacing: 1.1,
+                            ),
+                          ),
+                  ),
                 ),
                 Divider(
                   height: 48,

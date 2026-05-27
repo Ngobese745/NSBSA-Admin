@@ -5,6 +5,8 @@ class ProfileModel {
   final String role;
   final String status;
   final String? department;
+  final int? timeoutMinutes;
+  final bool timeoutDisabled;
   final DateTime createdAt;
 
   ProfileModel({
@@ -14,6 +16,8 @@ class ProfileModel {
     required this.role,
     this.status = 'Active',
     this.department,
+    this.timeoutMinutes,
+    this.timeoutDisabled = false,
     required this.createdAt,
   });
 
@@ -25,6 +29,8 @@ class ProfileModel {
       role: json['role'] ?? 'Development Facilitator',
       status: json['status'] ?? 'Active',
       department: json['department'],
+      timeoutMinutes: json['timeout_minutes'] as int?,
+      timeoutDisabled: json['timeout_disabled'] == true,
       createdAt: DateTime.parse(json['created_at']),
     );
   }
@@ -37,6 +43,8 @@ class ProfileModel {
       'role': role,
       'status': status,
       'department': department,
+      'timeout_minutes': timeoutMinutes,
+      'timeout_disabled': timeoutDisabled,
       'created_at': createdAt.toIso8601String(),
     };
   }

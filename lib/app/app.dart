@@ -1,12 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../providers/providers.dart';
 import '../screens/login_screen.dart';
 import '../screens/main_shell.dart';
 import '../screens/password_setup_screen.dart';
+import '../services/inactivity_timeout_service.dart';
 import '../theme/app_theme.dart';
 import 'app_providers.dart';
+
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
 /// Root widget for the NSBSA Admin app.
 ///
@@ -23,12 +29,15 @@ class NsbsaAdminApp extends StatelessWidget {
       child: Consumer2<AuthProvider, ThemeProvider>(
         builder: (context, authProvider, themeProvider, _) {
           return MaterialApp(
+            navigatorKey: appNavigatorKey,
             title: 'NSBSA Admin',
             theme: AppTheme.lightGoldTheme,
             darkTheme: AppTheme.darkGoldTheme,
             themeMode: themeProvider.themeMode,
             debugShowCheckedModeBanner: false,
-            home: _resolveHome(authProvider),
+            home: _InactivityWrapper(
+              child: _resolveHome(authProvider),
+            ),
             routes: {
               '/auth/login': (_) => const LoginScreen(),
               '/auth/setup-password': (_) => const PasswordSetupScreen(),
@@ -86,5 +95,57 @@ class NsbsaAdminApp extends StatelessWidget {
       return const PasswordSetupScreen();
 
     return const MainShell();
+  }
+}
+
+class _InactivityWrapper extends StatefulWidget {
+  final Widget child;
+  const _InactivityWrapper({required this.child});
+
+  @override
+  State<_InactivityWrapper> createState() => _InactivityWrapperState();
+}
+
+class _InactivityWrapperState extends State<_InactivityWrapper> {
+  late final StreamSubscription _authSub;
+
+  @override
+  void initState() {
+    super.initState();
+    final auth = context.read<AuthProvider>();
+    InactivityTimeoutService.instance.init(
+      navigatorKey: appNavigatorKey,
+      onTimeout: () => auth.logout(),
+    );
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      if (data.event == AuthChangeEvent.signedIn) {
+        InactivityTimeoutService.instance.refreshPreference();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _authSub.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      onPointerDown: (_) => InactivityTimeoutService.instance.onUserActivity(),
+      onPointerMove: (_) => InactivityTimeoutService.instance.onUserActivity(),
+      onPointerSignal: (_) => InactivityTimeoutService.instance.onUserActivity(),
+      child: Focus(
+        autofocus: true,
+        onKeyEvent: (_, event) {
+          if (event is KeyDownEvent || event is KeyRepeatEvent) {
+            InactivityTimeoutService.instance.onUserActivity();
+          }
+          return KeyEventResult.ignored;
+        },
+        child: widget.child,
+      ),
+    );
   }
 }
