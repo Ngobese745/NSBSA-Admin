@@ -32,6 +32,7 @@ import '../providers/document_provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../widgets/nsbsa_loading_overlay.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class GroupDetailsScreen extends StatefulWidget {
   final GroupModel group;
@@ -1385,38 +1386,55 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               onPressed: () => Navigator.pop(context),
               child: const Text('Cancel'),
             ),
-            ElevatedButton(
-              onPressed: () async {
-                if (nameController.text.trim().isEmpty) return;
-                final dialogCtx = context;
-                final vendorData = {
-                  'name': nameController.text,
-                  'phone': phoneController.text,
-                  'id_number': idController.text,
-                  'gender': selectedGender,
-                  'business_type': businessController.text,
-                  'df_name': dfController.text,
-                  'whatsapp_number': whatsappController.text,
-                  'address': addressController.text,
-                  'role': selectedRole,
-                  'savings_amount':
-                      double.tryParse(savingsAmountController.text) ?? 0,
-                  'savings_frequency': selectedFrequency,
-                  'savings_start_date': selectedSavingsDate.toIso8601String(),
-                };
-                runWithLoadingAfterPop(
-                  dialogCtx, task: () async {
-                    await dialogCtx.read<VendorProvider>().updateVendor(
-                      member.id,
-                      vendorData,
-                    );
-                    _loadData();
-                  },
-                  successMessage: 'Member updated.',
-                );
-              },
-              child: const Text('Save'),
-            ),
+              ElevatedButton(
+                onPressed: () async {
+                  if (nameController.text.trim().isEmpty) return;
+                  final dialogCtx = context;
+                  final vendorData = {
+                    'name': nameController.text,
+                    'phone': phoneController.text,
+                    'id_number': idController.text,
+                    'gender': selectedGender,
+                    'business_type': businessController.text,
+                    'df_name': dfController.text,
+                    'whatsapp_number': whatsappController.text,
+                    'address': addressController.text,
+                    'role': 'Member',
+                    'savings_amount':
+                        double.tryParse(savingsAmountController.text) ?? 0,
+                    'savings_frequency': selectedFrequency,
+                    'savings_start_date': selectedSavingsDate.toIso8601String(),
+                  };
+                  runWithLoadingAfterPop(
+                    dialogCtx, task: () async {
+                      await dialogCtx.read<VendorProvider>().updateVendor(
+                        member.id,
+                        vendorData,
+                      );
+                      final supabase = Supabase.instance.client;
+                      if (selectedRole == 'Member') {
+                        await supabase
+                            .from('leadership')
+                            .delete()
+                            .eq('vendor_id', member.id);
+                      } else {
+                        await supabase
+                            .from('leadership')
+                            .delete()
+                            .eq('vendor_id', member.id);
+                        await supabase.from('leadership').insert({
+                          'group_id': widget.group.id,
+                          'vendor_id': member.id,
+                          'role': selectedRole,
+                        });
+                      }
+                      _loadData();
+                    },
+                    successMessage: 'Member updated.',
+                  );
+                },
+                child: const Text('Save'),
+              ),
           ],
         ),
       ),

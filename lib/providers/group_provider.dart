@@ -95,7 +95,7 @@ class GroupProvider with ChangeNotifier {
                 'whatsapp_number': m['whatsapp'],
                 'email': m['email'],
                 'address': m['address'],
-                'role': m['role'],
+                'role': 'Member',
                 'savings_amount': m['savings_amount'],
                 'savings_frequency': m['savings_frequency'],
                 'savings_start_date': m['savings_start_date'],
