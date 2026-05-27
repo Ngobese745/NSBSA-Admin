@@ -1007,11 +1007,15 @@ class CommunicationService {
 
     // 2. Prepare SMS (≤160 chars)
     if (toPhone.isNotEmpty) {
-      final smsContent = 'NSBSA: You’ve been added to Group $groupName. Please review our Privacy Policy here: https://nsbsa.org.za/privacy-policy.html';
+      final link = pdfUrl ?? 'https://nsbsa.org.za/privacy-policy';
+      final smsContent = link.length > 140
+          ? 'NSBSA: You’ve been added to Group $groupName. Review Privacy Policy at our website.'
+          : 'NSBSA: You’ve been added to Group $groupName. Privacy Policy: $link';
       await sendManualSMS(vendorId: vendorId, toPhone: toPhone, content: smsContent);
     }
 
     // 3. Prepare WhatsApp & Email Body
+    final privacyLink = pdfUrl != null ? '\n📄 Privacy Policy: $pdfUrl\n' : '\n';
     final commonBody = 
         'Dear *$vendorName*,\n\n'
         'You have been successfully added to a new NSBSA Group. Please find your registration and group details below.\n\n'
@@ -1020,8 +1024,8 @@ class CommunicationService {
         '🏢 *Center:* $centerName\n'
         '👤 *Member Name:* $vendorName\n'
         '🏷️ *Role:* $memberRole\n'
-        '📱 *Contact:* ${toPhone.isNotEmpty ? toPhone : 'N/A'}\n\n'
-        'Please review our *Privacy Policy* attached for your rights and obligations as a member.\n\n'
+        '📱 *Contact:* ${toPhone.isNotEmpty ? toPhone : 'N/A'}\n'
+        '$privacyLink'
         'Welcome to the group!';
 
     // 3a. WhatsApp (Document + Caption)
