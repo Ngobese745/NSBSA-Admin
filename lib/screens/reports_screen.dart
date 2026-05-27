@@ -68,6 +68,29 @@ class _SectionLabel extends StatelessWidget {
   }
 }
 
+class _LoanRowData {
+  final LoanModel loan;
+  final String vendorName;
+  final String vendorIdNumber;
+  final String vendorPhone;
+  final String groupName;
+  final String businessType;
+  final double totalPaid;
+  final double appliedPenalty;
+  final double balance;
+  _LoanRowData({
+    required this.loan,
+    required this.vendorName,
+    required this.vendorIdNumber,
+    required this.vendorPhone,
+    required this.groupName,
+    required this.businessType,
+    required this.totalPaid,
+    required this.appliedPenalty,
+    required this.balance,
+  });
+}
+
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
 
@@ -285,64 +308,46 @@ class _ReportsScreenState extends State<ReportsScreen> {
       filteredVendors = vendorProvider.vendors;
     }
 
-    final totalDisbursed = filteredLoans.fold(
-      0.0,
-      (sum, l) => sum + l.amount,
-    );
-    final totalCollected = filteredPayments.fold(
-      0.0,
-      (sum, p) => sum + p.amountPaid,
-    );
-    double totalOutstanding = 0;
-    for (final loan in filteredLoans) {
-      final loanPayments = filteredPayments
-          .where((p) => p.loanId == loan.id)
-          .toList();
-      totalOutstanding += LoanCalculationService.calculateBalance(
-        loan,
-        loanPayments,
-      );
+    // ─── Pre-compute lookup maps + single-pass loan rows ───
+    final vendorMap = {for (var v in vendorProvider.vendors) v.id: v};
+    final groupMap = {for (var g in groupProvider.groups) g.id: g};
+
+    final Map<String, List<PaymentModel>> paymentsByLoan = {};
+    for (final p in filteredPayments) {
+      (paymentsByLoan[p.loanId] ??= []).add(p);
     }
-    final totalSavings = filteredVendors.fold(
-      0.0,
-      (sum, v) => sum + (v.savingsAmount ?? 0.0),
-    );
 
-    final totalInitiationFees = filteredLoans.fold(
-      0.0,
-      (sum, l) => sum + (l.initiationFee ?? 0),
-    );
-    final totalAdminFees = filteredLoans.fold(
-      0.0,
-      (sum, l) => sum + ((l.monthlyAdminFee ?? 0) * l.durationMonths),
-    );
-    final totalPenaltyFees = filteredLoans.fold(0.0, (sum, l) {
-      final loanPayments = filteredPayments
-          .where((p) => p.loanId == l.id)
-          .toList();
-      return sum +
-          LoanCalculationService.calculateAppliedPenalty(l, loanPayments);
-    });
-    final totalExpectedFees =
-        totalInitiationFees + totalAdminFees + totalPenaltyFees;
-
+    double totalDisbursed = 0;
+    double totalCollected = 0;
+    double totalOutstanding = 0;
+    double totalInitiationFees = 0;
+    double totalAdminFees = 0;
+    double totalPenaltyFees = 0;
     double aging30 = 0;
     double aging60 = 0;
     double aging90 = 0;
     double aging90Plus = 0;
-
     final Map<String, double> breakdownByDF = {};
     final Map<String, double> breakdownByCenter = {};
     final Map<String, double> breakdownByType = {};
 
-    final Map<String, GroupModel> groupMap = {for (var g in groupProvider.groups) g.id: g};
-
-    for (var loan in filteredLoans) {
-      final loanPayments = filteredPayments.where((p) => p.loanId == loan.id).toList();
+    final loanRows = <_LoanRowData>[];
+    for (final loan in filteredLoans) {
+      final vendor = vendorMap[loan.vendorId];
+      final group = groupMap[loan.groupId];
+      final loanPayments = paymentsByLoan[loan.id] ?? [];
+      final totalPaid = loanPayments.fold(0.0, (s, p) => s + p.amountPaid);
+      final appliedPenalty = LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
       final balance = LoanCalculationService.calculateBalance(loan, loanPayments);
 
+      totalDisbursed += loan.amount;
+      totalCollected += totalPaid;
+      totalOutstanding += balance;
+      totalInitiationFees += (loan.initiationFee ?? 0);
+      totalAdminFees += (loan.monthlyAdminFee ?? 0) * loan.durationMonths;
+      totalPenaltyFees += appliedPenalty;
+
       if (balance > 0) {
-        final group = groupMap[loan.groupId];
         final dfName = group?.dfName ?? 'Unassigned';
         final centerId = group?.centerId ?? 'Unassigned';
         final loanType = loan.loanType ?? 'Standard';
@@ -355,7 +360,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
         if (arrears > 0) {
           final monthsOverdue = (arrears / (loan.monthlyPayment > 0 ? loan.monthlyPayment : 1)).ceil();
           final daysOverdue = monthsOverdue * 30;
-
           if (daysOverdue <= 30) {
             aging30 += arrears;
           } else if (daysOverdue <= 60) {
@@ -367,7 +371,25 @@ class _ReportsScreenState extends State<ReportsScreen> {
           }
         }
       }
+
+      loanRows.add(_LoanRowData(
+        loan: loan,
+        vendorName: vendor?.name ?? 'Unknown',
+        vendorIdNumber: vendor?.idNumber ?? '-',
+        vendorPhone: vendor?.phone ?? '-',
+        groupName: group?.name ?? '-',
+        businessType: vendor?.businessType ?? '-',
+        totalPaid: totalPaid,
+        appliedPenalty: appliedPenalty,
+        balance: balance,
+      ));
     }
+
+    final totalSavings = filteredVendors.fold(
+      0.0,
+      (sum, v) => sum + (v.savingsAmount ?? 0.0),
+    );
+    final totalExpectedFees = totalInitiationFees + totalAdminFees + totalPenaltyFees;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -423,6 +445,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     totalSavings,
                     filteredLoans,
                     filteredPayments,
+                    vendorMap,
+                    groupMap,
                   ),
                 ),
               ],
@@ -544,6 +568,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           ),
                         ),
                         const SizedBox(height: 16),
+                        // Header row (always visible)
                         Table(
                           defaultVerticalAlignment: TableCellVerticalAlignment.middle,
                           columnWidths: const {
@@ -589,101 +614,72 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                 _th(''),
                               ],
                             ),
-                            ...filteredLoans.map((loan) {
-                              final isSelected = loan.id == _selectedLoanId;
-                              final vendor = vendorProvider.vendors
-                                  .where((v) => v.id == loan.vendorId)
-                                  .firstOrNull;
-                              final group = groupProvider.groups
-                                  .where((g) => g.id == loan.groupId)
-                                  .firstOrNull;
-                              final loanPayments = filteredPayments
-                                  .where((p) => p.loanId == loan.id)
-                                  .toList();
-                              final totalPaid = loanPayments.fold(
-                                0.0,
-                                (sum, p) => sum + p.amountPaid,
-                              );
-                              final appliedPenalty =
-                                  LoanCalculationService.calculateAppliedPenalty(
-                                    loan,
-                                    loanPayments,
-                                  );
-                              final balance = LoanCalculationService.calculateBalance(
-                                loan,
-                                loanPayments,
-                              );
-
-                              void _goToLoan() {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        LoanDetailsScreen(loan: loan),
-                                  ),
-                                );
-                              }
-
-                              return TableRow(
-                                decoration: BoxDecoration(
-                                  color: isSelected
-                                      ? AppTheme.primaryGold.withOpacity(0.08)
-                                      : null,
-                                  border: Border(
-                                    bottom: BorderSide(
-                                      color: theme.dividerColor.withOpacity(0.08),
-                                      width: 0.5,
-                                    ),
-                                  ),
-                                ),
-                                children: [
-                                  _td(vendor?.name ?? 'Unknown', isBold: true),
-                                  _td(vendor?.idNumber ?? '-'),
-                                  _td(vendor?.phone ?? '-'),
-                                  _td(group?.name ?? '-'),
-                                  _td(vendor?.businessType ?? '-'),
-                                  _tdEditable(
-                                    loan.id, 'amount',
-                                    loan.amount.toStringAsFixed(0),
-                                    prefix: 'R ',
-                                  ),
-                                  _tdEditable(
-                                    loan.id, 'durationMonths',
-                                    loan.durationMonths.toString(),
-                                    suffix: 'm',
-                                  ),
-                                  _tdEditable(
-                                    loan.id, 'initiationFee',
-                                    loan.initiationFee?.toStringAsFixed(0) ?? '0',
-                                    prefix: 'R ',
-                                  ),
-                                  _tdEditable(
-                                    loan.id, 'monthlyAdminFee',
-                                    loan.monthlyAdminFee?.toStringAsFixed(0) ?? '0',
-                                    prefix: 'R ',
-                                  ),
-                                  _tdEditable(
-                                    loan.id, 'penaltyFee',
-                                    appliedPenalty.toStringAsFixed(0),
-                                    prefix: 'R ',
-                                  ),
-                                  _td(
-                                    'R ${loan.monthlyPayment.toStringAsFixed(0)}',
-                                    color: AppTheme.primaryGold,
-                                  ),
-                                  _td(
-                                    'R ${totalPaid.toStringAsFixed(0)}',
-                                    color: Colors.green,
-                                  ),
-                                  _td(
-                                    'R ${balance.toStringAsFixed(0)}',
-                                    color: Colors.orange,
-                                  ),
-                                  _actionsCell(loan.id),
-                                ],
-                              );
-                            }).toList(),
                           ],
+                        ),
+                        // Data rows (virtualized)
+                        SizedBox(
+                          height: (loanRows.length * 44).clamp(0, 480),
+                          child: ListView.builder(
+                            itemCount: loanRows.length,
+                            itemExtent: 44,
+                            itemBuilder: (context, index) {
+                              final row = loanRows[index];
+                              final loan = row.loan;
+                              final isSelected = loan.id == _selectedLoanId;
+                              return Material(
+                                color: isSelected
+                                    ? AppTheme.primaryGold.withOpacity(0.08)
+                                    : Colors.transparent,
+                                child: Table(
+                                  defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                                  columnWidths: const {
+                                    0: FlexColumnWidth(2.5),
+                                    1: FlexColumnWidth(1.3),
+                                    2: FlexColumnWidth(1.2),
+                                    3: FlexColumnWidth(1.5),
+                                    4: FlexColumnWidth(1.5),
+                                    5: FlexColumnWidth(0.9),
+                                    6: FlexColumnWidth(0.6),
+                                    7: FlexColumnWidth(0.7),
+                                    8: FlexColumnWidth(0.7),
+                                    9: FlexColumnWidth(0.7),
+                                    10: FlexColumnWidth(1),
+                                    11: FlexColumnWidth(1),
+                                    12: FlexColumnWidth(1),
+                                    13: FlexColumnWidth(0.5),
+                                  },
+                                  children: [
+                                    TableRow(
+                                      decoration: BoxDecoration(
+                                        border: Border(
+                                          bottom: BorderSide(
+                                            color: theme.dividerColor.withOpacity(0.08),
+                                            width: 0.5,
+                                          ),
+                                        ),
+                                      ),
+                                      children: [
+                                        _td(row.vendorName, isBold: true),
+                                        _td(row.vendorIdNumber),
+                                        _td(row.vendorPhone),
+                                        _td(row.groupName),
+                                        _td(row.businessType),
+                                        _tdEditable(loan.id, 'amount', loan.amount.toStringAsFixed(0), prefix: 'R '),
+                                        _tdEditable(loan.id, 'durationMonths', loan.durationMonths.toString(), suffix: 'm'),
+                                        _tdEditable(loan.id, 'initiationFee', loan.initiationFee?.toStringAsFixed(0) ?? '0', prefix: 'R '),
+                                        _tdEditable(loan.id, 'monthlyAdminFee', loan.monthlyAdminFee?.toStringAsFixed(0) ?? '0', prefix: 'R '),
+                                        _tdEditable(loan.id, 'penaltyFee', row.appliedPenalty.toStringAsFixed(0), prefix: 'R '),
+                                        _td('R ${loan.monthlyPayment.toStringAsFixed(0)}', color: AppTheme.primaryGold),
+                                        _td('R ${row.totalPaid.toStringAsFixed(0)}', color: Colors.green),
+                                        _td('R ${row.balance.toStringAsFixed(0)}', color: Colors.orange),
+                                        _actionsCell(loan.id),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
                         ),
                       ],
                     ),
@@ -1276,10 +1272,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
     double savings,
     List<LoanModel> filteredLoans,
     List<PaymentModel> filteredPayments,
+    Map<String, VendorModel> vendorMap,
+    Map<String, GroupModel> groupMap,
   ) async {
-    final groupProvider = context.read<GroupProvider>();
-    final vendorProvider = context.read<VendorProvider>();
-
     final pdf = pw.Document();
 
     final logo = await PdfBranding.loadLogo();
@@ -1370,12 +1365,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   ],
                 ),
                 ...filteredLoans.map((loan) {
-                  final vendor = vendorProvider.vendors
-                      .where((v) => v.id == loan.vendorId)
-                      .firstOrNull;
-                  final group = groupProvider.groups
-                      .where((g) => g.id == loan.groupId)
-                      .firstOrNull;
+                  final vendor = vendorMap[loan.vendorId];
+                  final group = groupMap[loan.groupId];
                   final loanPayments = filteredPayments
                       .where((p) => p.loanId == loan.id)
                       .toList();
