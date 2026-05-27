@@ -133,19 +133,11 @@ class _InactivityWrapperState extends State<_InactivityWrapper> {
   @override
   Widget build(BuildContext context) {
     return Listener(
-      onPointerDown: (_) => InactivityTimeoutService.instance.onUserActivity(),
-      onPointerMove: (_) => InactivityTimeoutService.instance.onUserActivity(),
-      onPointerSignal: (_) => InactivityTimeoutService.instance.onUserActivity(),
-      child: Focus(
-        autofocus: true,
-        onKeyEvent: (_, event) {
-          if (event is KeyDownEvent || event is KeyRepeatEvent) {
-            InactivityTimeoutService.instance.onUserActivity();
-          }
-          return KeyEventResult.ignored;
-        },
-        child: widget.child,
-      ),
+      onPointerDown: (event) =>
+          InactivityTimeoutService.instance.onUserActivity(),
+      onPointerMove: (event) =>
+          InactivityTimeoutService.instance.onUserActivity(),
+      child: widget.child,
     );
   }
 }
