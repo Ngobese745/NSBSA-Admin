@@ -31,6 +31,7 @@ import '../services/excel_export_service.dart';
 import '../widgets/communication/communication_dialog.dart';
 import '../widgets/reminder_history_section.dart';
 import '../widgets/nsbsa_loading_overlay.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class VendorProfileScreen extends StatefulWidget {
   final VendorModel vendor;
@@ -1748,7 +1749,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                   'whatsapp_number': whatsappController.text,
                   'email': emailController.text,
                   'address': addressController.text,
-                  'role': selectedRole,
+                  'role': 'Member',
                   'savings_amount': double.tryParse(savingsAmountController.text) ?? 0,
                   'savings_frequency': selectedFrequency,
                   'savings_start_date': selectedSavingsDate.toIso8601String(),
@@ -1763,6 +1764,25 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                   context,
                   task: () async {
                     await vendorProvider.updateVendor(updatedId, updatedData);
+                    final supabase = Supabase.instance.client;
+                    if (_currentVendor.groupId.isNotEmpty) {
+                      if (selectedRole == 'Member') {
+                        await supabase
+                            .from('leadership')
+                            .delete()
+                            .eq('vendor_id', updatedId);
+                      } else {
+                        await supabase
+                            .from('leadership')
+                            .delete()
+                            .eq('vendor_id', updatedId);
+                        await supabase.from('leadership').insert({
+                          'group_id': _currentVendor.groupId,
+                          'vendor_id': updatedId,
+                          'role': selectedRole,
+                        });
+                      }
+                    }
                     _currentVendor = VendorModel(
                       id: updatedId,
                       groupId: _currentVendor.groupId,
@@ -1776,7 +1796,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                       email: emailController.text,
                       dfName: dfNameController.text,
                       address: addressController.text,
-                      role: selectedRole,
+                      role: 'Member',
                       savingsAmount: double.tryParse(savingsAmountController.text) ?? 0,
                       savingsFrequency: selectedFrequency,
                       savingsStartDate: selectedSavingsDate,

@@ -106,19 +106,25 @@ class GroupProvider with ChangeNotifier {
             )
             .toList();
 
-        await _supabase.from('vendors').insert(vendorData).select();
-
-        final List<Map<String, dynamic>> leadershipEntries = [];
         final vendorsResponse = await _supabase
             .from('vendors')
-            .select()
-            .eq('group_id', groupId);
+            .insert(vendorData)
+            .select();
 
-        final List vendorsList = vendorsResponse as List? ?? [];
+        final List insertedVendors = vendorsResponse as List? ?? [];
 
-        for (var vendor in vendorsList) {
-          final role = vendor['role'];
-          if (['Chairperson', 'Secretary', 'Treasurer'].contains(role)) {
+        final leadershipRoles = {
+          for (var m in members)
+            if (['Chairperson', 'Secretary', 'Treasurer']
+                .contains(m['role']))
+              m['name'] as String: m['role'] as String,
+        };
+
+        final List<Map<String, dynamic>> leadershipEntries = [];
+        for (var vendor in insertedVendors) {
+          final name = vendor['name']?.toString() ?? '';
+          final role = leadershipRoles[name];
+          if (role != null) {
             leadershipEntries.add({
               'group_id': groupId,
               'vendor_id': vendor['id'],
@@ -131,13 +137,13 @@ class GroupProvider with ChangeNotifier {
           await _supabase.from('leadership').insert(leadershipEntries);
         }
 
-        for (var vendor in vendorsList) {
+        for (var vendor in insertedVendors) {
           final vendorId = vendor['id']?.toString() ?? '';
           final vendorName = vendor['name']?.toString() ?? '';
           final vendorEmail = vendor['email']?.toString() ?? '';
           final vendorPhone = vendor['phone']?.toString() ?? '';
           final vendorWhatsApp = vendor['whatsapp_number']?.toString() ?? '';
-          final memberRole = vendor['role']?.toString() ?? 'Member';
+          final memberRole = leadershipRoles[vendorName] ?? 'Member';
 
           if (vendorId.isNotEmpty && vendorName.isNotEmpty) {
             _communicationService
