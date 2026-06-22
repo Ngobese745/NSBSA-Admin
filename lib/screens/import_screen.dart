@@ -19,6 +19,8 @@ class ImportScreen extends StatefulWidget {
 class _ImportScreenState extends State<ImportScreen> {
   final _importService = ImportService();
 
+  bool _autoAssign = true;
+
   // -------------------------------------------------------------------------
   // Import
   // -------------------------------------------------------------------------
@@ -47,8 +49,9 @@ class _ImportScreenState extends State<ImportScreen> {
           );
         }
 
-        // Run import and pass filename for audit traceability
-        provider.runImport(result.files.first.bytes!, fileName: fileName);
+        // Run import and pass filename + auto-assign flag
+        provider.runImport(result.files.first.bytes!,
+            fileName: fileName, autoAssignToCurrentMonth: _autoAssign);
       } else {
         provider.setStatus('No file selected.');
       }
@@ -191,6 +194,56 @@ class _ImportScreenState extends State<ImportScreen> {
                       onPressed: _pickAndImportFile,
                       isLoading: importProvider.isImporting,
                       color: theme.primaryColor,
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: (_autoAssign
+                                    ? Colors.blue
+                                    : Colors.grey)
+                                .withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.toggle_on,
+                                size: 14,
+                                color: _autoAssign
+                                    ? Colors.blueAccent
+                                    : Colors.grey,
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () =>
+                                      setState(() => _autoAssign = !_autoAssign),
+                                  child: Text(
+                                    'Auto-assign to current month if missing',
+                                    style: TextStyle(
+                                      color: _autoAssign
+                                          ? Colors.blueAccent
+                                          : Colors.grey,
+                                      fontSize: 10,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Switch(
+                                value: _autoAssign,
+                                activeColor: Colors.blueAccent,
+                                onChanged: (v) =>
+                                    setState(() => _autoAssign = v),
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                     if (isAdmin)
                       _buildActionCard(
@@ -369,6 +422,9 @@ class _ImportScreenState extends State<ImportScreen> {
   Widget _buildVerificationPanel(ImportResult result) {
     final allGood = result.allMonthsMatch && result.success;
     final headerColor = allGood ? Colors.green : Colors.orangeAccent;
+    final panelTitle = result.autoAssigned
+        ? 'Import Summary – ${result.detectedMonthLabel}'
+        : 'Month-by-Month Verification Report';
 
     return Container(
       decoration: BoxDecoration(
@@ -401,7 +457,7 @@ class _ImportScreenState extends State<ImportScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Month-by-Month Verification Report',
+                    panelTitle,
                     style: TextStyle(
                       color: headerColor,
                       fontWeight: FontWeight.bold,
@@ -621,6 +677,7 @@ class _ImportScreenState extends State<ImportScreen> {
     required bool isLoading,
     required Color color,
     bool fullWidth = false,
+    Widget? child,
   }) {
     return Container(
       width: fullWidth ? double.infinity : 280,
@@ -641,6 +698,7 @@ class _ImportScreenState extends State<ImportScreen> {
           const SizedBox(height: 8),
           Text(description,
               style: TextStyle(color: Colors.grey[500], fontSize: 13)),
+          if (child != null) child,
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,

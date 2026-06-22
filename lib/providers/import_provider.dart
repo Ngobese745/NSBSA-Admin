@@ -29,7 +29,8 @@ class ImportProvider with ChangeNotifier {
       _lastImportResult?.success == true &&
       _lastImportResult?.allMonthsMatch == true;
 
-  Future<void> runImport(List<int> bytes, {String fileName = 'unknown.xlsx'}) async {
+  Future<void> runImport(List<int> bytes,
+      {String fileName = 'unknown.xlsx', bool autoAssignToCurrentMonth = true}) async {
     if (_isImporting) return;
 
     _isImporting = true;
@@ -42,6 +43,7 @@ class ImportProvider with ChangeNotifier {
       final result = await _importService.importExcel(
         bytes,
         fileName: fileName,
+        autoAssignToCurrentMonth: autoAssignToCurrentMonth,
         onProgress: (prog, msg) {
           _progress = prog;
           _statusMessage = msg;

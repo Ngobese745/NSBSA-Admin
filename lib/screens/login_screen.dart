@@ -333,7 +333,7 @@ class _LoginScreenState extends State<LoginScreen>
                       children: [
                         // Left Side (Logo and Branding)
                         Flexible(
-                          flex: isDesktop ? 5 : 0,
+                          flex: isDesktop ? 1 : 0,
                           fit: isDesktop ? FlexFit.tight : FlexFit.loose,
                           child: Container(
                             width: isDesktop ? null : double.infinity,
@@ -378,7 +378,7 @@ class _LoginScreenState extends State<LoginScreen>
 
                         // Right Side (Login Form)
                         Flexible(
-                          flex: isDesktop ? 6 : 0,
+                          flex: isDesktop ? 1 : 0,
                           fit: isDesktop ? FlexFit.tight : FlexFit.loose,
                           child: ClipRect(
                             child: BackdropFilter(

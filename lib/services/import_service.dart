@@ -44,6 +44,14 @@ class ImportResult {
   final List<MonthImportSummary> monthSummaries;
   final List<String> errors;
 
+  /// Whether the import auto-assigned records to the current month because
+  /// no month-named sheets were detected in the file.
+  final bool autoAssigned;
+
+  /// When [autoAssigned] is true, this holds the human-readable label of
+  /// the month the data was assigned to (e.g. "June").
+  final String? detectedMonthLabel;
+
   /// Sheets that are present in the Excel file but whose imported count
   /// doesn't match the source – used for the verification failure message.
   List<MonthImportSummary> get mismatchedMonths =>
@@ -55,6 +63,11 @@ class ImportResult {
     if (!success) {
       return 'Month values could not be imported correctly. '
           'Please check your Excel file format.';
+    }
+    if (autoAssigned) {
+      return 'Import completed successfully. '
+          'Unable to detect month columns. '
+          'Data imported for $detectedMonthLabel.';
     }
     if (!allMonthsMatch) {
       final names = mismatchedMonths.map((s) => s.monthLabel).join(', ');
@@ -70,6 +83,8 @@ class ImportResult {
     required this.totalRecordsImported,
     required this.monthSummaries,
     required this.errors,
+    this.autoAssigned = false,
+    this.detectedMonthLabel,
   });
 }
 
@@ -109,17 +124,22 @@ class ImportService {
   ///
   /// [fileName]   – used purely for audit-log traceability.
   /// [onProgress] – optional progress callback (0.0 → 1.0, message).
+  /// [autoAssignToCurrentMonth] – when true and no month-named sheets are
+  ///   found, all records are assigned to the current month automatically.
   ///
   /// Returns a structured [ImportResult] describing what happened per month.
   Future<ImportResult> importExcel(
     List<int> bytes, {
     String fileName = 'unknown.xlsx',
     Function(double, String)? onProgress,
+    bool autoAssignToCurrentMonth = true,
   }) async {
     onProgress?.call(0.0, 'Analysing Excel file…');
 
     final List<MonthImportSummary> summaries = [];
     final List<String> errors = [];
+    bool wasAutoAssigned = false;
+    String? autoAssignMonth;
 
     late SpreadsheetDecoder decoder;
     try {
@@ -170,10 +190,53 @@ class ImportService {
     }
 
     if (sheets.isEmpty) {
-      throw Exception(
-        'No valid data found in any month sheet (January–December). '
-        'Please check your Excel file format.',
-      );
+      // No month-named sheets found – fallback to auto-assign if enabled.
+      if (autoAssignToCurrentMonth) {
+        final now = DateTime.now();
+        final currentMonthIdx = now.month - 1;
+        final monthLabel = _monthVariants[currentMonthIdx][0][0] +
+            _monthVariants[currentMonthIdx][0].substring(1).toLowerCase();
+        final monthNumber = now.month;
+        wasAutoAssigned = true;
+        autoAssignMonth = monthLabel;
+
+        onProgress?.call(0.03,
+            'No month sheets found. Assigning data to $monthLabel…');
+
+        for (final tabName in decoder.tables.keys) {
+          final sheet = decoder.tables[tabName]!;
+          final headerInfo = _detectHeaderRow(sheet);
+          if (headerInfo == null) continue;
+
+          int dataRows = 0;
+          for (int i = headerInfo.dataStartRow; i < sheet.maxRows; i++) {
+            final row = sheet.rows[i];
+            if (row.isEmpty) continue;
+            if (_str(row, headerInfo.cols['name'] ?? 0).isNotEmpty) dataRows++;
+          }
+          if (dataRows == 0) continue;
+
+          sheets.add(_SheetInfo(
+            tabName: tabName,
+            monthLabel: monthLabel,
+            monthNumber: monthNumber,
+            sheet: sheet,
+            headerInfo: headerInfo,
+            rowsInExcel: dataRows,
+          ));
+        }
+
+        if (sheets.isEmpty) {
+          throw Exception(
+            'No valid data found. Please check your Excel file format.',
+          );
+        }
+      } else {
+        throw Exception(
+          'No valid data found in any month sheet (January–December). '
+          'Please check your Excel file format.',
+        );
+      }
     }
 
     // Sort sheets in calendar order
@@ -279,16 +342,20 @@ class ImportService {
 
     onProgress?.call(0.97, 'Verifying imported month data…');
 
-    // 3. Post-import verification -------------------------------------------
+    // 3. Build the result -----------------------------------------------
     final result = ImportResult(
       success: errors.isEmpty,
       totalRecordsInExcel: totalExcel,
       totalRecordsImported: processedRows,
       monthSummaries: summaries,
       errors: errors,
+      autoAssigned: wasAutoAssigned,
+      detectedMonthLabel: autoAssignMonth,
     );
 
-    // 4. Audit log ----------------------------------------------------------
+    // 5. Audit log -------------------------------------------------------
+    final userId =
+        _supabase.auth.currentUser?.id ?? 'unknown';
     final monthBreakdown = summaries
         .map((s) => '${s.monthLabel}: ${s.rowsImported}/${s.rowsInExcel}'
             '${s.matched ? ' ✓' : ' ✗'}')
@@ -299,15 +366,26 @@ class ImportService {
       affectedEntity: 'EXCEL_IMPORT',
       description: 'File: $fileName | Records: $processedRows/$totalExcel | '
           'Months: $monthBreakdown | '
+          'Detected month: ${autoAssignMonth ?? "multi"} | '
+          'User: $userId | '
           'Errors: ${errors.isEmpty ? "None" : errors.length}',
     );
 
-    // 5. Admin notification -------------------------------------------------
+    // 6. Admin notification -------------------------------------------------
     onProgress?.call(1.0, result.verificationMessage);
 
+    final notifTitle = wasAutoAssigned
+        ? 'Data Import Complete (Auto-assigned)'
+        : result.allMonthsMatch
+            ? 'Data Import Complete'
+            : 'Data Import Warning';
+    final notifBody = wasAutoAssigned
+        ? 'Import completed. All records assigned to $autoAssignMonth.'
+        : result.verificationMessage;
+
     await NotificationService.notifyAdmins(
-      result.allMonthsMatch ? 'Data Import Complete' : 'Data Import Warning',
-      result.verificationMessage,
+      notifTitle,
+      notifBody,
       type: 'SYSTEM',
     );
 
@@ -384,6 +462,8 @@ class ImportService {
     // Opening
     "opening amount": 'opening_amount',
     "opening balance": 'opening_amount',
+    "live loan book balance": 'opening_amount',
+    "loan book balance": 'opening_amount',
     // Fees
     "initiation fee": 'init_fee',
     "init fee": 'init_fee',
