@@ -52,6 +52,10 @@ class ImportResult {
   /// the month the data was assigned to (e.g. "June").
   final String? detectedMonthLabel;
 
+  /// Whether any sheet in the file contained an interest-rate column that
+  /// was detected and deliberately ignored during import.
+  final bool rateColumnsFound;
+
   /// Sheets that are present in the Excel file but whose imported count
   /// doesn't match the source – used for the verification failure message.
   List<MonthImportSummary> get mismatchedMonths =>
@@ -61,20 +65,36 @@ class ImportResult {
 
   String get verificationMessage {
     if (!success) {
-      return 'Month values could not be imported correctly. '
+      String msg = 'Month values could not be imported correctly. '
           'Please check your Excel file format.';
+      if (rateColumnsFound) {
+        msg += '\nInterest rates in Excel are ignored. '
+            'Please record loans in the system to apply correct rates.';
+      }
+      return msg;
     }
+
+    String msg;
     if (autoAssigned) {
-      return 'Import completed successfully. '
+      msg = 'Import completed successfully. '
           'Unable to detect month columns. '
           'Data imported for $detectedMonthLabel.';
-    }
-    if (!allMonthsMatch) {
+    } else if (!allMonthsMatch) {
       final names = mismatchedMonths.map((s) => s.monthLabel).join(', ');
-      return 'Month values could not be imported correctly for: $names. '
+      msg = 'Month values could not be imported correctly for: $names. '
           'Please check your Excel file format.';
+    } else {
+      msg = 'Import completed successfully.';
     }
-    return 'Import completed successfully. All month values match the Excel file.';
+
+    msg += ' Interest rates ignored. Balances imported as opening values.';
+
+    if (rateColumnsFound) {
+      msg += '\nInterest rates in Excel are ignored. '
+          'Please record loans in the system to apply correct rates.';
+    }
+
+    return msg;
   }
 
   const ImportResult({
@@ -85,6 +105,7 @@ class ImportResult {
     required this.errors,
     this.autoAssigned = false,
     this.detectedMonthLabel,
+    this.rateColumnsFound = false,
   });
 }
 
@@ -140,6 +161,7 @@ class ImportService {
     final List<String> errors = [];
     bool wasAutoAssigned = false;
     String? autoAssignMonth;
+    bool rateColumnsFound = false;
 
     late SpreadsheetDecoder decoder;
     try {
@@ -167,6 +189,10 @@ class ImportService {
       // Detect header row and column mapping
       final headerInfo = _detectHeaderRow(sheet);
       if (headerInfo == null) continue; // No recognisable header – skip
+
+      if (headerInfo.cols.containsKey('interest_rate')) {
+        rateColumnsFound = true;
+      }
 
       // Count data rows (rows after the header with a non-empty name cell)
       int dataRows = 0;
@@ -207,6 +233,10 @@ class ImportService {
           final sheet = decoder.tables[tabName]!;
           final headerInfo = _detectHeaderRow(sheet);
           if (headerInfo == null) continue;
+
+          if (headerInfo.cols.containsKey('interest_rate')) {
+            rateColumnsFound = true;
+          }
 
           int dataRows = 0;
           for (int i = headerInfo.dataStartRow; i < sheet.maxRows; i++) {
@@ -351,6 +381,7 @@ class ImportService {
       errors: errors,
       autoAssigned: wasAutoAssigned,
       detectedMonthLabel: autoAssignMonth,
+      rateColumnsFound: rateColumnsFound,
     );
 
     // 5. Audit log -------------------------------------------------------
@@ -368,6 +399,7 @@ class ImportService {
           'Months: $monthBreakdown | '
           'Detected month: ${autoAssignMonth ?? "multi"} | '
           'User: $userId | '
+          'Rates ignored: $rateColumnsFound | '
           'Errors: ${errors.isEmpty ? "None" : errors.length}',
     );
 
@@ -480,6 +512,10 @@ class ImportService {
     "paid instalment": 'paid_instalment',
     "paid monthly": 'paid_instalment',
     "paid penalty": 'paid_penalty',
+    // Interest rate (detected and ignored on import)
+    "interest rate": 'interest_rate',
+    "rate": 'interest_rate',
+    "interest": 'interest_rate',
   };
 
   _HeaderInfo? _detectHeaderRow(dynamic sheet) {
