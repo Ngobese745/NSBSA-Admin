@@ -420,7 +420,7 @@ class _ImportScreenState extends State<ImportScreen> {
   // -------------------------------------------------------------------------
 
   Widget _buildVerificationPanel(ImportResult result) {
-    final allGood = result.allMonthsMatch && result.success;
+    final allGood = result.success;
     final headerColor = allGood ? Colors.green : Colors.orangeAccent;
     final panelTitle = result.autoAssigned
         ? 'Import Summary – ${result.detectedMonthLabel}'

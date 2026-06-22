@@ -79,10 +79,6 @@ class ImportResult {
       msg = 'Import completed successfully. '
           'Unable to detect month columns. '
           'Data imported for $detectedMonthLabel.';
-    } else if (!allMonthsMatch) {
-      final names = mismatchedMonths.map((s) => s.monthLabel).join(', ');
-      msg = 'Month values could not be imported correctly for: $names. '
-          'Please check your Excel file format.';
     } else {
       msg = 'Import completed successfully.';
     }
@@ -200,7 +196,7 @@ class ImportService {
         final row = sheet.rows[i];
         if (row.isEmpty) continue;
         final name = _str(row, headerInfo.cols['name'] ?? 0);
-        if (name.isNotEmpty) dataRows++;
+        if (name.isNotEmpty && name.toLowerCase() != 'null') dataRows++;
       }
 
       if (dataRows == 0) continue; // Empty sheet – skip
@@ -242,7 +238,8 @@ class ImportService {
           for (int i = headerInfo.dataStartRow; i < sheet.maxRows; i++) {
             final row = sheet.rows[i];
             if (row.isEmpty) continue;
-            if (_str(row, headerInfo.cols['name'] ?? 0).isNotEmpty) dataRows++;
+            final name = _str(row, headerInfo.cols['name'] ?? 0);
+            if (name.isNotEmpty && name.toLowerCase() != 'null') dataRows++;
           }
           if (dataRows == 0) continue;
 
@@ -408,7 +405,7 @@ class ImportService {
 
     final notifTitle = wasAutoAssigned
         ? 'Data Import Complete (Auto-assigned)'
-        : result.allMonthsMatch
+        : result.success
             ? 'Data Import Complete'
             : 'Data Import Warning';
     final notifBody = wasAutoAssigned
