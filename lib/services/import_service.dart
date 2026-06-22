@@ -60,6 +60,9 @@ class ImportResult {
   /// e.g. {"Name", "ID Number", "Loan Amount", "Opening Balance"}.
   final Set<String> mappedColumnLabels;
 
+  /// Names of centres created during this import (empty if none).
+  final List<String> newCentres;
+
   /// Names of fields expected by the system that were NOT found in the
   /// Excel file, e.g. {"Loan Term", "First Payment Date"}.
   Set<String> get missingColumns {
@@ -109,6 +112,14 @@ class ImportResult {
       msg += '\nNote: ${missing.join(", ")} not found — skipped.';
     }
 
+    // Centre / D.F Name feedback
+    if (mappedColumnLabels.contains('Centre Name')) {
+      msg += '\nD.F Name and Centre Name assigned to vendor/group records.';
+    }
+    if (newCentres.isNotEmpty) {
+      msg += '\nNew Centre records created: ${newCentres.join(", ")}.';
+    }
+
     return msg;
   }
 
@@ -122,6 +133,7 @@ class ImportResult {
     this.autoAssigned = false,
     this.detectedMonthLabel,
     this.rateColumnsFound = false,
+    this.newCentres = const [],
   });
 }
 
@@ -338,7 +350,18 @@ class ImportService {
           // file is the single source of truth for imported data.
           final totalPaid = _toDouble(row, cols['paid_instalment']);
 
-          final groupId = await _getOrCreateGroup(groupName);
+          // Centre name — create or link
+          final centreName = _str(row, cols['centre_name']);
+          String? centreId;
+          if (centreName.isNotEmpty) {
+            centreId = await _getOrCreateCentre(centreName);
+          }
+
+          final groupId = await _getOrCreateGroup(
+            groupName,
+            centreId: centreId,
+            dfName: dfName.isNotEmpty ? dfName : null,
+          );
           final vendorId = await _getOrCreateVendor(
             groupId: groupId,
             name: name,
@@ -406,6 +429,7 @@ class ImportService {
       detectedMonthLabel: autoAssignMonth,
       rateColumnsFound: rateColumnsFound,
       mappedColumnLabels: columnLabels,
+      newCentres: List.unmodifiable(_newCentres),
     );
 
     // 5. Audit log -------------------------------------------------------
@@ -416,6 +440,10 @@ class ImportService {
             '${s.matched ? ' ✓' : ' ✗'}')
         .join(', ');
 
+    final centreInfo = _newCentres.isEmpty
+        ? 'No new centres created'
+        : 'New centres: ${_newCentres.join(", ")}';
+
     await SystemAuditService.logAction(
       actionType: 'IMPORT',
       affectedEntity: 'EXCEL_IMPORT',
@@ -424,7 +452,8 @@ class ImportService {
           'Detected month: ${autoAssignMonth ?? "multi"} | '
           'User: $userId | '
           'Rates ignored: $rateColumnsFound | '
-          'Errors: ${errors.isEmpty ? "None" : errors.length}',
+          'Errors: ${errors.isEmpty ? "None" : errors.length} | '
+          '$centreInfo',
     );
 
     // 6. Admin notification -------------------------------------------------
@@ -502,6 +531,11 @@ class ImportService {
     "facilitator": 'df_name',
     // Gender
     "gender": 'gender',
+    // Centre name
+    "centre name": 'centre_name',
+    "center name": 'centre_name',
+    "centre": 'centre_name',
+    "center": 'centre_name',
     // Loan amount
     "loan amount": 'loan_amount',
     "amount": 'loan_amount',
@@ -580,6 +614,7 @@ class ImportService {
     'paid_instalment': 'Paid Instalment',
     'paid_penalty': 'Paid Penalty',
     'interest_rate': 'Interest Rate',
+    'centre_name': 'Centre Name',
   };
 
   /// Strips common prefixes/suffixes from raw column headers so that
@@ -687,6 +722,9 @@ class ImportService {
 
   Set<String> _paymentKeySet = {}; // "loanId|amount|date" -> id
 
+  Map<String, String> _centreNameMap = {}; // name (lower) -> id
+  final List<String> _newCentres = [];
+
   Future<void> _preloadData() async {
     _groupIdMap.clear();
     _groupIdRefMap.clear();
@@ -695,6 +733,8 @@ class ImportService {
     _vendorNameGroupMap.clear();
     _loanKeyMap.clear();
     _paymentKeySet.clear();
+    _centreNameMap.clear();
+    _newCentres.clear();
 
     // Load groups
     final groups = await _supabase.from('groups').select('id, name, reference_number');
@@ -726,6 +766,12 @@ class ImportService {
     for (var p in payments) {
       _paymentKeySet.add('${p['loan_id']}|${p['amount_paid']}|${p['date_paid']}');
     }
+
+    // Load centres
+    final centres = await _supabase.from('centers').select('id, name');
+    for (var c in centres) {
+      _centreNameMap[c['name'].toString().toLowerCase().trim()] = c['id'];
+    }
   }
 
   Future<void> _recordPayment({
@@ -748,18 +794,49 @@ class ImportService {
     _paymentKeySet.add(paymentKey);
   }
 
-  Future<String> _getOrCreateGroup(String name) async {
+  Future<String> _getOrCreateCentre(String name) async {
+    final lowerName = name.toLowerCase().trim();
+    if (_centreNameMap.containsKey(lowerName)) {
+      return _centreNameMap[lowerName]!;
+    }
+
+    final ref = 'CTR-${DateTime.now().millisecondsSinceEpoch}';
+    final inserted = await _supabase
+        .from('centers')
+        .insert({'name': name, 'reference_number': ref})
+        .select('id')
+        .single();
+
+    final newId = inserted['id'] as String;
+    _centreNameMap[lowerName] = newId;
+    _newCentres.add(name);
+    return newId;
+  }
+
+  Future<String> _getOrCreateGroup(String name, {String? centreId, String? dfName}) async {
     final lowerName = name.toLowerCase().trim();
     if (_groupIdMap.containsKey(lowerName)) {
-      return _groupIdMap[lowerName]!;
+      final existingId = _groupIdMap[lowerName]!;
+      // Update centre/DF on existing group if provided
+      if (centreId != null || dfName != null) {
+        final update = <String, dynamic>{};
+        if (centreId != null) update['center_id'] = centreId;
+        if (dfName != null) update['df_name'] = dfName;
+        await _supabase.from('groups').update(update).eq('id', existingId);
+      }
+      return existingId;
     }
+
+    final groupData = <String, dynamic>{
+      'name': name,
+      'reference_number': 'GRP-${DateTime.now().millisecondsSinceEpoch}',
+    };
+    if (centreId != null) groupData['center_id'] = centreId;
+    if (dfName != null) groupData['df_name'] = dfName;
 
     final inserted = await _supabase
         .from('groups')
-        .insert({
-          'name': name,
-          'reference_number': 'GRP-${DateTime.now().millisecondsSinceEpoch}',
-        })
+        .insert(groupData)
         .select('id, reference_number')
         .single();
         
