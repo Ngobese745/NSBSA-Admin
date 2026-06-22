@@ -364,10 +364,10 @@ class ImportService {
               firstPaymentDate: firstPaymentDate,
             );
 
-            if (totalPaid > 0) {
+            if (totalPaid != 0) {
               await _recordPayment(
                 loanId: loanId,
-                amount: totalPaid,
+                amount: totalPaid.abs(),
                 date: sheetDate,
               );
             }
@@ -525,7 +525,6 @@ class ImportService {
     "loan book balance": 'opening_amount',
     "live loan balance": 'opening_amount',
     "live balance": 'opening_amount',
-    "balance": 'opening_amount',
     // Fees
     "initiation fee": 'init_fee',
     "initiation fees": 'init_fee',

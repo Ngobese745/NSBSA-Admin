@@ -130,19 +130,19 @@ class _MasterLoanLedgerScreenState extends State<MasterLoanLedgerScreen> {
     }
 
     final q = _searchQuery.toLowerCase();
-    final filtered = q.isEmpty
-        ? loans
-        : loans.where((loan) {
-            final v = vendorMap[loan.vendorId];
-            final g = groupMap[loan.groupId];
-            return (loan.vendorName?.toLowerCase().contains(q) == true) ||
-                (v?.name.toLowerCase().contains(q) == true) ||
-                (v?.phone?.toLowerCase().contains(q) == true) ||
-                (v?.idNumber?.toLowerCase().contains(q) == true) ||
-                (g?.name.toLowerCase().contains(q) == true) ||
-                loan.amount.toString().contains(q) ||
-                loan.status.toLowerCase().contains(q);
-          }).toList();
+    final filtered = (q.isEmpty ? loans : loans.where((loan) {
+      final v = vendorMap[loan.vendorId];
+      final g = groupMap[loan.groupId];
+      return (loan.vendorName?.toLowerCase().contains(q) == true) ||
+          (v?.name.toLowerCase().contains(q) == true) ||
+          (v?.phone?.toLowerCase().contains(q) == true) ||
+          (v?.idNumber?.toLowerCase().contains(q) == true) ||
+          (g?.name.toLowerCase().contains(q) == true) ||
+          loan.amount.toString().contains(q) ||
+          loan.status.toLowerCase().contains(q);
+    }))
+        .toList()
+      ..sort((a, b) => b.amount.compareTo(a.amount));
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -224,7 +224,9 @@ class _MasterLoanLedgerScreenState extends State<MasterLoanLedgerScreen> {
 
           // ─── Table ───
           Expanded(
-            child: filtered.isEmpty
+            child: Container(
+              color: theme.cardColor,
+              child: filtered.isEmpty
                 ? Center(
                     child: Text(
                       _searchQuery.isNotEmpty
@@ -234,75 +236,60 @@ class _MasterLoanLedgerScreenState extends State<MasterLoanLedgerScreen> {
                     ),
                   )
                 : SingleChildScrollView(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Container(
-                        margin: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: theme.cardColor,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: theme.dividerColor.withOpacity(0.5),
-                          ),
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Table(
-                            defaultVerticalAlignment:
-                                TableCellVerticalAlignment.middle,
-                            columnWidths: const {
-                              0: FixedColumnWidth(180),
-                              1: FixedColumnWidth(120),
-                              2: FixedColumnWidth(110),
-                              3: FixedColumnWidth(140),
-                              4: FixedColumnWidth(90),
-                              5: FixedColumnWidth(90),
-                              6: FixedColumnWidth(90),
-                              7: FixedColumnWidth(100),
-                              8: FixedColumnWidth(100),
-                              9: FixedColumnWidth(80),
-                              10: FixedColumnWidth(60),
-                            },
-                            border: TableBorder(
-                              horizontalInside: BorderSide(
-                                color: theme.dividerColor.withOpacity(0.06),
-                              ),
-                            ),
-                            children: [
-                              // ── Header row ──
-                              TableRow(
-                                decoration: BoxDecoration(
-                                  color: theme.primaryColor.withOpacity(0.05),
-                                ),
-                                children: [
-                                  _th('Member Name'),
-                                  _th('ID Number'),
-                                  _th('Phone'),
-                                  _th('Group'),
-                                  _th('Amount'),
-                                  _th('Term'),
-                                  _th('Opening Balance'),
-                                  _th('Total Paid'),
-                                  _th('Monthly'),
-                                  _th('Status'),
-                                  _th(''),
-                                ],
-                              ),
-                              // ── Data rows ──
-                              for (final loan in filtered)
-                                _buildDataRow(
-                                  loan,
-                                  vendorMap[loan.vendorId],
-                                  groupMap[loan.groupId],
-                                  paymentsByLoan[loan.id] ?? [],
-                                  theme,
-                                ),
-                            ],
-                          ),
+                    child: Table(
+                      defaultVerticalAlignment:
+                          TableCellVerticalAlignment.middle,
+                      columnWidths: const {
+                        0: FlexColumnWidth(3.0),   // Member Name
+                        1: FlexColumnWidth(2.0),   // ID Number
+                        2: FlexColumnWidth(1.8),   // Phone
+                        3: FlexColumnWidth(2.2),   // Group
+                        4: FlexColumnWidth(1.5),   // Amount
+                        5: FlexColumnWidth(1.2),   // Term
+                        6: FlexColumnWidth(1.8),   // Opening Balance
+                        7: FlexColumnWidth(1.8),   // Total Paid
+                        8: FlexColumnWidth(1.5),   // Monthly
+                        9: FlexColumnWidth(1.2),   // Status
+                        10: FlexColumnWidth(0.8),  // Actions
+                      },
+                      border: TableBorder(
+                        horizontalInside: BorderSide(
+                          color: theme.dividerColor.withOpacity(0.06),
                         ),
                       ),
+                      children: [
+                        // ── Header row ──
+                        TableRow(
+                          decoration: BoxDecoration(
+                            color: theme.primaryColor.withOpacity(0.05),
+                          ),
+                          children: [
+                            _th('Member Name'),
+                            _th('ID Number'),
+                            _th('Phone'),
+                            _th('Group'),
+                            _th('Amount'),
+                            _th('Term'),
+                            _th('Opening Balance'),
+                            _th('Total Paid'),
+                            _th('Monthly'),
+                            _th('Status'),
+                            _th(''),
+                          ],
+                        ),
+                        // ── Data rows ──
+                        for (final loan in filtered)
+                          _buildDataRow(
+                            loan,
+                            vendorMap[loan.vendorId],
+                            groupMap[loan.groupId],
+                            paymentsByLoan[loan.id] ?? [],
+                            theme,
+                          ),
+                      ],
                     ),
                   ),
+                ),
           ),
         ],
       ),
