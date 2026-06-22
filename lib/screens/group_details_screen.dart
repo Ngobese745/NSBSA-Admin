@@ -21,6 +21,7 @@ import '../models/leadership.dart';
 import 'vendor_profile_screen.dart';
 import 'loan_details_screen.dart';
 import '../services/loan_calculation_service.dart';
+import '../services/loan_interest_service.dart';
 import '../widgets/communication/communication_dialog.dart';
 import '../widgets/communication/group_communication_dialog.dart';
 import '../services/excel_export_service.dart';
@@ -1448,184 +1449,304 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     DateTime selectedFirstDate = DateTime.now().add(const Duration(days: 30));
 
     String? selectedVendorId;
+    Map<String, dynamic>? interestBreakdown;
+
+    void recalc(StateSetter setState) {
+      interestBreakdown = _recalculateLoan(
+        setState,
+        amountController,
+        termController,
+        monthlyController,
+      );
+    }
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          backgroundColor: Theme.of(context).colorScheme.surface,
-          title: const Text(
-            'Create New Loan',
-            style: TextStyle(color: Colors.white),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<String>(
-                value: selectedVendorId,
-                dropdownColor: Theme.of(context).cardColor,
-                style: TextStyle(
-                  color: Theme.of(context).textTheme.bodyMedium?.color,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Select Member',
-                  labelStyle: TextStyle(color: Colors.grey),
-                ),
-                items: members.map((member) {
-                  return DropdownMenuItem(
-                    value: member.id,
-                    child: Text(member.name),
-                  );
-                }).toList(),
-                onChanged: (val) => setState(() => selectedVendorId = val),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: amountController,
-                style: TextStyle(
-                  color: Theme.of(context).textTheme.bodyMedium?.color,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Loan Amount (R)',
-                  labelStyle: TextStyle(color: Colors.grey),
-                ),
-                keyboardType: TextInputType.number,
-                onChanged: (_) => _calculateMonthly(
-                  setState,
-                  amountController,
-                  termController,
-                  monthlyController,
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: termController,
-                style: TextStyle(
-                  color: Theme.of(context).textTheme.bodyMedium?.color,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Duration (Months)',
-                  labelStyle: TextStyle(color: Colors.grey),
-                ),
-                keyboardType: TextInputType.number,
-                onChanged: (_) => _calculateMonthly(
-                  setState,
-                  amountController,
-                  termController,
-                  monthlyController,
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: monthlyController,
-                style: TextStyle(
-                  color: Theme.of(context).textTheme.bodyMedium?.color,
-                ),
-                decoration: InputDecoration(
-                  labelText: 'Monthly Payment (R)',
-                  labelStyle: const TextStyle(color: Colors.grey),
-                  helperText: 'Auto-calculated: (Amount/Term) + Fees',
-                  helperStyle: TextStyle(
-                    color: AppTheme.primaryGold,
-                    fontSize: 10,
-                  ),
-                ),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 12),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('First Instalment Date', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                subtitle: Text(
-                  '${selectedFirstDate.toLocal()}'.split(' ')[0],
-                  style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color, fontSize: 14),
-                ),
-                trailing: const Icon(Icons.calendar_today, color: AppTheme.primaryGold, size: 18),
-                onTap: () async {
-                  final picked = await showDatePicker(
-                    context: context,
-                    initialDate: selectedFirstDate,
-                    firstDate: DateTime.now(),
-                    lastDate: DateTime.now().add(const Duration(days: 365)),
-                  );
-                  if (picked != null) {
-                    setState(() => selectedFirstDate = picked);
-                  }
-                },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
+        builder: (context, setState) {
+          final rateLabel = interestBreakdown?['rateLabel'] as String?;
+          final interestAmount = interestBreakdown?['interestAmount'] as double?;
+          final totalRepayment = interestBreakdown?['totalRepayment'] as double?;
+          final baseMonthly = interestBreakdown?['baseMonthly'] as double?;
+          final exact = interestBreakdown?['exact'] as bool?;
+          final desc = interestBreakdown?['description'] as String?;
+
+          return AlertDialog(
+            backgroundColor: Theme.of(context).colorScheme.surface,
+            title: const Text(
+              'Create New Loan',
+              style: TextStyle(color: Colors.white),
             ),
-            ElevatedButton(
-              onPressed: () async {
-                final amount = double.tryParse(amountController.text) ?? 0;
-                final term = int.tryParse(termController.text) ?? 6;
-                final monthly = double.tryParse(monthlyController.text) ?? 0;
-
-                if (amount > 0 && selectedVendorId != null) {
-                  setState(
-                    () => amountController.text = 'Submitting...',
-                  ); // basic loading state
-                  try {
-                    final newLoan = await context.read<LoanProvider>().addLoan(
-                      LoanModel(
-                        id: '',
-                        groupId: widget.group.id,
-                        vendorId: selectedVendorId,
-                        amount: amount,
-                        durationMonths: term,
-                        monthlyPayment: monthly,
-                        initiationFee: 150,
-                        monthlyAdminFee: 65,
-                        penaltyFee: 59,
-                        status: 'Active',
-                        firstInstalmentDate: selectedFirstDate,
-                        createdAt: DateTime.now(),
-                      ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: selectedVendorId,
+                  dropdownColor: Theme.of(context).cardColor,
+                  style: TextStyle(
+                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Select Member',
+                    labelStyle: TextStyle(color: Colors.grey),
+                  ),
+                  items: members.map((member) {
+                    return DropdownMenuItem(
+                      value: member.id,
+                      child: Text(member.name),
                     );
+                  }).toList(),
+                  onChanged: (val) => setState(() => selectedVendorId = val),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: amountController,
+                  style: TextStyle(
+                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Loan Amount (R)',
+                    labelStyle: TextStyle(color: Colors.grey),
+                  ),
+                  keyboardType: TextInputType.number,
+                  onChanged: (_) => recalc(setState),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: termController,
+                  style: TextStyle(
+                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Duration (Months)',
+                    labelStyle: TextStyle(color: Colors.grey),
+                  ),
+                  keyboardType: TextInputType.number,
+                  onChanged: (_) => recalc(setState),
+                ),
 
-                    // Optimistic update
-                    this.setState(() {
-                      _loans.insert(0, newLoan);
-                    });
+                if (interestBreakdown != null) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Colors.amber.withOpacity(0.25),
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.info_outline,
+                              color: Colors.amber,
+                              size: 14,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Interest Preview',
+                              style: TextStyle(
+                                color: Colors.amber.shade200,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const Spacer(),
+                            Tooltip(
+                              message: desc ?? 'Rate derived from amount and duration.',
+                              child: Icon(
+                                Icons.help_outline,
+                                color: Colors.grey[500],
+                                size: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        _interestRow('Interest Rate', rateLabel ?? '--', Colors.amber),
+                        _interestRow(
+                          'Interest Amount',
+                          'R${interestAmount?.toStringAsFixed(2) ?? '--'}',
+                          Colors.amber.shade200,
+                        ),
+                        _interestRow(
+                          'Total Repayment',
+                          'R${totalRepayment?.toStringAsFixed(2) ?? '--'}',
+                          Colors.greenAccent,
+                        ),
+                        const Divider(color: Colors.white12, height: 12),
+                        if (exact == false)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              'Using nearest bracket from rate table.',
+                              style: TextStyle(
+                                color: Colors.grey[500],
+                                fontSize: 9,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
 
-                    if (context.mounted) {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Loan created successfully'),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: monthlyController,
+                  readOnly: true,
+                  style: TextStyle(
+                    color: Colors.grey[400],
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Monthly Payment (R)',
+                    labelStyle: const TextStyle(color: Colors.grey),
+                    helperText:
+                        'Auto-calculated: (Principal + Interest) / Term + Fees',
+                    helperStyle: TextStyle(
+                      color: AppTheme.primaryGold,
+                      fontSize: 10,
+                    ),
+                  ),
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(
+                    'First Instalment Date',
+                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+                  subtitle: Text(
+                    '${selectedFirstDate.toLocal()}'.split(' ')[0],
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                      fontSize: 14,
+                    ),
+                  ),
+                  trailing: const Icon(
+                    Icons.calendar_today,
+                    color: AppTheme.primaryGold,
+                    size: 18,
+                  ),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: selectedFirstDate,
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                    );
+                    if (picked != null) {
+                      setState(() => selectedFirstDate = picked);
+                    }
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final amount = double.tryParse(amountController.text) ?? 0;
+                  final term = int.tryParse(termController.text) ?? 6;
+                  final monthly =
+                      double.tryParse(monthlyController.text) ?? 0;
+                  final rate = interestBreakdown?['rate'] as double?;
+
+                  if (amount > 0 && selectedVendorId != null) {
+                    setState(
+                      () => amountController.text = 'Submitting...',
+                    );
+                    try {
+                      final newLoan =
+                          await context.read<LoanProvider>().addLoan(
+                        LoanModel(
+                          id: '',
+                          groupId: widget.group.id,
+                          vendorId: selectedVendorId,
+                          amount: amount,
+                          durationMonths: term,
+                          monthlyPayment: monthly,
+                          initiationFee: 150,
+                          monthlyAdminFee: 65,
+                          penaltyFee: 59,
+                          interestRate: rate,
+                          status: 'Active',
+                          firstInstalmentDate: selectedFirstDate,
+                          createdAt: DateTime.now(),
                         ),
                       );
+
+                      this.setState(() {
+                        _loans.insert(0, newLoan);
+                      });
+
+                      if (context.mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Loan created successfully'),
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      setState(
+                        () => amountController.text = amount.toString(),
+                      );
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error: $e')),
+                      );
                     }
-                  } catch (e) {
-                    setState(
-                      () => amountController.text = amount.toString(),
-                    ); // revert
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(SnackBar(content: Text('Error: $e')));
+                  } else if (selectedVendorId == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please select a member first'),
+                      ),
+                    );
                   }
-                } else if (selectedVendorId == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please select a member first'),
-                    ),
-                  );
-                }
-              },
-              child: const Text('Create'),
-            ),
-          ],
-        ),
+                },
+                child: const Text('Create'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 
-  void _calculateMonthly(
+  Widget _interestRow(String label, String value, Color valueColor) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(color: Colors.grey[400], fontSize: 11),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              color: valueColor,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Recalculates loan terms using the auto-detected interest rate and
+ /// updates the monthly controller. Returns the computed breakdown for
+  /// the interest preview panel.
+  Map<String, dynamic> _recalculateLoan(
     StateSetter setState,
     TextEditingController amountController,
     TextEditingController termController,
@@ -1634,20 +1755,43 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     final amount = double.tryParse(amountController.text) ?? 0;
     final term = int.tryParse(termController.text) ?? 0;
 
-    if (amount > 0 && term > 0) {
-      // Formula based on NSBSA standard:
-      // Monthly = (Principal / Term) + Admin Fee (65) + Penalty Fee (59) + (Initiation Fee (150) / Term)
-      const initiationFee = 150.0;
-      const adminFee = 65.0;
-      const penaltyFee = 59.0;
-
-      final monthly =
-          (amount / term) + adminFee + penaltyFee + (initiationFee / term);
-
+    if (amount <= 0 || term <= 0) {
       setState(() {
-        monthlyController.text = monthly.toStringAsFixed(0);
+        monthlyController.text = '';
       });
+      return {};
     }
+
+    const initiationFee = 150.0;
+    const adminFee = 65.0;
+    const penaltyFee = 59.0;
+
+    final rate = LoanInterestService.getRate(amount, term);
+    if (rate == null) {
+      setState(() {
+        monthlyController.text = (amount / term).toStringAsFixed(0);
+      });
+      return {};
+    }
+
+    final interestAmount = LoanInterestService.calculateInterestAmount(amount, rate);
+    final totalRepayment = LoanInterestService.calculateTotalRepayment(amount, rate);
+    final baseMonthly = totalRepayment / term;
+    final totalMonthly = baseMonthly + adminFee + penaltyFee + (initiationFee / term);
+
+    setState(() {
+      monthlyController.text = totalMonthly.toStringAsFixed(0);
+    });
+
+    return {
+      'rate': rate,
+      'rateLabel': '${(rate * 100).toStringAsFixed(2)}%',
+      'interestAmount': interestAmount,
+      'totalRepayment': totalRepayment,
+      'baseMonthly': baseMonthly,
+      'exact': LoanInterestService.isExactMatch(amount, term),
+      'description': LoanInterestService.describeRate(amount, term),
+    };
   }
 
   void _showRecordPaymentDialog(LoanModel loan) {

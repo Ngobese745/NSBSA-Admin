@@ -14,6 +14,7 @@ import '../widgets/nsbsa_loading_overlay.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../services/loan_calculation_service.dart';
+import '../services/loan_interest_service.dart';
 import '../theme/app_theme.dart';
 
 class LoanDetailsScreen extends StatelessWidget {
@@ -663,134 +664,322 @@ class LoanDetailsScreen extends StatelessWidget {
     final monthlyController = TextEditingController(
       text: loan.monthlyPayment.toStringAsFixed(0),
     );
-    DateTime selectedFirstDate = loan.firstInstalmentDate ?? DateTime.now().add(const Duration(days: 30));
+    DateTime selectedFirstDate = loan.firstInstalmentDate ??
+        DateTime.now().add(const Duration(days: 30));
+
+    Map<String, dynamic>? interestBreakdown;
+
+    void recalc(StateSetter setState) {
+      final amount = double.tryParse(amountController.text) ?? 0;
+      final term = int.tryParse(termController.text) ?? 0;
+      if (amount <= 0 || term <= 0) return;
+      const adminFee = 65.0;
+      const penaltyFee = 59.0;
+      const initFee = 150.0;
+      final rate = LoanInterestService.getRate(amount, term);
+      if (rate == null) return;
+      final totalRepayment =
+          LoanInterestService.calculateTotalRepayment(amount, rate);
+      final baseMonthly = totalRepayment / term;
+      final totalMonthly =
+          baseMonthly + adminFee + penaltyFee + (initFee / term);
+      setState(() {
+        monthlyController.text = totalMonthly.toStringAsFixed(0);
+        interestBreakdown = {
+          'rate': rate,
+          'rateLabel': '${(rate * 100).toStringAsFixed(2)}%',
+          'interestAmount':
+              LoanInterestService.calculateInterestAmount(amount, rate),
+          'totalRepayment': totalRepayment,
+          'baseMonthly': baseMonthly,
+          'exact': LoanInterestService.isExactMatch(amount, term),
+          'description': LoanInterestService.describeRate(amount, term),
+        };
+      });
+    }
 
     showDialog(
       context: context,
       builder: (c) => StatefulBuilder(
-        builder: (c, setState) => AlertDialog(
-          backgroundColor: Theme.of(c).colorScheme.surface,
-          title: const Text('Edit Loan', style: TextStyle(color: Colors.white)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: amountController,
-                  decoration: const InputDecoration(
-                    labelText: 'Principal Amount (R)',
-                    labelStyle: TextStyle(color: Colors.grey),
+        builder: (c, setState) {
+          final rateLabel =
+              interestBreakdown?['rateLabel'] as String?;
+          final interestAmount =
+              interestBreakdown?['interestAmount'] as double?;
+          final totalRepayment =
+              interestBreakdown?['totalRepayment'] as double?;
+          final baseMonthly =
+              interestBreakdown?['baseMonthly'] as double?;
+          final exact = interestBreakdown?['exact'] as bool?;
+          final desc = interestBreakdown?['description'] as String?;
+
+          return AlertDialog(
+            backgroundColor: Theme.of(c).colorScheme.surface,
+            title: const Text(
+              'Edit Loan',
+              style: TextStyle(color: Colors.white),
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: amountController,
+                    decoration: const InputDecoration(
+                      labelText: 'Principal Amount (R)',
+                      labelStyle: TextStyle(color: Colors.grey),
+                    ),
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => recalc(setState),
                   ),
-                  keyboardType: TextInputType.number,
-                ),
-                TextField(
-                  controller: termController,
-                  decoration: const InputDecoration(
-                    labelText: 'Term (Months)',
-                    labelStyle: TextStyle(color: Colors.grey),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: termController,
+                    decoration: const InputDecoration(
+                      labelText: 'Term (Months)',
+                      labelStyle: TextStyle(color: Colors.grey),
+                    ),
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => recalc(setState),
                   ),
-                  keyboardType: TextInputType.number,
-                ),
-                TextField(
-                  controller: initFeeController,
-                  decoration: const InputDecoration(
-                    labelText: 'Initiation Fee (R)',
-                    labelStyle: TextStyle(color: Colors.grey),
+
+                  if (interestBreakdown != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Colors.amber.withOpacity(0.25),
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.info_outline,
+                                color: Colors.amber,
+                                size: 13,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Interest Preview',
+                                style: TextStyle(
+                                  color: Colors.amber.shade200,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const Spacer(),
+                              Tooltip(
+                                message: desc ??
+                                    'Rate derived from amount and duration.',
+                                child: Icon(
+                                  Icons.help_outline,
+                                  color: Colors.grey[500],
+                                  size: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          _editRow(
+                            'Rate', rateLabel ?? '--', Colors.amber, c),
+                          _editRow(
+                            'Interest',
+                            'R${interestAmount?.toStringAsFixed(2) ?? '--'}',
+                            Colors.amber.shade200,
+                            c,
+                          ),
+                          _editRow(
+                            'Total Owed',
+                            'R${totalRepayment?.toStringAsFixed(2) ?? '--'}',
+                            Colors.greenAccent,
+                            c,
+                          ),
+                          if (exact == false)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                'Nearest bracket from rate table.',
+                                style: TextStyle(
+                                  color: Colors.grey[500],
+                                  fontSize: 9,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: initFeeController,
+                    decoration: const InputDecoration(
+                      labelText: 'Initiation Fee (R)',
+                      labelStyle: TextStyle(color: Colors.grey),
+                    ),
+                    keyboardType: TextInputType.number,
                   ),
-                  keyboardType: TextInputType.number,
-                ),
-                TextField(
-                  controller: adminFeeController,
-                  decoration: const InputDecoration(
-                    labelText: 'Monthly Admin Fee (R)',
-                    labelStyle: TextStyle(color: Colors.grey),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: adminFeeController,
+                    decoration: const InputDecoration(
+                      labelText: 'Monthly Admin Fee (R)',
+                      labelStyle: TextStyle(color: Colors.grey),
+                    ),
+                    keyboardType: TextInputType.number,
                   ),
-                  keyboardType: TextInputType.number,
-                ),
-                TextField(
-                  controller: penaltyController,
-                  decoration: const InputDecoration(
-                    labelText: 'Penalty Fee (R)',
-                    labelStyle: TextStyle(color: Colors.grey),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: penaltyController,
+                    decoration: const InputDecoration(
+                      labelText: 'Penalty Fee (R)',
+                      labelStyle: TextStyle(color: Colors.grey),
+                    ),
+                    keyboardType: TextInputType.number,
                   ),
-                  keyboardType: TextInputType.number,
-                ),
-                TextField(
-                  controller: monthlyController,
-                  decoration: const InputDecoration(
-                    labelText: 'Monthly Instalment (R)',
-                    labelStyle: TextStyle(color: Colors.grey),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: monthlyController,
+                    readOnly: true,
+                    style: TextStyle(
+                      color: Colors.grey[400],
+                    ),
+                    decoration: InputDecoration(
+                      labelText: 'Monthly Instalment (R)',
+                      labelStyle: const TextStyle(color: Colors.grey),
+                      helperText:
+                          'Auto-calculated from amount + interest + fees',
+                      helperStyle: TextStyle(
+                        color: AppTheme.primaryGold,
+                        fontSize: 10,
+                      ),
+                    ),
+                    keyboardType: TextInputType.number,
                   ),
-                  keyboardType: TextInputType.number,
-                ),
-                const SizedBox(height: 8),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('First Instalment Date', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  subtitle: Text(
-                    '${selectedFirstDate.toLocal()}'.split(' ')[0],
-                    style: TextStyle(color: Theme.of(c).textTheme.bodyMedium?.color, fontSize: 14),
+                  const SizedBox(height: 8),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text(
+                      'First Instalment Date',
+                      style: TextStyle(color: Colors.grey, fontSize: 12),
+                    ),
+                    subtitle: Text(
+                      '${selectedFirstDate.toLocal()}'.split(' ')[0],
+                      style: TextStyle(
+                        color: Theme.of(c)
+                            .textTheme
+                            .bodyMedium
+                            ?.color,
+                        fontSize: 14,
+                      ),
+                    ),
+                    trailing: const Icon(
+                      Icons.calendar_today,
+                      color: Colors.amber,
+                      size: 18,
+                    ),
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: c,
+                        initialDate: selectedFirstDate,
+                        firstDate: DateTime.now()
+                            .subtract(const Duration(days: 365)),
+                        lastDate:
+                            DateTime.now().add(const Duration(days: 365)),
+                      );
+                      if (picked != null) {
+                        setState(() => selectedFirstDate = picked);
+                      }
+                    },
                   ),
-                  trailing: const Icon(Icons.calendar_today, color: Colors.amber, size: 18),
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: c,
-                      initialDate: selectedFirstDate,
-                      firstDate: DateTime.now().subtract(const Duration(days: 365)),
-                      lastDate: DateTime.now().add(const Duration(days: 365)),
-                    );
-                    if (picked != null) {
-                      setState(() => selectedFirstDate = picked);
-                    }
-                  },
-                ),
-              ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(c),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final amount = double.tryParse(amountController.text) ??
+                      loan.amount;
+                  final term = int.tryParse(termController.text) ??
+                      loan.durationMonths;
+                  final initFee =
+                      double.tryParse(initFeeController.text) ??
+                          loan.initiationFee;
+                  final adminFee =
+                      double.tryParse(adminFeeController.text) ??
+                          loan.monthlyAdminFee;
+                  final penalty =
+                      double.tryParse(penaltyController.text) ??
+                          loan.penaltyFee;
+                  final monthly =
+                      double.tryParse(monthlyController.text) ??
+                          loan.monthlyPayment;
+                  final rate = interestBreakdown?['rate'] as double?;
+
+                  final ctx = context;
+                  runWithLoadingAfterPop(
+                    ctx, task: () async {
+                      await ctx.read<LoanProvider>().updateLoan(loan.id, {
+                        'amount': amount,
+                        'duration_months': term,
+                        'initiation_fee': initFee,
+                        'monthly_admin_fee': adminFee,
+                        'penalty_fee': penalty,
+                        'monthly_payment': monthly,
+                        'interest_rate': rate,
+                        'first_instalment_date':
+                            selectedFirstDate.toIso8601String(),
+                      });
+                    },
+                    successMessage:
+                        'Loan updated successfully. Please close and re-open to see changes.',
+                  );
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _editRow(
+    String label,
+    String value,
+    Color valueColor,
+    BuildContext context,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.grey[400],
+              fontSize: 10,
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(c),
-              child: const Text('Cancel'),
+          Text(
+            value,
+            style: TextStyle(
+              color: valueColor,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
             ),
-            ElevatedButton(
-              onPressed: () async {
-                final amount =
-                    double.tryParse(amountController.text) ?? loan.amount;
-                final term =
-                    int.tryParse(termController.text) ?? loan.durationMonths;
-                final initFee =
-                    double.tryParse(initFeeController.text) ??
-                    loan.initiationFee;
-                final adminFee =
-                    double.tryParse(adminFeeController.text) ??
-                    loan.monthlyAdminFee;
-                final penalty =
-                    double.tryParse(penaltyController.text) ?? loan.penaltyFee;
-                final monthly =
-                    double.tryParse(monthlyController.text) ??
-                    loan.monthlyPayment;
-
-                final ctx = context;
-                runWithLoadingAfterPop(
-                  ctx, task: () async {
-                    await ctx.read<LoanProvider>().updateLoan(loan.id, {
-                      'amount': amount,
-                      'duration_months': term,
-                      'initiation_fee': initFee,
-                      'monthly_admin_fee': adminFee,
-                      'penalty_fee': penalty,
-                      'monthly_payment': monthly,
-                      'first_instalment_date': selectedFirstDate.toIso8601String(),
-                    });
-                  },
-                  successMessage:
-                      'Loan updated successfully. Please close and re-open to see changes.',
-                );
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

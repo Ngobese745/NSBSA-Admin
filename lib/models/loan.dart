@@ -10,6 +10,7 @@ class LoanModel {
   final double? monthlyAdminFee;
   final double? penaltyFee;
   final double? openingAmount;
+  final double? interestRate;
   final DateTime? firstInstalmentDate;
   final String? vendorName;
   final String? loanType;
@@ -29,6 +30,7 @@ class LoanModel {
     this.monthlyAdminFee,
     this.penaltyFee,
     this.openingAmount,
+    this.interestRate,
     this.firstInstalmentDate,
     required this.createdAt,
   });
@@ -63,6 +65,9 @@ class LoanModel {
       openingAmount: json['opening_amount'] != null
           ? (json['opening_amount'] as num).toDouble()
           : null,
+      interestRate: json['interest_rate'] != null
+          ? (json['interest_rate'] as num).toDouble()
+          : null,
       loanType: json['loan_type'],
       firstInstalmentDate: json['first_instalment_date'] != null
           ? DateTime.parse(json['first_instalment_date'])
@@ -85,6 +90,7 @@ class LoanModel {
       'monthly_admin_fee': monthlyAdminFee,
       'penalty_fee': penaltyFee,
       'opening_amount': openingAmount,
+      'interest_rate': interestRate,
       'first_instalment_date': firstInstalmentDate?.toIso8601String(),
       'created_at': createdAt.toIso8601String(),
     };
