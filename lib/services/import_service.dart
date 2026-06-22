@@ -485,35 +485,69 @@ class ImportService {
     "duration": 'loan_term',
     // First payment
     "1st instal payment": 'first_payment',
+    "1st instalment payment": 'first_payment',
     "first instalment": 'first_payment',
+    "first instalment payment": 'first_payment',
     "first payment date": 'first_payment',
     "1st payment": 'first_payment',
+    "1st instalment payment date": 'first_payment',
     // Opening
     "opening amount": 'opening_amount',
     "opening balance": 'opening_amount',
     "live loan book balance": 'opening_amount',
     "loan book balance": 'opening_amount',
+    "live loan balance": 'opening_amount',
+    "live balance": 'opening_amount',
     // Fees
     "initiation fee": 'init_fee',
+    "initiation fees": 'init_fee',
     "init fee": 'init_fee',
+    "loan initiation fee": 'init_fee',
     "admin fee": 'admin_fee',
+    "admin fees": 'admin_fee',
     "monthly admin fee": 'admin_fee',
     "monthly instalment": 'monthly',
+    "monthly instalments": 'monthly',
     "monthly": 'monthly',
     "penalty fee": 'penalty',
     "penalty": 'penalty',
     // Paid columns
     "paid init": 'paid_init',
     "paid initiation": 'paid_init',
+    "initiation fees received": 'paid_init',
+    "total initiation fees received": 'paid_init',
     "paid admin": 'paid_admin',
+    "admin fees received": 'paid_admin',
+    "total admin fees received": 'paid_admin',
     "paid instalment": 'paid_instalment',
     "paid monthly": 'paid_instalment',
+    "monthly instalments received": 'paid_instalment',
+    "total monthly instalments received": 'paid_instalment',
     "paid penalty": 'paid_penalty',
     // Interest rate (detected and ignored on import)
     "interest rate": 'interest_rate',
     "rate": 'interest_rate',
     "interest": 'interest_rate',
   };
+
+  /// Strips common prefixes/suffixes from raw column headers so that
+  /// variations like "Loan Initiation fee", "Total Admin Fees Received",
+  /// "1st Instalment payment date" normalise to keys we recognise.
+  String _normaliseHeader(String raw) {
+    String h = raw.trim().toLowerCase();
+    // Strip "loan " prefix so "Loan Initiation fee" → "initiation fee"
+    if (h.startsWith('loan ')) {
+      h = h.substring(5);
+    }
+    // Strip common suffixes
+    if (h.endsWith(' received')) {
+      h = h.substring(0, h.length - 9);
+    }
+    if (h.endsWith(' date')) {
+      h = h.substring(0, h.length - 5);
+    }
+    return h;
+  }
 
   _HeaderInfo? _detectHeaderRow(dynamic sheet) {
     // Scan first 5 rows for the header
@@ -526,7 +560,8 @@ class ImportService {
       for (int c = 0; c < row.length; c++) {
         final raw = row[c]?.toString().trim().toLowerCase() ?? '';
         if (raw.isEmpty) continue;
-        final key = _headerAliases[raw];
+        final normalised = _normaliseHeader(raw);
+        final key = _headerAliases[normalised] ?? _headerAliases[raw];
         if (key != null && !colMap.containsKey(key)) {
           colMap[key] = c;
         }
