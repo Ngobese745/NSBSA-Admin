@@ -56,6 +56,20 @@ class ImportResult {
   /// was detected and deliberately ignored during import.
   final bool rateColumnsFound;
 
+  /// Human-readable labels of the columns that were successfully mapped,
+  /// e.g. {"Name", "ID Number", "Loan Amount", "Opening Balance"}.
+  final Set<String> mappedColumnLabels;
+
+  /// Names of fields expected by the system that were NOT found in the
+  /// Excel file, e.g. {"Loan Term", "First Payment Date"}.
+  Set<String> get missingColumns {
+    const required = {
+      'Name', 'ID Number', 'Phone', 'Group Name',
+      'Loan Amount', 'Loan Term', 'Opening Balance',
+    };
+    return required.difference(mappedColumnLabels);
+  }
+
   /// Sheets that are present in the Excel file but whose imported count
   /// doesn't match the source – used for the verification failure message.
   List<MonthImportSummary> get mismatchedMonths =>
@@ -90,6 +104,11 @@ class ImportResult {
           'Please record loans in the system to apply correct rates.';
     }
 
+    final missing = missingColumns;
+    if (missing.isNotEmpty) {
+      msg += '\nNote: ${missing.join(", ")} not found — skipped.';
+    }
+
     return msg;
   }
 
@@ -99,6 +118,7 @@ class ImportResult {
     required this.totalRecordsImported,
     required this.monthSummaries,
     required this.errors,
+    required this.mappedColumnLabels,
     this.autoAssigned = false,
     this.detectedMonthLabel,
     this.rateColumnsFound = false,
@@ -158,6 +178,7 @@ class ImportService {
     bool wasAutoAssigned = false;
     String? autoAssignMonth;
     bool rateColumnsFound = false;
+    final mappedFields = <String>{};
 
     late SpreadsheetDecoder decoder;
     try {
@@ -189,13 +210,14 @@ class ImportService {
       if (headerInfo.cols.containsKey('interest_rate')) {
         rateColumnsFound = true;
       }
+      mappedFields.addAll(headerInfo.cols.keys);
 
       // Count data rows (rows after the header with a non-empty name cell)
       int dataRows = 0;
       for (int i = headerInfo.dataStartRow; i < sheet.maxRows; i++) {
         final row = sheet.rows[i];
         if (row.isEmpty) continue;
-        final name = _str(row, headerInfo.cols['name'] ?? 0);
+        final name = _str(row, headerInfo.cols['name']);
         if (name.isNotEmpty && name.toLowerCase() != 'null') dataRows++;
       }
 
@@ -233,12 +255,13 @@ class ImportService {
           if (headerInfo.cols.containsKey('interest_rate')) {
             rateColumnsFound = true;
           }
+          mappedFields.addAll(headerInfo.cols.keys);
 
           int dataRows = 0;
           for (int i = headerInfo.dataStartRow; i < sheet.maxRows; i++) {
             final row = sheet.rows[i];
             if (row.isEmpty) continue;
-            final name = _str(row, headerInfo.cols['name'] ?? 0);
+            final name = _str(row, headerInfo.cols['name']);
             if (name.isNotEmpty && name.toLowerCase() != 'null') dataRows++;
           }
           if (dataRows == 0) continue;
@@ -286,7 +309,7 @@ class ImportService {
         final row = sheet.rows[i];
         if (row.isEmpty) continue;
 
-        final name = _str(row, cols['name'] ?? 0);
+        final name = _str(row, cols['name']);
         if (name.isEmpty || name.toLowerCase() == 'null') continue;
 
         processedRows++;
@@ -294,26 +317,26 @@ class ImportService {
         onProgress?.call(pct, 'Processing: $name (${sheetInfo.monthLabel})');
 
         try {
-          final idNumber      = _str(row, cols['id_number'] ?? 1);
-          final phone         = _str(row, cols['phone'] ?? 2);
-          final groupName     = _str(row, cols['group_name'] ?? 3, fallback: 'Default Group');
-          final businessType  = _str(row, cols['business_type'] ?? 4);
-          final dfName        = _str(row, cols['df_name'] ?? 5);
-          final gender        = _str(row, cols['gender'] ?? 6);
+          final idNumber      = _str(row, cols['id_number']);
+          final phone         = _str(row, cols['phone']);
+          final groupName     = _str(row, cols['group_name'], fallback: 'Default Group');
+          final businessType  = _str(row, cols['business_type']);
+          final dfName        = _str(row, cols['df_name']);
+          final gender        = _str(row, cols['gender']);
 
-          final amount            = _toDouble(row, cols['loan_amount'] ?? 7);
-          final term              = _toInt(row, cols['loan_term'] ?? 8);
-          final firstPaymentDate  = _toDateTime(row, cols['first_payment'] ?? 9);
-          final openingAmount     = _toDouble(row, cols['opening_amount'] ?? 10);
-          final initiationFee     = _toDouble(row, cols['init_fee'] ?? 11);
-          final adminFee          = _toDouble(row, cols['admin_fee'] ?? 12);
-          final monthlyInstalment = _toDouble(row, cols['monthly'] ?? 13);
-          final penaltyFee        = _toDouble(row, cols['penalty'] ?? 14);
+          final amount            = _toDouble(row, cols['loan_amount']);
+          final term              = _toInt(row, cols['loan_term']);
+          final firstPaymentDate  = _toDateTime(row, cols['first_payment']);
+          final openingAmount     = _toDouble(row, cols['opening_amount']);
+          final initiationFee     = _toDouble(row, cols['init_fee']);
+          final adminFee          = _toDouble(row, cols['admin_fee']);
+          final monthlyInstalment = _toDouble(row, cols['monthly']);
+          final penaltyFee        = _toDouble(row, cols['penalty']);
 
-          final paidInit        = _toDouble(row, cols['paid_init'] ?? 15);
-          final paidAdmin       = _toDouble(row, cols['paid_admin'] ?? 16);
-          final paidInstalment  = _toDouble(row, cols['paid_instalment'] ?? 17);
-          final paidPenalty     = _toDouble(row, cols['paid_penalty'] ?? 18);
+          final paidInit        = _toDouble(row, cols['paid_init']);
+          final paidAdmin       = _toDouble(row, cols['paid_admin']);
+          final paidInstalment  = _toDouble(row, cols['paid_instalment']);
+          final paidPenalty     = _toDouble(row, cols['paid_penalty']);
           final totalPaid = paidInit + paidAdmin + paidInstalment + paidPenalty;
 
           final groupId = await _getOrCreateGroup(groupName);
@@ -370,6 +393,10 @@ class ImportService {
     onProgress?.call(0.97, 'Verifying imported month data…');
 
     // 3. Build the result -----------------------------------------------
+    final columnLabels = mappedFields
+        .map((k) => _fieldLabels[k] ?? k)
+        .toSet();
+
     final result = ImportResult(
       success: errors.isEmpty,
       totalRecordsInExcel: totalExcel,
@@ -379,6 +406,7 @@ class ImportService {
       autoAssigned: wasAutoAssigned,
       detectedMonthLabel: autoAssignMonth,
       rateColumnsFound: rateColumnsFound,
+      mappedColumnLabels: columnLabels,
     );
 
     // 5. Audit log -------------------------------------------------------
@@ -498,6 +526,7 @@ class ImportService {
     "loan book balance": 'opening_amount',
     "live loan balance": 'opening_amount',
     "live balance": 'opening_amount',
+    "balance": 'opening_amount',
     // Fees
     "initiation fee": 'init_fee',
     "initiation fees": 'init_fee',
@@ -528,6 +557,31 @@ class ImportService {
     "interest rate": 'interest_rate',
     "rate": 'interest_rate',
     "interest": 'interest_rate',
+  };
+
+  /// Maps internal field keys to user-facing labels for column-mapping
+  /// feedback in the verification message.
+  static const _fieldLabels = <String, String>{
+    'name': 'Name',
+    'id_number': 'ID Number',
+    'phone': 'Phone',
+    'group_name': 'Group Name',
+    'business_type': 'Business Type',
+    'df_name': 'D.F Name',
+    'gender': 'Gender',
+    'loan_amount': 'Loan Amount',
+    'loan_term': 'Loan Term',
+    'first_payment': 'First Payment Date',
+    'opening_amount': 'Opening Balance',
+    'init_fee': 'Initiation Fee',
+    'admin_fee': 'Admin Fee',
+    'monthly': 'Monthly Instalment',
+    'penalty': 'Penalty Fee',
+    'paid_init': 'Paid Initiation',
+    'paid_admin': 'Paid Admin',
+    'paid_instalment': 'Paid Instalment',
+    'paid_penalty': 'Paid Penalty',
+    'interest_rate': 'Interest Rate',
   };
 
   /// Strips common prefixes/suffixes from raw column headers so that
@@ -573,18 +627,12 @@ class ImportService {
       }
     }
 
-    // Fallback: treat row 0 as header and use positional mapping
-    return _HeaderInfo(
-      headerRow: 0,
-      dataStartRow: 1,
-      cols: {
-        'name': 0, 'id_number': 1, 'phone': 2, 'group_name': 3,
-        'business_type': 4, 'df_name': 5, 'gender': 6, 'loan_amount': 7,
-        'loan_term': 8, 'first_payment': 9, 'opening_amount': 10,
-        'init_fee': 11, 'admin_fee': 12, 'monthly': 13, 'penalty': 14,
-        'paid_init': 15, 'paid_admin': 16, 'paid_instalment': 17,
-        'paid_penalty': 18,
-      },
+    // If no header row with a 'name' column was found, bail out with a
+    // clear error instead of guessing column positions.
+    throw Exception(
+      'Could not detect a header row. '
+      'Expected a column named "Member\'s Name & Surname", "Name" or similar. '
+      'Please check that your Excel file has a header row in the first 5 rows.',
     );
   }
 
@@ -592,28 +640,42 @@ class ImportService {
   // Helper extractors
   // -------------------------------------------------------------------------
 
-  String _str(List<dynamic> row, int col, {String fallback = ''}) {
-    if (col >= row.length) return fallback;
+  String _str(List<dynamic> row, int? col, {String fallback = ''}) {
+    if (col == null || col >= row.length) return fallback;
     final v = row[col]?.toString().trim() ?? '';
     return v.isEmpty ? fallback : v;
   }
 
-  double _toDouble(List<dynamic> row, int col) {
-    if (col >= row.length || row[col] == null) return 0.0;
+  /// Parse a numeric cell, handling currency prefixes ("R"), thousand
+  /// separators (spaces), and SA-format comma decimals ("R1 234,56").
+  double _toDouble(List<dynamic> row, int? col) {
+    if (col == null || col >= row.length || row[col] == null) return 0.0;
     final v = row[col];
     if (v is num) return v.toDouble();
-    return double.tryParse(v.toString()) ?? 0.0;
+    final raw = v.toString().trim();
+    if (raw.isEmpty) return 0.0;
+    // Strip currency symbol, thousand separators, normalise decimal comma
+    final cleaned = raw
+        .replaceAll(RegExp(r'[Rr]'), '')
+        .replaceAll(' ', '')
+        .replaceAll(',', '.');
+    return double.tryParse(cleaned) ?? 0.0;
   }
 
-  int _toInt(List<dynamic> row, int col) {
-    if (col >= row.length || row[col] == null) return 0;
+  /// Parse an integer cell, handling trailing text like "4 Months".
+  int _toInt(List<dynamic> row, int? col) {
+    if (col == null || col >= row.length || row[col] == null) return 0;
     final v = row[col];
     if (v is num) return v.toInt();
-    return int.tryParse(v.toString()) ?? 0;
+    final raw = v.toString().trim();
+    if (raw.isEmpty) return 0;
+    // Extract leading digits (e.g. "4 Months" → 4)
+    final match = RegExp(r'^\d+').firstMatch(raw);
+    return match != null ? int.parse(match.group(0)!) : 0;
   }
 
-  DateTime? _toDateTime(List<dynamic> row, int col) {
-    if (col >= row.length || row[col] == null) return null;
+  DateTime? _toDateTime(List<dynamic> row, int? col) {
+    if (col == null || col >= row.length || row[col] == null) return null;
     final v = row[col];
     if (v is DateTime) return v;
     return DateTime.tryParse(v.toString());
