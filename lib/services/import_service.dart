@@ -333,11 +333,10 @@ class ImportService {
           final monthlyInstalment = _toDouble(row, cols['monthly']);
           final penaltyFee        = _toDouble(row, cols['penalty']);
 
-          final paidInit        = _toDouble(row, cols['paid_init']);
-          final paidAdmin       = _toDouble(row, cols['paid_admin']);
-          final paidInstalment  = _toDouble(row, cols['paid_instalment']);
-          final paidPenalty     = _toDouble(row, cols['paid_penalty']);
-          final totalPaid = paidInit + paidAdmin + paidInstalment + paidPenalty;
+          // Total Paid comes directly from "Total Monthly Instalments Received"
+          // (mapped to 'paid_instalment').  Do NOT sum components — the Excel
+          // file is the single source of truth for imported data.
+          final totalPaid = _toDouble(row, cols['paid_instalment']);
 
           final groupId = await _getOrCreateGroup(groupName);
           final vendorId = await _getOrCreateVendor(
