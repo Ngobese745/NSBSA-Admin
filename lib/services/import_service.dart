@@ -592,13 +592,6 @@ class ImportService {
     if (h.startsWith('loan ')) {
       h = h.substring(5);
     }
-    // Strip common suffixes
-    if (h.endsWith(' received')) {
-      h = h.substring(0, h.length - 9);
-    }
-    if (h.endsWith(' date')) {
-      h = h.substring(0, h.length - 5);
-    }
     return h;
   }
 

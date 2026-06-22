@@ -36,6 +36,7 @@ import '../widgets/system_status_banner_strip.dart';
 import '../widgets/notification_bell.dart';
 import 'marketing/marketing_hub_screen.dart';
 import 'notification_history_screen.dart';
+import 'master_loan_ledger_screen.dart';
 import '../providers/shell_navigation_provider.dart';
 
 class MainShell extends StatefulWidget {
@@ -55,7 +56,7 @@ class _MainShellState extends State<MainShell> {
   final Set<int> _loadedIndices = {0}; // Dashboard is always loaded
 
   final List<GlobalKey<NavigatorState>> _navigatorKeys = List.generate(
-    14,
+    15,
     (index) => GlobalKey<NavigatorState>(),
   );
 
@@ -74,6 +75,7 @@ class _MainShellState extends State<MainShell> {
     'Developer Management',
     'Account Preferences',
     'Notification History',
+    'Master Loan Ledger',
   ];
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
@@ -143,6 +145,8 @@ class _MainShellState extends State<MainShell> {
         return const UserProfileScreen();
       case 13:
         return const NotificationHistoryScreen();
+      case 14:
+        return const FeatureGuard(featureKey: 'loans', child: MasterLoanLedgerScreen());
       default:
         final authProvider = context.read<AuthProvider>();
         if (authProvider.userProfile?.role == 'Super Admin') {
@@ -647,6 +651,17 @@ class _MainShellState extends State<MainShell> {
                   navIndex,
                   dev,
                   featureKey: 'import',
+                  profile: profile, isCollapsed: isCollapsed,
+                ),
+
+              if (!AccessControlService.isFieldAgent(profile) && (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false)))
+                _buildNavItem(
+                  Icons.account_balance,
+                  'Master Loan Ledger',
+                  14,
+                  navIndex,
+                  dev,
+                  featureKey: 'loans',
                   profile: profile, isCollapsed: isCollapsed,
                 ),
 

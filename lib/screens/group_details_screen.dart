@@ -1446,18 +1446,35 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     final amountController = TextEditingController();
     final termController = TextEditingController(text: '6');
     final monthlyController = TextEditingController();
+    final customRateController = TextEditingController();
     DateTime selectedFirstDate = DateTime.now().add(const Duration(days: 30));
 
     String? selectedVendorId;
     Map<String, dynamic>? interestBreakdown;
+    double? selectedRate;
+    bool useCustomRate = false;
+    bool rateLocked = false; // true once user explicitly picks or edits a rate
 
-    void recalc(StateSetter setState) {
+    void recalc(StateSetter setState, {double? rateOverride}) {
       interestBreakdown = _recalculateLoan(
         setState,
         amountController,
         termController,
         monthlyController,
+        userRate: rateOverride,
       );
+      // Auto-select from result only when nothing is locked
+      if (rateOverride == null && !rateLocked && interestBreakdown != null) {
+        selectedRate = interestBreakdown['rate'] as double?;
+      }
+    }
+
+    void recalcWithRate(StateSetter setState, double rate) {
+      rateLocked = true;
+      selectedRate = rate;
+      useCustomRate = false;
+      customRateController.text = (rate * 100).toStringAsFixed(2);
+      recalc(setState, rateOverride: rate);
     }
 
     showDialog(
@@ -1468,8 +1485,10 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           final interestAmount = interestBreakdown?['interestAmount'] as double?;
           final totalRepayment = interestBreakdown?['totalRepayment'] as double?;
           final baseMonthly = interestBreakdown?['baseMonthly'] as double?;
-          final exact = interestBreakdown?['exact'] as bool?;
           final desc = interestBreakdown?['description'] as String?;
+
+          final term = int.tryParse(termController.text) ?? 6;
+          final available = LoanInterestService.getRatesForDuration(term);
 
           return AlertDialog(
             backgroundColor: Theme.of(context).colorScheme.surface,
@@ -1525,6 +1544,92 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   onChanged: (_) => recalc(setState),
                 ),
 
+                // ── Interest Rate Selection ──
+                const SizedBox(height: 16),
+                if (!useCustomRate && available.isNotEmpty)
+                  DropdownButtonFormField<double>(
+                    value: selectedRate,
+                    dropdownColor: Theme.of(context).cardColor,
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Interest Rate',
+                      labelStyle: TextStyle(color: Colors.grey),
+                    ),
+                    items: [
+                      ...available.map((entry) => DropdownMenuItem(
+                        value: entry.key,
+                        child: Text(
+                          '${(entry.key * 100).toStringAsFixed(2)}% '
+                          '(R${entry.value})',
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      )),
+                      const DropdownMenuItem(
+                        value: -1.0,
+                        child: Text(
+                          'Enter custom rate…',
+                          style: TextStyle(
+                            color: Colors.amber,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                    onChanged: (val) {
+                      if (val == -1.0) {
+                        setState(() => useCustomRate = true);
+                      } else if (val != null) {
+                        recalcWithRate(setState, val);
+                      }
+                    },
+                  ),
+                if (useCustomRate || available.isEmpty)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: customRateController,
+                          style: TextStyle(
+                            color: Theme.of(context).textTheme.bodyMedium?.color,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Interest Rate (%)',
+                            labelStyle: TextStyle(color: Colors.grey),
+                            isDense: true,
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          onChanged: (_) {
+                            final r = double.tryParse(customRateController.text);
+                            if (r != null && r > 0) {
+                              rateLocked = true;
+                              selectedRate = r / 100;
+                              recalc(setState, rateOverride: selectedRate);
+                            }
+                          },
+                        ),
+                      ),
+                      if (available.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: () => setState(() {
+                            useCustomRate = false;
+                            rateLocked = false;
+                            selectedRate = null;
+                            recalc(setState);
+                          }),
+                          child: const Text(
+                            'Presets',
+                            style: TextStyle(fontSize: 11),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+
                 if (interestBreakdown != null) ...[
                   const SizedBox(height: 16),
                   Container(
@@ -1577,18 +1682,19 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                           'R${totalRepayment?.toStringAsFixed(2) ?? '--'}',
                           Colors.greenAccent,
                         ),
-                        const Divider(color: Colors.white12, height: 12),
-                        if (exact == false)
+                        if (desc != null && interestBreakdown?['rate'] != null && available.isNotEmpty) ...[
+                          const Divider(color: Colors.white12, height: 12),
                           Padding(
                             padding: const EdgeInsets.only(top: 4),
                             child: Text(
-                              'Using nearest bracket from rate table.',
+                              desc,
                               style: TextStyle(
                                 color: Colors.grey[500],
                                 fontSize: 9,
                               ),
                             ),
                           ),
+                        ],
                       ],
                     ),
                   ),
@@ -1743,15 +1849,16 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     );
   }
 
-  /// Recalculates loan terms using the auto-detected interest rate and
- /// updates the monthly controller. Returns the computed breakdown for
-  /// the interest preview panel.
+  /// Recalculates loan terms using the user-selected (or auto-detected)
+  /// interest rate and updates the monthly controller. Returns the computed
+  /// breakdown for the interest preview panel.
   Map<String, dynamic> _recalculateLoan(
     StateSetter setState,
     TextEditingController amountController,
     TextEditingController termController,
-    TextEditingController monthlyController,
-  ) {
+    TextEditingController monthlyController, {
+    double? userRate,
+  }) {
     final amount = double.tryParse(amountController.text) ?? 0;
     final term = int.tryParse(termController.text) ?? 0;
 
@@ -1766,8 +1873,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     const adminFee = 65.0;
     const penaltyFee = 59.0;
 
-    final rate = LoanInterestService.getRate(amount, term);
-    if (rate == null) {
+    final rate = userRate ?? LoanInterestService.getRate(amount, term);
+    if (rate == null || rate <= 0) {
       setState(() {
         monthlyController.text = (amount / term).toStringAsFixed(0);
       });
@@ -1783,6 +1890,13 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       monthlyController.text = totalMonthly.toStringAsFixed(0);
     });
 
+    final isFromTable = LoanInterestService.getExactRate(amount, term) == rate;
+    final desc = isFromTable
+        ? 'Rate of ${(rate * 100).toStringAsFixed(2)}% applies to '
+            'R${amount.toStringAsFixed(0)} over $term months.'
+        : 'Using $rate% (user-selected or custom rate) '
+            'for R${amount.toStringAsFixed(0)} over $term months.';
+
     return {
       'rate': rate,
       'rateLabel': '${(rate * 100).toStringAsFixed(2)}%',
@@ -1790,7 +1904,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       'totalRepayment': totalRepayment,
       'baseMonthly': baseMonthly,
       'exact': LoanInterestService.isExactMatch(amount, term),
-      'description': LoanInterestService.describeRate(amount, term),
+      'description': desc,
     };
   }
 

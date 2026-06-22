@@ -90,6 +90,20 @@ class LoanInterestService {
         'for R$_fmt(amount) over $durationMonths months.';
   }
 
+  /// Returns all available (rate, amountBracket) entries for a given duration,
+  /// sorted from highest rate to lowest.
+  static List<MapEntry<double, int>> getRatesForDuration(int durationMonths) {
+    final entries = <MapEntry<double, int>>[];
+    for (final entry in _rateTable.entries) {
+      final rate = entry.value[durationMonths];
+      if (rate != null) {
+        entries.add(MapEntry(rate, entry.key));
+      }
+    }
+    entries.sort((a, b) => b.key.compareTo(a.key));
+    return entries;
+  }
+
   /// Whether the combination is an exact table match.
   static bool isExactMatch(double amount, int durationMonths) {
     return getExactRate(amount, durationMonths) != null;

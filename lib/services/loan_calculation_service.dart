@@ -50,18 +50,26 @@ class LoanCalculationService {
   }
 
   /// Calculates the current balance of a loan.
+  ///
+  /// For imported loans the [loan.openingAmount] stores the "Live Loan Balance"
+  /// from the Excel file, which IS the actual outstanding balance.  In that
+  /// case we return it directly instead of running the component formula.
+  ///
+  /// For system-created loans (openingAmount == null) we use the standard
+  /// formula:
+  ///   (monthlyPayment × duration) + penalty - totalPaid
   static double calculateBalance(LoanModel loan, List<PaymentModel> payments) {
+    // Imported loans carry the authoritative balance in openingAmount
+    if (loan.openingAmount != null) {
+      return loan.openingAmount!;
+    }
+
     final totalPaid = payments.fold(0.0, (sum, p) => sum + p.amountPaid);
 
     final appliedPenalty = calculateAppliedPenalty(loan, payments);
-    final openingAmount = loan.openingAmount ?? 0.0;
 
-    // Total liability is (Monthly Repayment * Term) + Opening Amount + Late Penalties
-    // The monthly installment already includes the principal, interest, admin fees, and amortized initiation fee.
     final totalLiability =
-        (loan.monthlyPayment * loan.durationMonths) +
-        openingAmount +
-        appliedPenalty;
+        (loan.monthlyPayment * loan.durationMonths) + appliedPenalty;
 
     final balance = totalLiability - totalPaid;
 
