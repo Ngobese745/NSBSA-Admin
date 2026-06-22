@@ -1456,16 +1456,17 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     bool rateLocked = false; // true once user explicitly picks or edits a rate
 
     void recalc(StateSetter setState, {double? rateOverride}) {
-      interestBreakdown = _recalculateLoan(
+      final breakdown = _recalculateLoan(
         setState,
         amountController,
         termController,
         monthlyController,
         userRate: rateOverride,
       );
+      interestBreakdown = breakdown;
       // Auto-select from result only when nothing is locked
-      if (rateOverride == null && !rateLocked && interestBreakdown != null) {
-        selectedRate = interestBreakdown['rate'] as double?;
+      if (rateOverride == null && !rateLocked) {
+        selectedRate = breakdown['rate'] as double?;
       }
     }
 
