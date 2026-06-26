@@ -1454,6 +1454,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     double? selectedRate;
     bool useCustomRate = false;
     bool rateLocked = false; // true once user explicitly picks or edits a rate
+    bool monthlyManuallySet = false;
 
     void recalc(StateSetter setState, {double? rateOverride}) {
       final breakdown = _recalculateLoan(
@@ -1462,6 +1463,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         termController,
         monthlyController,
         userRate: rateOverride,
+        manualMonthly: monthlyManuallySet,
       );
       interestBreakdown = breakdown;
       // Auto-select from result only when nothing is locked
@@ -1701,24 +1703,91 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   ),
                 ],
 
+                // ── Fees Breakdown ──
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blueGrey.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Colors.blueGrey.withOpacity(0.25),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.receipt_long,
+                            color: Colors.blueGrey,
+                            size: 14,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Fees Breakdown',
+                            style: TextStyle(
+                              color: Colors.blueGrey.shade200,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      _interestRow(
+                        'Initiation Fee (once-off)',
+                        'R150.00',
+                        Colors.orangeAccent,
+                      ),
+                      _interestRow(
+                        'Monthly Initiation',
+                        'R${(150.0 / (int.tryParse(termController.text) ?? 1)).toStringAsFixed(2)}',
+                        Colors.orangeAccent.withOpacity(0.7),
+                      ),
+                      _interestRow(
+                        'Monthly Admin Fee',
+                        'R65.00',
+                        Colors.blueAccent,
+                      ),
+                      _interestRow(
+                        'Penalty Fee',
+                        'R59.00',
+                        Colors.redAccent,
+                      ),
+                      const Divider(color: Colors.white12, height: 12),
+                      _interestRow(
+                        'Total Fees / Month',
+                        'R${(150.0 / (int.tryParse(termController.text) ?? 1) + 65.0 + 59.0).toStringAsFixed(2)}',
+                        Colors.white,
+                      ),
+                    ],
+                  ),
+                ),
+
                 const SizedBox(height: 16),
                 TextField(
                   controller: monthlyController,
-                  readOnly: true,
                   style: TextStyle(
-                    color: Colors.grey[400],
+                    color: monthlyManuallySet
+                        ? Theme.of(context).textTheme.bodyMedium?.color
+                        : Colors.grey[400],
                   ),
                   decoration: InputDecoration(
                     labelText: 'Monthly Payment (R)',
                     labelStyle: const TextStyle(color: Colors.grey),
-                    helperText:
-                        'Auto-calculated: (Principal + Interest) / Term + Fees',
+                    helperText: monthlyManuallySet
+                        ? 'Manually set'
+                        : 'Auto-calculated: (Principal + Interest) / Term + Fees',
                     helperStyle: TextStyle(
                       color: AppTheme.primaryGold,
                       fontSize: 10,
                     ),
                   ),
                   keyboardType: TextInputType.number,
+                  onChanged: (_) {
+                    setState(() => monthlyManuallySet = true);
+                  },
                 ),
                 const SizedBox(height: 12),
                 ListTile(
@@ -1859,37 +1928,43 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     TextEditingController termController,
     TextEditingController monthlyController, {
     double? userRate,
+    bool manualMonthly = false,
   }) {
     final amount = double.tryParse(amountController.text) ?? 0;
     final term = int.tryParse(termController.text) ?? 0;
 
     if (amount <= 0 || term <= 0) {
-      setState(() {
-        monthlyController.text = '';
-      });
+      if (!manualMonthly) {
+        setState(() {
+          monthlyController.text = '';
+        });
+      }
       return {};
     }
 
     const initiationFee = 150.0;
     const adminFee = 65.0;
-    const penaltyFee = 59.0;
 
     final rate = userRate ?? LoanInterestService.getRate(amount, term);
     if (rate == null || rate <= 0) {
-      setState(() {
-        monthlyController.text = (amount / term).toStringAsFixed(0);
-      });
+      if (!manualMonthly) {
+        setState(() {
+          monthlyController.text = (amount / term).toStringAsFixed(0);
+        });
+      }
       return {};
     }
 
     final interestAmount = LoanInterestService.calculateInterestAmount(amount, rate);
     final totalRepayment = LoanInterestService.calculateTotalRepayment(amount, rate);
     final baseMonthly = totalRepayment / term;
-    final totalMonthly = baseMonthly + adminFee + penaltyFee + (initiationFee / term);
+    final totalMonthly = baseMonthly + adminFee + (initiationFee / term);
 
-    setState(() {
-      monthlyController.text = totalMonthly.toStringAsFixed(0);
-    });
+    if (!manualMonthly) {
+      setState(() {
+        monthlyController.text = totalMonthly.toStringAsFixed(0);
+      });
+    }
 
     final isFromTable = LoanInterestService.getExactRate(amount, term) == rate;
     final desc = isFromTable
@@ -2667,9 +2742,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             .where((p) => p.loanId == loan.id)
             .toList();
         totalLiability +=
-            loan.amount +
-            (loan.initiationFee ?? 0) +
-            ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) +
+            (loan.monthlyPayment * loan.durationMonths) +
             LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
       }
       final totalPaid = groupPayments.fold<double>(
@@ -2729,9 +2802,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   .where((p) => p.loanId == loan.id)
                   .toList();
               loanInitialLiability[loan.id] =
-                  loan.amount +
-                  (loan.initiationFee ?? 0) +
-                  ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) +
+                  (loan.monthlyPayment * loan.durationMonths) +
                   LoanCalculationService.calculateAppliedPenalty(
                     loan,
                     loanPayments,

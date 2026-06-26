@@ -460,7 +460,9 @@ class LoanDetailsScreen extends StatelessWidget {
           const Divider(height: 24, thickness: 0.5),
           _buildInfoRow(
             'Total Loan Liability',
-            'R ${((loan.monthlyPayment * loan.durationMonths) + (loan.openingAmount ?? 0) + appliedPenalty).toStringAsFixed(0)}',
+            loan.openingAmount != null
+                ? 'R ${(loan.openingAmount! + appliedPenalty).toStringAsFixed(0)}'
+                : 'R ${((loan.monthlyPayment * loan.durationMonths) + appliedPenalty).toStringAsFixed(0)}',
             isValueBold: true,
             valueColor: AppTheme.primaryGold,
           ),
@@ -674,7 +676,6 @@ class LoanDetailsScreen extends StatelessWidget {
       final term = int.tryParse(termController.text) ?? 0;
       if (amount <= 0 || term <= 0) return;
       const adminFee = 65.0;
-      const penaltyFee = 59.0;
       const initFee = 150.0;
       final rate = LoanInterestService.getRate(amount, term);
       if (rate == null) return;
@@ -682,7 +683,7 @@ class LoanDetailsScreen extends StatelessWidget {
           LoanInterestService.calculateTotalRepayment(amount, rate);
       final baseMonthly = totalRepayment / term;
       final totalMonthly =
-          baseMonthly + adminFee + penaltyFee + (initFee / term);
+          baseMonthly + adminFee + (initFee / term);
       setState(() {
         monthlyController.text = totalMonthly.toStringAsFixed(0);
         interestBreakdown = {
@@ -1098,7 +1099,7 @@ class LoanDetailsScreen extends StatelessWidget {
                   _pdfBreakdownRow('Total Admin Fees (${loan.durationMonths} months)', 'R ${((loan.monthlyAdminFee ?? 0) * loan.durationMonths).toStringAsFixed(2)}'),
                   _pdfBreakdownRow('Applied Penalties', 'R ${LoanCalculationService.calculateAppliedPenalty(loan, payments).toStringAsFixed(2)}'),
                   pw.Divider(color: PdfColors.grey300),
-                  _pdfBreakdownRow('Total Loan Liability', 'R ${((loan.monthlyPayment * loan.durationMonths) + (loan.initiationFee ?? 0) + ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) + LoanCalculationService.calculateAppliedPenalty(loan, payments)).toStringAsFixed(2)}', isBold: true),
+                  _pdfBreakdownRow('Total Loan Liability', 'R ${((loan.monthlyPayment * loan.durationMonths) + LoanCalculationService.calculateAppliedPenalty(loan, payments)).toStringAsFixed(2)}', isBold: true),
                   _pdfBreakdownRow('Total Amount Paid', 'R ${totalPaid.toStringAsFixed(2)}'),
                   _pdfBreakdownRow('Outstanding Balance', 'R ${balance.toStringAsFixed(2)}', isBold: true),
                 ],

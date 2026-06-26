@@ -695,8 +695,8 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     final loanPayments = paymentProvider.payments.where((p) => p.loanId == loan.id).toList();
 
     final totalPaid = loanPayments.fold(0.0, (sum, p) => sum + p.amountPaid);
-    final liability = loan.amount + (loan.initiationFee ?? 0) + ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) + LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
-    final balance = liability - totalPaid;
+    final balance = LoanCalculationService.calculateBalance(loan, loanPayments);
+    final liability = balance + totalPaid;
     final arrears = LoanCalculationService.calculateArrears(loan, loanPayments);
     final isOverdue = loan.status == 'Overdue' || arrears > 0;
 

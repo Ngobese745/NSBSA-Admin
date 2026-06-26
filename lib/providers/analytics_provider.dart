@@ -362,8 +362,6 @@ class AnalyticsProvider with ChangeNotifier {
         final loanPayments = payments.where((p) => p.loanId == loan.id).toList();
         final expected =
             (loan.monthlyPayment * loan.durationMonths) +
-            (loan.initiationFee ?? 0) +
-            ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) +
             LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
 
         final paid = loanPayments.fold(0.0, (sum, p) => sum + p.amountPaid);

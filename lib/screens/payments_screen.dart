@@ -433,10 +433,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             .toList()
           ..sort((a, b) => a.datePaid.compareTo(b.datePaid));
 
-    final totalExpected =
-        loan.amount +
-        (loan.initiationFee ?? 0) +
-        ((loan.monthlyAdminFee ?? 0) * loan.durationMonths);
+    final totalExpected = loan.monthlyPayment * loan.durationMonths;
 
     double runningBalance = totalExpected;
     double balanceAfterPayment = totalExpected;

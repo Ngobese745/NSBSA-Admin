@@ -17,18 +17,20 @@ class InactivityTimeoutService {
   int? _cachedTimeoutMinutes;
   bool _cachedTimeoutDisabled = false;
   String? _cachedUserId;
+  bool _preferenceLoaded = false;
 
   GlobalKey<NavigatorState>? _navigatorKey;
   VoidCallback? _onTimeout;
 
   /// Initialize with navigator key and the callback for when timeout expires.
-  void init({
+  Future<void> init({
     required GlobalKey<NavigatorState> navigatorKey,
     required VoidCallback onTimeout,
-  }) {
+  }) async {
     _navigatorKey = navigatorKey;
     _onTimeout = onTimeout;
-    _loadPreference();
+    await _loadPreference();
+    _preferenceLoaded = true;
     _resetTimer();
   }
 
@@ -80,6 +82,7 @@ class InactivityTimeoutService {
 
   void onUserActivity() {
     if (_isDisposed) return;
+    if (!_preferenceLoaded) return;
     final minutes = effectiveTimeoutMinutes;
     if (minutes == null) return;
     if (_warningActive) return;
