@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/vendor.dart';
@@ -54,9 +55,14 @@ class VendorProvider with ChangeNotifier {
     );
   }
 
+  Timer? _cacheDebounce;
+
   void _syncCacheAndNotify() {
-    CacheService.saveCache('vendors_cache', _vendors.map((e) => e.toJson()).toList());
     notifyListeners();
+    _cacheDebounce?.cancel();
+    _cacheDebounce = Timer(const Duration(seconds: 2), () {
+      CacheService.saveCache('vendors_cache', _vendors.map((e) => e.toJson()).toList());
+    });
   }
 
   Future<void> fetchVendors({bool forceRefresh = false}) async {

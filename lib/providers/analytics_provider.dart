@@ -360,8 +360,9 @@ class AnalyticsProvider with ChangeNotifier {
 
       for (var loan in vendorLoans) {
         final loanPayments = payments.where((p) => p.loanId == loan.id).toList();
-        final expected =
-            (loan.monthlyPayment * loan.durationMonths) +
+        final expected = loan.openingAmount != null
+            ? loan.openingAmount! + LoanCalculationService.calculateAppliedPenalty(loan, loanPayments)
+            : (loan.monthlyPayment * loan.durationMonths) +
             (loan.initiationFee ?? 0) +
             LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
 
@@ -442,5 +443,5 @@ class LoanBookBreakdown {
 class GroupPerformance {
   final String name;
   final double collected;
-  GroupPerformance(this.name, this.collected);
+  const GroupPerformance(this.name, this.collected);
 }

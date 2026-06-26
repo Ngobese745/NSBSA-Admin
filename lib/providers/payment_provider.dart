@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/payment.dart';
@@ -58,9 +59,14 @@ class PaymentProvider with ChangeNotifier {
     );
   }
 
+  Timer? _cacheDebounce;
+
   void _syncCacheAndNotify() {
-    CacheService.saveCache('payments_cache', _payments.map((e) => e.toJson()).toList());
     notifyListeners();
+    _cacheDebounce?.cancel();
+    _cacheDebounce = Timer(const Duration(seconds: 2), () {
+      CacheService.saveCache('payments_cache', _payments.map((e) => e.toJson()).toList());
+    });
   }
 
   Future<void> fetchPayments({bool forceRefresh = false}) async {
@@ -129,8 +135,7 @@ class PaymentProvider with ChangeNotifier {
     } catch (e) {
       _payments.removeWhere((p) => p.id == payment.id);
       notifyListeners();
-      debugPrint('Error adding payment: $e');
-      rethrow;
+      throw Exception('Failed to record payment. Please try again.');
     }
   }
 
@@ -283,8 +288,7 @@ class PaymentProvider with ChangeNotifier {
 
       await fetchPayments(forceRefresh: true);
     } catch (e) {
-      debugPrint('Error adding group payment: $e');
-      rethrow;
+      throw Exception('Failed to add group payment. Please try again.');
     }
   }
 
@@ -311,8 +315,7 @@ class PaymentProvider with ChangeNotifier {
     } catch (e) {
       _payments.insert(oldIndex, deleted);
       notifyListeners();
-      debugPrint('Error deleting payment: $e');
-      rethrow;
+      throw Exception('Failed to delete payment. Please try again.');
     }
   }
 }

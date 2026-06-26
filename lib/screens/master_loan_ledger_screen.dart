@@ -9,6 +9,7 @@ import '../models/loan.dart';
 import '../models/vendor.dart';
 import '../models/group.dart';
 import '../models/payment.dart';
+import '../services/loan_calculation_service.dart';
 import 'dart:async';
 import 'loan_details_screen.dart';
 
@@ -83,9 +84,6 @@ class _MasterLoanLedgerScreenState extends State<MasterLoanLedgerScreen> {
         break;
       case 'term':
         updates = {'duration_months': int.tryParse(raw) ?? 0};
-        break;
-      case 'openingAmount':
-        updates = {'opening_amount': double.tryParse(raw) ?? 0};
         break;
       case 'monthlyPayment':
         updates = {'monthly_payment': double.tryParse(raw) ?? 0};
@@ -246,8 +244,8 @@ class _MasterLoanLedgerScreenState extends State<MasterLoanLedgerScreen> {
                         3: FlexColumnWidth(2.2),   // Group
                         4: FlexColumnWidth(1.5),   // Amount
                         5: FlexColumnWidth(1.2),   // Term
-                        6: FlexColumnWidth(1.8),   // Opening Balance
-                        7: FlexColumnWidth(1.8),   // Total Paid
+                        6: FlexColumnWidth(1.5),   // Balance
+                        7: FlexColumnWidth(1.5),   // Total Paid
                         8: FlexColumnWidth(1.5),   // Monthly
                         9: FlexColumnWidth(1.2),   // Status
                         10: FlexColumnWidth(0.8),  // Actions
@@ -270,7 +268,7 @@ class _MasterLoanLedgerScreenState extends State<MasterLoanLedgerScreen> {
                             _th('Group'),
                             _th('Amount'),
                             _th('Term'),
-                            _th('Opening Balance'),
+                            _th('Balance'),
                             _th('Total Paid'),
                             _th('Monthly'),
                             _th('Status'),
@@ -304,25 +302,30 @@ class _MasterLoanLedgerScreenState extends State<MasterLoanLedgerScreen> {
     ThemeData theme,
   ) {
     final totalPaid = loanPayments.fold(0.0, (s, p) => s + p.amountPaid);
-    final balance = loan.openingAmount ?? 0.0;
+    final balance = LoanCalculationService.calculateBalance(loan, loanPayments);
+    final imported = loan.openingAmount != null;
 
     return TableRow(
       children: [
-        _td(loan.vendorName ?? vendor?.name ?? '—'),
+        imported
+            ? _td(loan.vendorName ?? vendor?.name ?? '—', icon: Icons.download_for_offline, iconTooltip: 'Imported')
+            : _td(loan.vendorName ?? vendor?.name ?? '—'),
         _td(vendor?.idNumber ?? '—'),
         _td(vendor?.phone ?? '—'),
         _td(group?.name ?? '—'),
-        _editableTd(loan.id, 'amount',
-            loan.amount.toStringAsFixed(0), prefix: 'R '),
-        _editableTd(
-            loan.id, 'term', loan.durationMonths.toString(), suffix: 'm'),
-        _editableTd(loan.id, 'openingAmount',
-            balance.toStringAsFixed(0), prefix: 'R '),
+        imported
+            ? _td('R ${loan.amount.toStringAsFixed(0)}', color: Colors.blueGrey)
+            : _editableTd(loan.id, 'amount', loan.amount.toStringAsFixed(0), prefix: 'R '),
+        imported
+            ? _td('${loan.durationMonths}m', color: Colors.blueGrey)
+            : _editableTd(loan.id, 'term', loan.durationMonths.toString(), suffix: 'm'),
+        _td('R ${balance.toStringAsFixed(0)}', color: Colors.orange),
         _td('R ${totalPaid.toStringAsFixed(0)}', color: Colors.green),
-        _editableTd(loan.id, 'monthlyPayment',
-            loan.monthlyPayment.toStringAsFixed(0), prefix: 'R '),
+        imported
+            ? _td('R ${loan.monthlyPayment.toStringAsFixed(0)}', color: Colors.blueGrey)
+            : _editableTd(loan.id, 'monthlyPayment', loan.monthlyPayment.toStringAsFixed(0), prefix: 'R '),
         _statusBadge(loan.status),
-        _actionsCell(loan.id, theme),
+        _actionsCell(loan.id, theme, imported: imported),
       ],
     );
   }
@@ -343,17 +346,32 @@ class _MasterLoanLedgerScreenState extends State<MasterLoanLedgerScreen> {
     );
   }
 
-  Widget _td(String text, {Color? color}) {
+  Widget _td(String text, {Color? color, IconData? icon, String? iconTooltip}) {
+    final textWidget = Text(
+      text,
+      style: TextStyle(
+        fontSize: 11,
+        color: color,
+      ),
+      overflow: TextOverflow.ellipsis,
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 11,
-          color: color,
-        ),
-        overflow: TextOverflow.ellipsis,
-      ),
+      child: icon != null
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(child: textWidget),
+                Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: Tooltip(
+                    message: iconTooltip ?? '',
+                    child: Icon(icon, size: 12, color: Colors.blueGrey.shade300),
+                  ),
+                ),
+              ],
+            )
+          : textWidget,
     );
   }
 
@@ -433,9 +451,11 @@ class _MasterLoanLedgerScreenState extends State<MasterLoanLedgerScreen> {
 
   Widget _statusBadge(String status) {
     Color color;
+    IconData? icon;
     switch (status.toLowerCase()) {
       case 'active':
         color = Colors.green;
+        icon = Icons.play_circle_filled;
         break;
       case 'settled':
         color = Colors.blueGrey;
@@ -456,20 +476,22 @@ class _MasterLoanLedgerScreenState extends State<MasterLoanLedgerScreen> {
           borderRadius: BorderRadius.circular(4),
           border: Border.all(color: color.withOpacity(0.3)),
         ),
-        child: Text(
-          status,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-            color: color,
-          ),
-          textAlign: TextAlign.center,
-        ),
+        child: icon != null
+            ? Icon(icon, size: 14, color: color)
+            : Text(
+                status,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
+                textAlign: TextAlign.center,
+              ),
       ),
     );
   }
 
-  Widget _actionsCell(String loanId, ThemeData theme) {
+  Widget _actionsCell(String loanId, ThemeData theme, {bool imported = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: PopupMenuButton<String>(
@@ -486,25 +508,19 @@ class _MasterLoanLedgerScreenState extends State<MasterLoanLedgerScreen> {
                 builder: (context) => LoanDetailsScreen(loan: loan),
               ),
             );
-          } else if (value == 'edit_amount') {
+          } else if (!imported && value == 'edit_amount') {
             final loan = context.read<LoanProvider>().loans.firstWhere(
                   (l) => l.id == loanId,
                 );
             _startEdit(loanId, 'amount',
                 loan.amount.toStringAsFixed(0));
-          } else if (value == 'edit_term') {
+          } else if (!imported && value == 'edit_term') {
             final loan = context.read<LoanProvider>().loans.firstWhere(
                   (l) => l.id == loanId,
                 );
             _startEdit(loanId, 'term',
                 loan.durationMonths.toString());
-          } else if (value == 'edit_opening') {
-            final loan = context.read<LoanProvider>().loans.firstWhere(
-                  (l) => l.id == loanId,
-                );
-            _startEdit(loanId, 'openingAmount',
-                (loan.openingAmount ?? 0).toStringAsFixed(0));
-          } else if (value == 'edit_fees') {
+          } else if (!imported && value == 'edit_fees') {
             _showFeesDialog(loanId);
           }
         },
@@ -518,43 +534,35 @@ class _MasterLoanLedgerScreenState extends State<MasterLoanLedgerScreen> {
               contentPadding: EdgeInsets.zero,
             ),
           ),
-          const PopupMenuItem(
-            value: 'edit_amount',
-            child: ListTile(
-              leading: Icon(Icons.edit, size: 18),
-              title: Text('Edit Amount', style: TextStyle(fontSize: 13)),
-              dense: true,
-              contentPadding: EdgeInsets.zero,
+          if (!imported) ...[
+            const PopupMenuItem(
+              value: 'edit_amount',
+              child: ListTile(
+                leading: Icon(Icons.edit, size: 18),
+                title: Text('Edit Amount', style: TextStyle(fontSize: 13)),
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
             ),
-          ),
-          const PopupMenuItem(
-            value: 'edit_term',
-            child: ListTile(
-              leading: Icon(Icons.edit, size: 18),
-              title: Text('Edit Term', style: TextStyle(fontSize: 13)),
-              dense: true,
-              contentPadding: EdgeInsets.zero,
+            const PopupMenuItem(
+              value: 'edit_term',
+              child: ListTile(
+                leading: Icon(Icons.edit, size: 18),
+                title: Text('Edit Term', style: TextStyle(fontSize: 13)),
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
             ),
-          ),
-          const PopupMenuItem(
-            value: 'edit_opening',
-            child: ListTile(
-              leading: Icon(Icons.edit, size: 18),
-              title: Text('Edit Opening Balance',
-                  style: TextStyle(fontSize: 13)),
-              dense: true,
-              contentPadding: EdgeInsets.zero,
+            const PopupMenuItem(
+              value: 'edit_fees',
+              child: ListTile(
+                leading: Icon(Icons.money, size: 18),
+                title: Text('Edit Fees', style: TextStyle(fontSize: 13)),
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
             ),
-          ),
-          const PopupMenuItem(
-            value: 'edit_fees',
-            child: ListTile(
-              leading: Icon(Icons.money, size: 18),
-              title: Text('Edit Fees', style: TextStyle(fontSize: 13)),
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-            ),
-          ),
+          ],
         ],
       ),
     );

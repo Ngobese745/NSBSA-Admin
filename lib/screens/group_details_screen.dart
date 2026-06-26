@@ -2855,8 +2855,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         final loanPayments = groupPayments
             .where((p) => p.loanId == loan.id)
             .toList();
-        totalLiability +=
-            (loan.monthlyPayment * loan.durationMonths) +
+        totalLiability += loan.openingAmount != null
+            ? loan.openingAmount! + LoanCalculationService.calculateAppliedPenalty(loan, loanPayments)
+            : (loan.monthlyPayment * loan.durationMonths) +
             (loan.initiationFee ?? 0) +
             LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
       }
@@ -2916,8 +2917,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               final loanPayments = groupPayments
                   .where((p) => p.loanId == loan.id)
                   .toList();
-              loanInitialLiability[loan.id] =
-                  (loan.monthlyPayment * loan.durationMonths) +
+              loanInitialLiability[loan.id] = loan.openingAmount != null
+                  ? loan.openingAmount! + LoanCalculationService.calculateAppliedPenalty(loan, loanPayments)
+                  : (loan.monthlyPayment * loan.durationMonths) +
                   (loan.initiationFee ?? 0) +
                   LoanCalculationService.calculateAppliedPenalty(
                     loan,

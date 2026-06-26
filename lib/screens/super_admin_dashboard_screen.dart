@@ -24,6 +24,7 @@ class SuperAdminDashboardScreen extends StatefulWidget {
 class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
   List<SystemAuditLogModel> _recentLogs = [];
   bool _isLoadingLogs = true;
+  bool _analyticsCalculated = false;
 
   @override
   void initState() {
@@ -57,10 +58,12 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
     final analyticsProvider = context.watch<AnalyticsProvider>();
     final staffProvider = context.watch<StaffPerformanceProvider>();
 
-    if (!groupProvider.isLoading &&
+    if (!_analyticsCalculated &&
+        !groupProvider.isLoading &&
         !loanProvider.isLoading &&
         !paymentProvider.isLoading &&
         !vendorProvider.isLoading) {
+      _analyticsCalculated = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         analyticsProvider.calculateAnalytics(

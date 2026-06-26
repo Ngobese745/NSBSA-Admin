@@ -21,6 +21,8 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  bool _analyticsCalculated = false;
+
   @override
   void initState() {
     super.initState();
@@ -41,11 +43,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final vendorProvider = context.watch<VendorProvider>();
     final analyticsProvider = context.watch<AnalyticsProvider>();
 
-    // Trigger calculation if data is ready
-    if (!groupProvider.isLoading &&
+    if (!_analyticsCalculated &&
+        !groupProvider.isLoading &&
         !loanProvider.isLoading &&
         !paymentProvider.isLoading &&
         !vendorProvider.isLoading) {
+      _analyticsCalculated = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         analyticsProvider.calculateAnalytics(

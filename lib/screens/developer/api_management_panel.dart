@@ -80,6 +80,12 @@ class _ApiManagementPanelState extends State<ApiManagementPanel> {
                     serviceKey: 'smsworx',
                     keys: apiProv.keys.where((k) => k['service_name'] == 'smsworx').toList(),
                   ),
+                  const SizedBox(height: 32),
+                  _ServiceSection(
+                    title: 'iDrive e2 Storage',
+                    serviceKey: 'idrive_e2',
+                    keys: apiProv.keys.where((k) => k['service_name'] == 'idrive_e2').toList(),
+                  ),
                 ],
               ),
             ),
@@ -297,7 +303,11 @@ Future<void> _openKeyEditor(BuildContext context, Map<String, dynamic>? existing
   final parts = existingKey.split(':');
   
   final clientIdCtrl = TextEditingController(text: (parts.isNotEmpty && service == 'smsworx') ? parts[0] : '');
-  final apiSecretCtrl = TextEditingController(text: (parts.length > 1 && service == 'smsworx') ? parts[1] : (service != 'smsworx' ? existingKey : ''));
+  final apiSecretCtrl = TextEditingController(text: (parts.length > 1 && service == 'smsworx') ? parts[1] : (service != 'smsworx' && service != 'idrive_e2' ? existingKey : ''));
+  final accessKeyCtrl = TextEditingController(text: (parts.isNotEmpty && service == 'idrive_e2') ? parts[0] : '');
+  final secretKeyCtrl = TextEditingController(text: (parts.length > 1 && service == 'idrive_e2') ? parts[1] : '');
+  final endpointCtrl = TextEditingController(text: (parts.length > 2 && service == 'idrive_e2') ? parts[2] : '');
+  final bucketCtrl = TextEditingController(text: (parts.length > 3 && service == 'idrive_e2') ? parts[3] : '');
 
   final result = await showDialog<bool>(
     context: context,
@@ -313,6 +323,7 @@ Future<void> _openKeyEditor(BuildContext context, Map<String, dynamic>? existing
               items: const [
                 DropdownMenuItem(value: 'wesender', child: Text('WeSender API')),
                 DropdownMenuItem(value: 'smsworx', child: Text('SMSWORX API')),
+                DropdownMenuItem(value: 'idrive_e2', child: Text('iDrive e2 Storage')),
               ],
               onChanged: existing?['id'] != null ? null : (v) => setLocal(() => service = v!),
             ),
@@ -339,6 +350,39 @@ Future<void> _openKeyEditor(BuildContext context, Map<String, dynamic>? existing
                   hintText: 'Enter your SMSWorx API Secret',
                 ),
               ),
+            ] else if (service == 'idrive_e2') ...[
+              TextField(
+                controller: accessKeyCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Access Key ID',
+                  hintText: 'From iDrive e2 → Access Keys tab',
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: secretKeyCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Secret Access Key',
+                  hintText: 'Your iDrive e2 secret key',
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: endpointCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Endpoint URL',
+                  hintText: 'e.g. https://s3.us-east-1.idrivee2.com',
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: bucketCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Bucket Name',
+                  hintText: 'Your iDrive e2 bucket name',
+                ),
+              ),
             ] else ...[
               TextField(
                 controller: apiSecretCtrl,
@@ -356,13 +400,25 @@ Future<void> _openKeyEditor(BuildContext context, Map<String, dynamic>? existing
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           FilledButton(
             onPressed: () async {
-              final String finalKey = service == 'smsworx' 
-                  ? '${clientIdCtrl.text.trim()}:${apiSecretCtrl.text.trim()}'
-                  : apiSecretCtrl.text.trim();
-              
-              if (finalKey.isEmpty || (service == 'smsworx' && (clientIdCtrl.text.isEmpty || apiSecretCtrl.text.isEmpty))) {
-                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Please fill in all fields')));
-                return;
+              final String finalKey;
+              if (service == 'smsworx') {
+                finalKey = '${clientIdCtrl.text.trim()}:${apiSecretCtrl.text.trim()}';
+                if (clientIdCtrl.text.isEmpty || apiSecretCtrl.text.isEmpty) {
+                  if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Please fill in all fields')));
+                  return;
+                }
+              } else if (service == 'idrive_e2') {
+                finalKey = '${accessKeyCtrl.text.trim()}:${secretKeyCtrl.text.trim()}:${endpointCtrl.text.trim()}:${bucketCtrl.text.trim()}';
+                if (accessKeyCtrl.text.isEmpty || secretKeyCtrl.text.isEmpty || endpointCtrl.text.isEmpty || bucketCtrl.text.isEmpty) {
+                  if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Please fill in all iDrive e2 fields')));
+                  return;
+                }
+              } else {
+                finalKey = apiSecretCtrl.text.trim();
+                if (finalKey.isEmpty) {
+                  if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Please fill in all fields')));
+                  return;
+                }
               }
 
               final testOk = await apiProv.testConnection(service, finalKey);
@@ -380,9 +436,14 @@ Future<void> _openKeyEditor(BuildContext context, Map<String, dynamic>? existing
   );
 
   if (result == true && context.mounted) {
-    final String finalKey = service == 'smsworx' 
-        ? '${clientIdCtrl.text.trim()}:${apiSecretCtrl.text.trim()}'
-        : apiSecretCtrl.text.trim();
+    final String finalKey;
+    if (service == 'smsworx') {
+      finalKey = '${clientIdCtrl.text.trim()}:${apiSecretCtrl.text.trim()}';
+    } else if (service == 'idrive_e2') {
+      finalKey = '${accessKeyCtrl.text.trim()}:${secretKeyCtrl.text.trim()}:${endpointCtrl.text.trim()}:${bucketCtrl.text.trim()}';
+    } else {
+      finalKey = apiSecretCtrl.text.trim();
+    }
 
     try {
       await apiProv.saveKey(

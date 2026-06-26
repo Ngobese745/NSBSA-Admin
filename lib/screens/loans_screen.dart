@@ -425,14 +425,16 @@ class _LoansScreenState extends State<LoansScreen> {
             color: (isActive ? Colors.green : Colors.grey).withOpacity(0.3),
           ),
         ),
-        child: Text(
-          status,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-            color: isActive ? Colors.green : Colors.grey.shade600,
-          ),
-        ),
+        child: isActive
+            ? const Icon(Icons.play_circle_filled, size: 14, color: Colors.green)
+            : Text(
+                status,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey.shade600,
+                ),
+              ),
       ),
     );
   }

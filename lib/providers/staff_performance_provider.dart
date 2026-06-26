@@ -14,7 +14,7 @@ class StaffPerformance {
   final double collectionRate;
   final double totalArrears;
 
-  StaffPerformance({
+  const StaffPerformance({
     required this.staffName,
     required this.groupsCreated,
     required this.loansDisbursedCount,

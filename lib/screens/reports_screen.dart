@@ -11,7 +11,6 @@ import '../providers/loan_provider.dart';
 import '../providers/payment_provider.dart';
 import '../theme/app_theme.dart';
 import '../providers/analytics_provider.dart';
-import 'loan_details_screen.dart';
 import '../services/loan_calculation_service.dart';
 import '../services/excel_export_service.dart';
 import '../models/loan.dart';
@@ -68,29 +67,6 @@ class _SectionLabel extends StatelessWidget {
   }
 }
 
-class _LoanRowData {
-  final LoanModel loan;
-  final String vendorName;
-  final String vendorIdNumber;
-  final String vendorPhone;
-  final String groupName;
-  final String businessType;
-  final double totalPaid;
-  final double appliedPenalty;
-  final double balance;
-  _LoanRowData({
-    required this.loan,
-    required this.vendorName,
-    required this.vendorIdNumber,
-    required this.vendorPhone,
-    required this.groupName,
-    required this.businessType,
-    required this.totalPaid,
-    required this.appliedPenalty,
-    required this.balance,
-  });
-}
-
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
 
@@ -99,9 +75,6 @@ class ReportsScreen extends StatefulWidget {
 }
 
 class _ReportsScreenState extends State<ReportsScreen> {
-  String? _selectedLoanId;
-  String? _editingFieldKey;
-  final Map<String, TextEditingController> _controllers = {};
   int _selectedMonthFilter = DateTime.now().month;
 
   List<Map<String, dynamic>> _getMonthFilterOptions() {
@@ -145,131 +118,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
     } else {
       return '${monthNames[_selectedMonthFilter]} $currentYear';
     }
-  }
-
-  @override
-  void dispose() {
-    for (var controller in _controllers.values) {
-      controller.dispose();
-    }
-    super.dispose();
-  }
-
-  void _onCellTap(String loanId, String fieldName, String initialValue) {
-    setState(() {
-      _selectedLoanId = loanId;
-      _editingFieldKey = "${loanId}_$fieldName";
-      _controllers[_editingFieldKey!] = TextEditingController(
-        text: initialValue,
-      );
-    });
-  }
-
-  Future<void> _saveEdit(String loanId, String fieldName) async {
-    final controller = _controllers[_editingFieldKey];
-    if (controller == null) return;
-
-    final newValue = controller.text;
-    Map<String, dynamic> updates = {};
-
-    if (fieldName == 'amount')
-      updates['amount'] = double.tryParse(newValue) ?? 0.0;
-    else if (fieldName == 'durationMonths')
-      updates['duration_months'] = int.tryParse(newValue) ?? 0;
-    else if (fieldName == 'initiationFee')
-      updates['initiation_fee'] = double.tryParse(newValue) ?? 0.0;
-    else if (fieldName == 'monthlyAdminFee')
-      updates['monthly_admin_fee'] = double.tryParse(newValue) ?? 0.0;
-    else if (fieldName == 'penaltyFee')
-      updates['penalty_fee'] = double.tryParse(newValue) ?? 0.0;
-    else if (fieldName == 'firstInstalmentDate') {
-      final parsed = DateTime.tryParse(newValue);
-      if (parsed != null) updates['first_instalment_date'] = parsed.toIso8601String();
-    }
-
-    if (updates.isNotEmpty) {
-      try {
-        await context.read<LoanProvider>().updateLoan(loanId, updates);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Update successful'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Update failed: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    }
-
-    setState(() {
-      _editingFieldKey = null;
-    });
-  }
-
-  void _confirmDelete(String loanId) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Loan Record?'),
-        contentPadding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
-        content: SizedBox(
-          width: 380,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.delete_outline, size: 16, color: Colors.red.shade400),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Are you sure you want to delete this loan record?',
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'This action cannot be undone.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.6),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await context.read<LoanProvider>().deleteLoan(loanId);
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Loan deleted successfully')),
-                );
-              }
-            },
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
@@ -331,9 +179,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final Map<String, double> breakdownByCenter = {};
     final Map<String, double> breakdownByType = {};
 
-    final loanRows = <_LoanRowData>[];
     for (final loan in filteredLoans) {
-      final vendor = vendorMap[loan.vendorId];
       final group = groupMap[loan.groupId];
       final loanPayments = paymentsByLoan[loan.id] ?? [];
       final totalPaid = loanPayments.fold(0.0, (s, p) => s + p.amountPaid);
@@ -372,17 +218,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
         }
       }
 
-      loanRows.add(_LoanRowData(
-        loan: loan,
-        vendorName: vendor?.name ?? 'Unknown',
-        vendorIdNumber: vendor?.idNumber ?? '-',
-        vendorPhone: vendor?.phone ?? '-',
-        groupName: group?.name ?? '-',
-        businessType: vendor?.businessType ?? '-',
-        totalPaid: totalPaid,
-        appliedPenalty: appliedPenalty,
-        balance: balance,
-      ));
     }
 
     final totalSavings = filteredVendors.fold(
@@ -543,146 +378,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 32),
-
-                  // ─── Master Loan Ledger ───
-                  _SectionLabel(label: 'MASTER LOAN LEDGER'),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: theme.cardColor,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: theme.dividerColor.withOpacity(0.5),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Detailed Breakdown',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        // Header row (always visible)
-                        Table(
-                          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-                          columnWidths: const {
-                            0: FlexColumnWidth(2.5),
-                            1: FlexColumnWidth(1.3),
-                            2: FlexColumnWidth(1.2),
-                            3: FlexColumnWidth(1.5),
-                            4: FlexColumnWidth(1.5),
-                            5: FlexColumnWidth(0.9),
-                            6: FlexColumnWidth(0.6),
-                            7: FlexColumnWidth(0.7),
-                            8: FlexColumnWidth(0.7),
-                            9: FlexColumnWidth(0.7),
-                            10: FlexColumnWidth(1),
-                            11: FlexColumnWidth(1),
-                            12: FlexColumnWidth(1),
-                            13: FlexColumnWidth(0.5),
-                          },
-                          children: [
-                            TableRow(
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  bottom: BorderSide(
-                                    color: theme.dividerColor.withOpacity(0.15),
-                                    width: 0.5,
-                                  ),
-                                ),
-                              ),
-                              children: [
-                                _th('Member Name'),
-                                _th('ID Number'),
-                                _th('Phone'),
-                                _th('Group'),
-                                _th('Business'),
-                                _th('Principal'),
-                                _th('Term'),
-                                _th('Init Fee'),
-                                _th('Admin Fee'),
-                                _th('Penalty'),
-                                _th('Monthly'),
-                                _th('Total Paid'),
-                                _th('Balance'),
-                                _th(''),
-                              ],
-                            ),
-                          ],
-                        ),
-                        // Data rows (virtualized)
-                        SizedBox(
-                          height: (loanRows.length * 44).clamp(0, 480).toDouble(),
-                          child: ListView.builder(
-                            itemCount: loanRows.length,
-                            itemExtent: 44,
-                            itemBuilder: (context, index) {
-                              final row = loanRows[index];
-                              final loan = row.loan;
-                              final isSelected = loan.id == _selectedLoanId;
-                              return Material(
-                                color: isSelected
-                                    ? AppTheme.primaryGold.withOpacity(0.08)
-                                    : Colors.transparent,
-                                child: Table(
-                                  defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-                                  columnWidths: const {
-                                    0: FlexColumnWidth(2.5),
-                                    1: FlexColumnWidth(1.3),
-                                    2: FlexColumnWidth(1.2),
-                                    3: FlexColumnWidth(1.5),
-                                    4: FlexColumnWidth(1.5),
-                                    5: FlexColumnWidth(0.9),
-                                    6: FlexColumnWidth(0.6),
-                                    7: FlexColumnWidth(0.7),
-                                    8: FlexColumnWidth(0.7),
-                                    9: FlexColumnWidth(0.7),
-                                    10: FlexColumnWidth(1),
-                                    11: FlexColumnWidth(1),
-                                    12: FlexColumnWidth(1),
-                                    13: FlexColumnWidth(0.5),
-                                  },
-                                  children: [
-                                    TableRow(
-                                      decoration: BoxDecoration(
-                                        border: Border(
-                                          bottom: BorderSide(
-                                            color: theme.dividerColor.withOpacity(0.08),
-                                            width: 0.5,
-                                          ),
-                                        ),
-                                      ),
-                                      children: [
-                                        _td(row.vendorName, isBold: true),
-                                        _td(row.vendorIdNumber),
-                                        _td(row.vendorPhone),
-                                        _td(row.groupName),
-                                        _td(row.businessType),
-                                        _tdEditable(loan.id, 'amount', loan.amount.toStringAsFixed(0), prefix: 'R '),
-                                        _tdEditable(loan.id, 'durationMonths', loan.durationMonths.toString(), suffix: 'm'),
-                                        _tdEditable(loan.id, 'initiationFee', loan.initiationFee?.toStringAsFixed(0) ?? '0', prefix: 'R '),
-                                        _tdEditable(loan.id, 'monthlyAdminFee', loan.monthlyAdminFee?.toStringAsFixed(0) ?? '0', prefix: 'R '),
-                                        _tdEditable(loan.id, 'penaltyFee', row.appliedPenalty.toStringAsFixed(0), prefix: 'R '),
-                                        _td('R ${loan.monthlyPayment.toStringAsFixed(0)}', color: AppTheme.primaryGold),
-                                        _td('R ${row.totalPaid.toStringAsFixed(0)}', color: Colors.green),
-                                        _td('R ${row.balance.toStringAsFixed(0)}', color: Colors.orange),
-                                        _actionsCell(loan.id),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
                   const SizedBox(height: 40),
 
@@ -954,136 +649,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Widget _tdEditable(
-    String loanId,
-    String fieldName,
-    String value, {
-    String prefix = '',
-    String suffix = '',
-  }) {
-    final key = "${loanId}_$fieldName";
-    final isEditing = _editingFieldKey == key;
-
-    if (isEditing) {
-      return Padding(
-        padding: const EdgeInsets.all(2),
-        child: SizedBox(
-          height: 32,
-          child: TextField(
-            controller: _controllers[key],
-            autofocus: true,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-            decoration: InputDecoration(
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 6,
-                vertical: 6,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(4),
-                borderSide: const BorderSide(color: AppTheme.primaryGold, width: 1.5),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(4),
-                borderSide: const BorderSide(color: AppTheme.primaryGold, width: 1.5),
-              ),
-              prefixText: prefix,
-              prefixStyle: const TextStyle(color: AppTheme.primaryGold, fontSize: 9),
-              suffixText: suffix,
-              suffixStyle: const TextStyle(color: AppTheme.primaryGold, fontSize: 9),
-            ),
-            onSubmitted: (_) => _saveEdit(loanId, fieldName),
-            onTapOutside: (_) => _saveEdit(loanId, fieldName),
-          ),
-        ),
-      );
-    }
-
-    return InkWell(
-      onTap: () => _onCellTap(loanId, fieldName, value),
-      child: Stack(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-            child: Text(
-              "$prefix$value$suffix",
-              style: const TextStyle(fontSize: 11),
-            ),
-          ),
-          Positioned(
-            top: 1,
-            right: 1,
-            child: Icon(
-              Icons.edit_note,
-              size: 10,
-              color: AppTheme.primaryGold.withOpacity(0.3),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _actionsCell(String loanId) {
-    return PopupMenuButton<String>(
-      icon: const Icon(Icons.more_vert, size: 14, color: Colors.grey),
-      padding: EdgeInsets.zero,
-      onSelected: (value) {
-        if (value == 'view') {
-          final loan = context.read<LoanProvider>().loans.firstWhere(
-            (l) => l.id == loanId,
-          );
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => LoanDetailsScreen(loan: loan),
-            ),
-          );
-        } else if (value == 'edit') {
-          final loan = context.read<LoanProvider>().loans.firstWhere(
-            (l) => l.id == loanId,
-          );
-          _onCellTap(loanId, 'amount', loan.amount.toStringAsFixed(0));
-        } else if (value == 'delete') {
-          _confirmDelete(loanId);
-        }
-      },
-      itemBuilder: (context) => [
-        const PopupMenuItem(
-          value: 'edit',
-          child: Row(
-            children: [
-              Icon(Icons.edit, size: 16, color: AppTheme.primaryGold),
-              SizedBox(width: 8),
-              Text('Edit Inline'),
-            ],
-          ),
-        ),
-        const PopupMenuItem(
-          value: 'view',
-          child: Row(
-            children: [
-              Icon(Icons.visibility, size: 16),
-              SizedBox(width: 8),
-              Text('View Details'),
-            ],
-          ),
-        ),
-        const PopupMenuItem(
-          value: 'delete',
-          child: Row(
-            children: [
-              Icon(Icons.delete, size: 16, color: Colors.red),
-              SizedBox(width: 8),
-              Text('Delete', style: TextStyle(color: Colors.red)),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
   // ─── Insight Card ───
 
   Widget _buildInsightCard({
@@ -1340,65 +905,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
             pw.Text(
               'Total Initiation and Admin Fees: R ${fees.toStringAsFixed(2)}',
             ),
-            pw.SizedBox(height: 40),
-
-            pw.Text(
-              'Master Loan Ledger (Detailed Breakdown)',
-              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
-            ),
-            pw.SizedBox(height: 10),
-            pw.Table(
-              border: pw.TableBorder.all(color: PdfColors.grey300),
-              children: [
-                pw.TableRow(
-                  decoration: const pw.BoxDecoration(color: PdfColors.grey200),
-                  children: [
-                    _pdfCell('Name', isBold: true),
-                    _pdfCell('Group', isBold: true),
-                    _pdfCell('Principal', isBold: true),
-                    _pdfCell('Term', isBold: true),
-                    _pdfCell('Init Fee', isBold: true),
-                    _pdfCell('Admin', isBold: true),
-                    _pdfCell('Monthly', isBold: true),
-                    _pdfCell('Paid', isBold: true),
-                    _pdfCell('Balance', isBold: true),
-                  ],
-                ),
-                ...filteredLoans.map((loan) {
-                  final vendor = vendorMap[loan.vendorId];
-                  final group = groupMap[loan.groupId];
-                  final loanPayments = filteredPayments
-                      .where((p) => p.loanId == loan.id)
-                      .toList();
-                  final totalPaid = loanPayments.fold(
-                    0.0,
-                    (sum, p) => sum + p.amountPaid,
-                  );
-                  final balance = LoanCalculationService.calculateBalance(
-                    loan,
-                    loanPayments,
-                  );
-
-                  return pw.TableRow(
-                    children: [
-                      _pdfCell(vendor?.name ?? 'Unknown'),
-                      _pdfCell(group?.name ?? '-'),
-                      _pdfCell('R ${loan.amount.toStringAsFixed(0)}'),
-                      _pdfCell('${loan.durationMonths}m'),
-                      _pdfCell(
-                        'R ${loan.initiationFee?.toStringAsFixed(0) ?? '0'}',
-                      ),
-                      _pdfCell(
-                        'R ${loan.monthlyAdminFee?.toStringAsFixed(0) ?? '0'}',
-                      ),
-                      _pdfCell('R ${loan.monthlyPayment.toStringAsFixed(0)}'),
-                      _pdfCell('R ${totalPaid.toStringAsFixed(0)}'),
-                      _pdfCell('R ${balance.toStringAsFixed(0)}'),
-                    ],
-                  );
-                }).toList(),
-              ],
-            ),
           ];
         },
         footer: (pw.Context context) {
@@ -1417,19 +923,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
     await Printing.layoutPdf(
       onLayout: (PdfPageFormat format) async => pdf.save(),
       name: 'NSBSA_Master_Ledger_${DateTime.now().toString().substring(0, 10)}',
-    );
-  }
-
-  pw.Widget _pdfCell(String text, {bool isBold = false}) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.all(4),
-      child: pw.Text(
-        text,
-        style: pw.TextStyle(
-          fontSize: 8,
-          fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
-        ),
-      ),
     );
   }
 

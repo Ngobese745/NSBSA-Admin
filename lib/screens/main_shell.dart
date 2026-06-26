@@ -272,18 +272,12 @@ class _MainShellState extends State<MainShell> {
                       onPressed: () {
                         setState(() => _dismissedStripBannerId = null);
                         context.read<DeveloperControlsProvider>().refresh();
-                        context.read<GroupProvider>().fetchGroups(
-                          forceRefresh: true,
-                        );
-                        context.read<VendorProvider>().fetchVendors(
-                          forceRefresh: true,
-                        );
-                        context.read<LoanProvider>().fetchLoans(
-                          forceRefresh: true,
-                        );
-                        context.read<PaymentProvider>().fetchPayments(
-                          forceRefresh: true,
-                        );
+                        Future.wait([
+                          context.read<GroupProvider>().fetchGroups(forceRefresh: true),
+                          context.read<VendorProvider>().fetchVendors(forceRefresh: true),
+                          context.read<LoanProvider>().fetchLoans(forceRefresh: true),
+                          context.read<PaymentProvider>().fetchPayments(forceRefresh: true),
+                        ]);
                       },
                     ),
                     const SizedBox(width: 8),

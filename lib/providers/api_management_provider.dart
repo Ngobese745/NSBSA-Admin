@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/system_audit_service.dart';
 import '../services/smsworx_service.dart';
 import '../services/wesender_service.dart';
+import '../services/idrive_e2_service.dart';
 
 class ApiManagementProvider with ChangeNotifier {
   final _supabase = Supabase.instance.client;
@@ -106,10 +107,16 @@ class ApiManagementProvider with ChangeNotifier {
       return await SMSWorxService().testConnection(parts[0], parts[1]);
     } else if (serviceName.toLowerCase() == 'wesender') {
       return await WeSenderService().testConnection(apiKey);
+    } else if (serviceName.toLowerCase() == 'idrive_e2') {
+      final parts = apiKey.split(':');
+      if (parts.length < 4) return false;
+      return await IDriveE2Service.instance.testConnection(
+        accessKeyId: parts[0],
+        secretAccessKey: parts[1],
+        endpoint: parts[2],
+        bucket: parts[3],
+      );
     }
-
-    // Placeholder for other services
-    await Future.delayed(const Duration(seconds: 1));
-    return true; // Simulate success
+    return false;
   }
 }

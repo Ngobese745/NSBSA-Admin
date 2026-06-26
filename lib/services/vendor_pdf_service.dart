@@ -39,8 +39,9 @@ class VendorPdfService {
       0.0,
       (sum, loan) =>
           sum +
-          (loan.monthlyPayment * loan.durationMonths) +
-          (loan.initiationFee ?? 0),
+          (loan.openingAmount != null
+              ? loan.openingAmount!
+              : (loan.monthlyPayment * loan.durationMonths) + (loan.initiationFee ?? 0)),
     );
 
     pdf.addPage(

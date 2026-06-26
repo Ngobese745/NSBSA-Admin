@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/profile.dart';
 import '../services/account_management_service.dart';
+import '../services/secure_storage_service.dart';
+import '../services/cache_service.dart';
 
 class AuthProvider with ChangeNotifier {
   bool _isAuthenticated = false;
@@ -154,5 +157,9 @@ class AuthProvider with ChangeNotifier {
     _isPasswordRecovery = false;
     _userProfile = null;
     notifyListeners();
+    // Best-effort cleanup – fire and forget
+    SecureStorageService.clearAll().catchError((_) {});
+    CacheService.clearAll().catchError((_) {});
+    SharedPreferences.getInstance().then((p) => p.clear()).catchError((_) => false);
   }
 }

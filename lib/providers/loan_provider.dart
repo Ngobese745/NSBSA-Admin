@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/loan.dart';
@@ -53,9 +54,14 @@ class LoanProvider with ChangeNotifier {
     );
   }
 
+  Timer? _cacheDebounce;
+
   void _syncCacheAndNotify() {
-    CacheService.saveCache('loans_cache', _loans.map((e) => e.toJson()).toList());
     notifyListeners();
+    _cacheDebounce?.cancel();
+    _cacheDebounce = Timer(const Duration(seconds: 2), () {
+      CacheService.saveCache('loans_cache', _loans.map((e) => e.toJson()).toList());
+    });
   }
 
   Future<void> fetchLoans({bool forceRefresh = false}) async {
@@ -109,8 +115,12 @@ class LoanProvider with ChangeNotifier {
       final response = await _supabase.from('loans').insert(loanData).select().single();
       final confirmedLoan = LoanModel.fromJson(response);
       
-      final index = _loans.indexWhere((l) => l.id == loan.id || l.id == '');
-      if (index != -1) _loans[index] = confirmedLoan;
+      final index = _loans.indexWhere((l) => l.id == loan.id);
+      if (index != -1) {
+        _loans[index] = confirmedLoan;
+      } else {
+        _loans.insert(0, confirmedLoan);
+      }
       
       _syncCacheAndNotify();
       _logAndNotify(confirmedLoan);
@@ -124,8 +134,7 @@ class LoanProvider with ChangeNotifier {
     } catch (e) {
       _loans.removeWhere((l) => l.id == loan.id);
       notifyListeners();
-      debugPrint('Error adding loan: $e');
-      rethrow;
+      throw Exception('Failed to add loan. Please try again.');
     }
   }
 
