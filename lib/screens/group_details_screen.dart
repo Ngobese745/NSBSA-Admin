@@ -1575,12 +1575,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             final monthly = double.tryParse(monthlyController.text) ?? 0;
 
             final grandTotal = amount > 0
-                ? (monthly * term).toStringAsFixed(0)
+                ? ((monthly + 65) * term + 150).toStringAsFixed(0)
                 : '--';
-            final monthlyInit = term > 1 ? (150.0 / term).toStringAsFixed(2) : '150.00';
-            final totalFeesMonthly = term > 1
-                ? (150.0 / term + 65.0).toStringAsFixed(2)
-                : '215.00';
 
             return AlertDialog(
               backgroundColor: Theme.of(context).colorScheme.surface,
@@ -1737,13 +1733,13 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                             children: [
                               Expanded(child: _buildInterestCard(context, rateLabel, interestAmount, totalRepayment, desc)),
                               const SizedBox(width: 10),
-                              Expanded(child: _buildFeesCard(context, term, monthlyInit, totalFeesMonthly)),
+                              Expanded(child: _buildFeesCard(context)),
                             ],
                           )
                         else ...[
                           _buildInterestCard(context, rateLabel, interestAmount, totalRepayment, desc),
                           const SizedBox(height: 8),
-                          _buildFeesCard(context, term, monthlyInit, totalFeesMonthly),
+                          _buildFeesCard(context),
                         ],
 
                         const SizedBox(height: 10),
@@ -1806,7 +1802,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                               ),
                               const SizedBox(height: 8),
                               _interestRow('Monthly Instalment', 'R${monthly.toStringAsFixed(0)}', Colors.white),
+                              _interestRow('Monthly + Admin (R65)', 'R${(monthly + 65).toStringAsFixed(0)}', Colors.blueAccent),
                               _interestRow('Duration', '$term months', Colors.grey[400]!),
+                              _interestRow('Initiation Fee (once-off)', 'R150.00', Colors.orangeAccent),
                               const Divider(color: Colors.white12, height: 8),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1829,16 +1827,15 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                                   ),
                                 ],
                               ),
-                              if (desc != null) ...[
-                                const SizedBox(height: 6),
-                                Text(
-                                  desc,
-                                  style: TextStyle(color: Colors.grey[500], fontSize: 9),
-                                ),
-                              ],
+                              const SizedBox(height: 4),
+                              Text(
+                                '(${monthly.toStringAsFixed(0)} + 65) × $term + 150 = R$grandTotal${desc != null && rateLabel != null ? '\n$rateLabel interest on principal' : ''}',
+                                style: TextStyle(color: Colors.grey[500], fontSize: 9),
+                                textAlign: TextAlign.center,
+                              ),
                               const SizedBox(height: 6),
                               Text(
-                                'Incl. principal + interest + R65 admin/m + R150 once-off initiation.\nPenalty (R59) only charged if a payment is overdue.',
+                                'Penalty (R59) only charged if a payment is overdue.',
                                 style: TextStyle(color: Colors.grey[500], fontSize: 8),
                                 textAlign: TextAlign.center,
                               ),
@@ -1985,12 +1982,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     );
   }
 
-  Widget _buildFeesCard(
-    BuildContext context,
-    int term,
-    String monthlyInit,
-    String totalFeesMonthly,
-  ) {
+  Widget _buildFeesCard(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -2010,11 +2002,10 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           ),
           const SizedBox(height: 6),
           _interestRow('Initiation Fee (once-off)', 'R150.00', Colors.orangeAccent),
-          _interestRow('Monthly Initiation', 'R$monthlyInit', Colors.orangeAccent.withOpacity(0.7)),
           _interestRow('Monthly Admin Fee', 'R65.00', Colors.blueAccent),
           _interestRow('Penalty (only if overdue)', 'R59.00', Colors.redAccent.withOpacity(0.6)),
           const Divider(color: Colors.white12, height: 6),
-          _interestRow('Total Fees / Month', 'R$totalFeesMonthly', Colors.white),
+          _interestRow('Total Fees / Month', 'R65.00', Colors.white),
         ],
       ),
     );
@@ -2066,7 +2057,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       return {};
     }
 
-    const initiationFee = 150.0;
     const adminFee = 65.0;
 
     final rate = userRate ?? LoanInterestService.getRate(amount, term);
@@ -2082,7 +2072,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     final interestAmount = LoanInterestService.calculateInterestAmount(amount, rate);
     final totalRepayment = LoanInterestService.calculateTotalRepayment(amount, rate);
     final baseMonthly = totalRepayment / term;
-    final totalMonthly = baseMonthly + adminFee + (initiationFee / term);
+    final totalMonthly = baseMonthly + adminFee;
 
     if (!manualMonthly) {
       setState(() {
@@ -2867,6 +2857,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             .toList();
         totalLiability +=
             (loan.monthlyPayment * loan.durationMonths) +
+            (loan.initiationFee ?? 0) +
             LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
       }
       final totalPaid = groupPayments.fold<double>(
@@ -2927,6 +2918,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   .toList();
               loanInitialLiability[loan.id] =
                   (loan.monthlyPayment * loan.durationMonths) +
+                  (loan.initiationFee ?? 0) +
                   LoanCalculationService.calculateAppliedPenalty(
                     loan,
                     loanPayments,
