@@ -1453,7 +1453,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     Map<String, dynamic>? interestBreakdown;
     double? selectedRate;
     bool useCustomRate = false;
-    bool rateLocked = false; // true once user explicitly picks or edits a rate
+    bool rateLocked = false;
     bool monthlyManuallySet = false;
 
     void recalc(StateSetter setState, {double? rateOverride}) {
@@ -1466,7 +1466,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         manualMonthly: monthlyManuallySet,
       );
       interestBreakdown = breakdown;
-      // Auto-select from result only when nothing is locked
       if (rateOverride == null && !rateLocked) {
         selectedRate = breakdown['rate'] as double?;
       }
@@ -1480,418 +1479,543 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       recalc(setState, rateOverride: rate);
     }
 
+    Widget buildRateSelector(StateSetter setState) {
+      final available = LoanInterestService.getRatesForDuration(int.tryParse(termController.text) ?? 6);
+      if (!useCustomRate && available.isNotEmpty) {
+        return DropdownButtonFormField<double>(
+          value: selectedRate,
+          isDense: true,
+          dropdownColor: Theme.of(context).cardColor,
+          style: TextStyle(
+            color: Theme.of(context).textTheme.bodyMedium?.color,
+            fontSize: 13,
+          ),
+          decoration: const InputDecoration(
+            labelText: 'Interest Rate',
+            labelStyle: TextStyle(color: Colors.grey, fontSize: 13),
+            contentPadding: EdgeInsets.symmetric(vertical: 8),
+          ),
+          items: [
+            ...available.map((entry) => DropdownMenuItem(
+              value: entry.key,
+              child: Text(
+                '${(entry.key * 100).toStringAsFixed(2)}% (R${entry.value})',
+                style: const TextStyle(fontSize: 12),
+              ),
+            )),
+            const DropdownMenuItem(
+              value: -1.0,
+              child: Text('Custom rate…', style: TextStyle(color: Colors.amber, fontSize: 12)),
+            ),
+          ],
+          onChanged: (val) {
+            if (val == -1.0) {
+              setState(() => useCustomRate = true);
+            } else if (val != null) {
+              recalcWithRate(setState, val);
+            }
+          },
+        );
+      }
+      return Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: customRateController,
+              style: TextStyle(
+                color: Theme.of(context).textTheme.bodyMedium?.color,
+                fontSize: 13,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'Interest Rate (%)',
+                labelStyle: TextStyle(color: Colors.grey, fontSize: 13),
+                contentPadding: EdgeInsets.symmetric(vertical: 8),
+              ),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              onChanged: (_) {
+                final r = double.tryParse(customRateController.text);
+                if (r != null && r > 0) {
+                  rateLocked = true;
+                  selectedRate = r / 100;
+                  recalc(setState, rateOverride: selectedRate);
+                }
+              },
+            ),
+          ),
+          if (available.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: () => setState(() {
+                useCustomRate = false;
+                rateLocked = false;
+                selectedRate = null;
+                recalc(setState);
+              }),
+              child: const Text('Presets', style: TextStyle(fontSize: 10)),
+            ),
+          ],
+        ],
+      );
+    }
+
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) {
-          final rateLabel = interestBreakdown?['rateLabel'] as String?;
-          final interestAmount = interestBreakdown?['interestAmount'] as double?;
-          final totalRepayment = interestBreakdown?['totalRepayment'] as double?;
-          final baseMonthly = interestBreakdown?['baseMonthly'] as double?;
-          final desc = interestBreakdown?['description'] as String?;
+      builder: (ctx) {
+        final isWide = MediaQuery.of(ctx).size.width > 600;
 
-          final term = int.tryParse(termController.text) ?? 6;
-          final available = LoanInterestService.getRatesForDuration(term);
+        return StatefulBuilder(
+          builder: (context, setState) {
+            final rateLabel = interestBreakdown?['rateLabel'] as String?;
+            final interestAmount = interestBreakdown?['interestAmount'] as double?;
+            final totalRepayment = interestBreakdown?['totalRepayment'] as double?;
+            final desc = interestBreakdown?['description'] as String?;
 
-          return AlertDialog(
-            backgroundColor: Theme.of(context).colorScheme.surface,
-            title: const Text(
-              'Create New Loan',
-              style: TextStyle(color: Colors.white),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButtonFormField<String>(
-                  value: selectedVendorId,
-                  dropdownColor: Theme.of(context).cardColor,
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'Select Member',
-                    labelStyle: TextStyle(color: Colors.grey),
-                  ),
-                  items: members.map((member) {
-                    return DropdownMenuItem(
-                      value: member.id,
-                      child: Text(member.name),
-                    );
-                  }).toList(),
-                  onChanged: (val) => setState(() => selectedVendorId = val),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: amountController,
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'Loan Amount (R)',
-                    labelStyle: TextStyle(color: Colors.grey),
-                  ),
-                  keyboardType: TextInputType.number,
-                  onChanged: (_) => recalc(setState),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: termController,
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'Duration (Months)',
-                    labelStyle: TextStyle(color: Colors.grey),
-                  ),
-                  keyboardType: TextInputType.number,
-                  onChanged: (_) => recalc(setState),
-                ),
+            final term = int.tryParse(termController.text) ?? 6;
+            final amount = double.tryParse(amountController.text) ?? 0;
+            final monthly = double.tryParse(monthlyController.text) ?? 0;
 
-                // ── Interest Rate Selection ──
-                const SizedBox(height: 16),
-                if (!useCustomRate && available.isNotEmpty)
-                  DropdownButtonFormField<double>(
-                    value: selectedRate,
-                    dropdownColor: Theme.of(context).cardColor,
-                    style: TextStyle(
-                      color: Theme.of(context).textTheme.bodyMedium?.color,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText: 'Interest Rate',
-                      labelStyle: TextStyle(color: Colors.grey),
-                    ),
-                    items: [
-                      ...available.map((entry) => DropdownMenuItem(
-                        value: entry.key,
-                        child: Text(
-                          '${(entry.key * 100).toStringAsFixed(2)}% '
-                          '(R${entry.value})',
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                      )),
-                      const DropdownMenuItem(
-                        value: -1.0,
-                        child: Text(
-                          'Enter custom rate…',
-                          style: TextStyle(
-                            color: Colors.amber,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    ],
-                    onChanged: (val) {
-                      if (val == -1.0) {
-                        setState(() => useCustomRate = true);
-                      } else if (val != null) {
-                        recalcWithRate(setState, val);
-                      }
-                    },
-                  ),
-                if (useCustomRate || available.isEmpty)
-                  Row(
+            final grandTotal = amount > 0
+                ? (monthly * term).toStringAsFixed(0)
+                : '--';
+            final monthlyInit = term > 1 ? (150.0 / term).toStringAsFixed(2) : '150.00';
+            final totalFeesMonthly = term > 1
+                ? (150.0 / term + 65.0).toStringAsFixed(2)
+                : '215.00';
+
+            return AlertDialog(
+              backgroundColor: Theme.of(context).colorScheme.surface,
+              title: const Text(
+                'Create New Loan',
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+              content: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: isWide ? 700 : MediaQuery.of(context).size.width * 0.85,
+                  maxHeight: MediaQuery.of(context).size.height * 0.85,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Expanded(
-                        child: TextField(
-                          controller: customRateController,
-                          style: TextStyle(
-                            color: Theme.of(context).textTheme.bodyMedium?.color,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Interest Rate (%)',
-                            labelStyle: TextStyle(color: Colors.grey),
-                            isDense: true,
-                          ),
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          onChanged: (_) {
-                            final r = double.tryParse(customRateController.text);
-                            if (r != null && r > 0) {
-                              rateLocked = true;
-                              selectedRate = r / 100;
-                              recalc(setState, rateOverride: selectedRate);
-                            }
-                          },
-                        ),
-                      ),
-                      if (available.isNotEmpty) ...[
-                        const SizedBox(width: 8),
-                        TextButton(
-                          onPressed: () => setState(() {
-                            useCustomRate = false;
-                            rateLocked = false;
-                            selectedRate = null;
-                            recalc(setState);
-                          }),
-                          child: const Text(
-                            'Presets',
-                            style: TextStyle(fontSize: 11),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-
-                if (interestBreakdown != null) ...[
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: Colors.amber.withOpacity(0.25),
-                      ),
-                    ),
-                    child: Column(
-                      children: [
+                      // ── Row 1: Member + Amount ──
+                      if (isWide)
                         Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(
-                              Icons.info_outline,
-                              color: Colors.amber,
-                              size: 14,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Interest Preview',
-                              style: TextStyle(
-                                color: Colors.amber.shade200,
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
+                            Expanded(
+                              child: DropdownButtonFormField<String>(
+                                value: selectedVendorId,
+                                dropdownColor: Theme.of(context).cardColor,
+                                                  style: TextStyle(
+                                  color: Theme.of(context).textTheme.bodyMedium?.color,
+                                  fontSize: 13,
+                                ),
+                                decoration: const InputDecoration(
+                                  labelText: 'Select Member',
+                                  labelStyle: TextStyle(color: Colors.grey, fontSize: 13),
+                                  contentPadding: EdgeInsets.symmetric(vertical: 8),
+                                ),
+                                items: members.map((member) {
+                                  return DropdownMenuItem(
+                                    value: member.id,
+                                    child: Text(member.name, style: const TextStyle(fontSize: 13)),
+                                  );
+                                }).toList(),
+                                onChanged: (val) => setState(() => selectedVendorId = val),
                               ),
                             ),
-                            const Spacer(),
-                            Tooltip(
-                              message: desc ?? 'Rate derived from amount and duration.',
-                              child: Icon(
-                                Icons.help_outline,
-                                color: Colors.grey[500],
-                                size: 14,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextField(
+                                controller: amountController,
+                                                  style: TextStyle(
+                                  color: Theme.of(context).textTheme.bodyMedium?.color,
+                                  fontSize: 13,
+                                ),
+                                decoration: const InputDecoration(
+                                  labelText: 'Loan Amount (R)',
+                                  labelStyle: TextStyle(color: Colors.grey, fontSize: 13),
+                                  contentPadding: EdgeInsets.symmetric(vertical: 8),
+                                ),
+                                keyboardType: TextInputType.number,
+                                onChanged: (_) => recalc(setState),
                               ),
                             ),
                           ],
+                        )
+                      else ...[
+                        DropdownButtonFormField<String>(
+                          value: selectedVendorId,
+                          dropdownColor: Theme.of(context).cardColor,
+                                      style: TextStyle(
+                            color: Theme.of(context).textTheme.bodyMedium?.color,
+                            fontSize: 13,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Select Member',
+                            labelStyle: TextStyle(color: Colors.grey, fontSize: 13),
+                            contentPadding: EdgeInsets.symmetric(vertical: 8),
+                          ),
+                          items: members.map((member) {
+                            return DropdownMenuItem(
+                              value: member.id,
+                              child: Text(member.name, style: const TextStyle(fontSize: 13)),
+                            );
+                          }).toList(),
+                          onChanged: (val) => setState(() => selectedVendorId = val),
                         ),
-                        const SizedBox(height: 8),
-                        _interestRow('Interest Rate', rateLabel ?? '--', Colors.amber),
-                        _interestRow(
-                          'Interest Amount',
-                          'R${interestAmount?.toStringAsFixed(2) ?? '--'}',
-                          Colors.amber.shade200,
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: amountController,
+                                      style: TextStyle(
+                            color: Theme.of(context).textTheme.bodyMedium?.color,
+                            fontSize: 13,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Loan Amount (R)',
+                            labelStyle: TextStyle(color: Colors.grey, fontSize: 13),
+                            contentPadding: EdgeInsets.symmetric(vertical: 8),
+                          ),
+                          keyboardType: TextInputType.number,
+                          onChanged: (_) => recalc(setState),
                         ),
-                        _interestRow(
-                          'Total Repayment',
-                          'R${totalRepayment?.toStringAsFixed(2) ?? '--'}',
-                          Colors.greenAccent,
-                        ),
-                        if (desc != null && interestBreakdown?['rate'] != null && available.isNotEmpty) ...[
-                          const Divider(color: Colors.white12, height: 12),
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              desc,
-                              style: TextStyle(
-                                color: Colors.grey[500],
-                                fontSize: 9,
+                      ],
+
+                      const SizedBox(height: 10),
+
+                      // ── Row 2: Duration + Interest Rate ──
+                      if (isWide)
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: termController,
+                                                  style: TextStyle(
+                                  color: Theme.of(context).textTheme.bodyMedium?.color,
+                                  fontSize: 13,
+                                ),
+                                decoration: const InputDecoration(
+                                  labelText: 'Duration (Months)',
+                                  labelStyle: TextStyle(color: Colors.grey, fontSize: 13),
+                                  contentPadding: EdgeInsets.symmetric(vertical: 8),
+                                ),
+                                keyboardType: TextInputType.number,
+                                onChanged: (_) => recalc(setState),
                               ),
                             ),
+                            const SizedBox(width: 12),
+                            Expanded(child: buildRateSelector(setState)),
+                          ],
+                        )
+                      else ...[
+                        TextField(
+                          controller: termController,
+                                      style: TextStyle(
+                            color: Theme.of(context).textTheme.bodyMedium?.color,
+                            fontSize: 13,
                           ),
-                        ],
+                          decoration: const InputDecoration(
+                            labelText: 'Duration (Months)',
+                            labelStyle: TextStyle(color: Colors.grey, fontSize: 13),
+                            contentPadding: EdgeInsets.symmetric(vertical: 8),
+                          ),
+                          keyboardType: TextInputType.number,
+                          onChanged: (_) => recalc(setState),
+                        ),
+                        const SizedBox(height: 10),
+                        buildRateSelector(setState),
                       ],
-                    ),
-                  ),
-                ],
 
-                // ── Fees Breakdown ──
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.blueGrey.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: Colors.blueGrey.withOpacity(0.25),
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.receipt_long,
-                            color: Colors.blueGrey,
-                            size: 14,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Fees Breakdown',
-                            style: TextStyle(
-                              color: Colors.blueGrey.shade200,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                      if (interestBreakdown != null) ...[
+                        const SizedBox(height: 10),
+
+                        // ── Summary Cards ──
+                        if (isWide)
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(child: _buildInterestCard(context, rateLabel, interestAmount, totalRepayment, desc)),
+                              const SizedBox(width: 10),
+                              Expanded(child: _buildFeesCard(context, term, monthlyInit, totalFeesMonthly)),
+                            ],
+                          )
+                        else ...[
+                          _buildInterestCard(context, rateLabel, interestAmount, totalRepayment, desc),
+                          const SizedBox(height: 8),
+                          _buildFeesCard(context, term, monthlyInit, totalFeesMonthly),
                         ],
-                      ),
+
+                        const SizedBox(height: 10),
+
+                        // ── Monthly Payment ──
+                        TextField(
+                          controller: monthlyController,
+                                      style: TextStyle(
+                            color: monthlyManuallySet
+                                ? Theme.of(context).textTheme.bodyMedium?.color
+                                : Colors.grey[400],
+                            fontSize: 13,
+                          ),
+                          decoration: InputDecoration(
+                            labelText: 'Monthly Payment (R)',
+                            labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
+                            helperText: monthlyManuallySet
+                                ? 'Manually set'
+                                : 'Auto-calculated',
+                            helperStyle: TextStyle(color: AppTheme.primaryGold, fontSize: 9),
+                            contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                          ),
+                          keyboardType: TextInputType.number,
+                          onChanged: (_) {
+                            setState(() => monthlyManuallySet = true);
+                          },
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        // ── Total Loan Repayment ──
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                AppTheme.primaryGold.withOpacity(0.15),
+                                AppTheme.primaryGold.withOpacity(0.05),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppTheme.primaryGold.withOpacity(0.3)),
+                          ),
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.assignment, color: AppTheme.primaryGold, size: 16),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Total Loan Repayment',
+                                    style: TextStyle(
+                                      color: AppTheme.primaryGold,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              _interestRow('Monthly Instalment', 'R${monthly.toStringAsFixed(0)}', Colors.white),
+                              _interestRow('Duration', '$term months', Colors.grey[400]!),
+                              const Divider(color: Colors.white12, height: 8),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text(
+                                    'Grand Total',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  Text(
+                                    'R$grandTotal',
+                                    style: TextStyle(
+                                      color: AppTheme.primaryGold,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (desc != null) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  desc,
+                                  style: TextStyle(color: Colors.grey[500], fontSize: 9),
+                                ),
+                              ],
+                              const SizedBox(height: 6),
+                              Text(
+                                'Incl. principal + interest + R65 admin/m + R150 once-off initiation.\nPenalty (R59) only charged if a payment is overdue.',
+                                style: TextStyle(color: Colors.grey[500], fontSize: 8),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+
                       const SizedBox(height: 8),
-                      _interestRow(
-                        'Initiation Fee (once-off)',
-                        'R150.00',
-                        Colors.orangeAccent,
-                      ),
-                      _interestRow(
-                        'Monthly Initiation',
-                        'R${(150.0 / (int.tryParse(termController.text) ?? 1)).toStringAsFixed(2)}',
-                        Colors.orangeAccent.withOpacity(0.7),
-                      ),
-                      _interestRow(
-                        'Monthly Admin Fee',
-                        'R65.00',
-                        Colors.blueAccent,
-                      ),
-                      _interestRow(
-                        'Penalty Fee',
-                        'R59.00',
-                        Colors.redAccent,
-                      ),
-                      const Divider(color: Colors.white12, height: 12),
-                      _interestRow(
-                        'Total Fees / Month',
-                        'R${(150.0 / (int.tryParse(termController.text) ?? 1) + 65.0 + 59.0).toStringAsFixed(2)}',
-                        Colors.white,
+
+                      // ── First Instalment Date ──
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        visualDensity: VisualDensity.compact,
+                        title: const Text(
+                          'First Instalment Date',
+                          style: TextStyle(color: Colors.grey, fontSize: 11),
+                        ),
+                        subtitle: Text(
+                          '${selectedFirstDate.toLocal()}'.split(' ')[0],
+                          style: TextStyle(
+                            color: Theme.of(context).textTheme.bodyMedium?.color,
+                            fontSize: 13,
+                          ),
+                        ),
+                        trailing: const Icon(Icons.calendar_today, color: AppTheme.primaryGold, size: 16),
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: selectedFirstDate,
+                            firstDate: DateTime.now(),
+                            lastDate: DateTime.now().add(const Duration(days: 365)),
+                          );
+                          if (picked != null) {
+                            setState(() => selectedFirstDate = picked);
+                          }
+                        },
                       ),
                     ],
                   ),
                 ),
-
-                const SizedBox(height: 16),
-                TextField(
-                  controller: monthlyController,
-                  style: TextStyle(
-                    color: monthlyManuallySet
-                        ? Theme.of(context).textTheme.bodyMedium?.color
-                        : Colors.grey[400],
-                  ),
-                  decoration: InputDecoration(
-                    labelText: 'Monthly Payment (R)',
-                    labelStyle: const TextStyle(color: Colors.grey),
-                    helperText: monthlyManuallySet
-                        ? 'Manually set'
-                        : 'Auto-calculated: (Principal + Interest) / Term + Fees',
-                    helperStyle: TextStyle(
-                      color: AppTheme.primaryGold,
-                      fontSize: 10,
-                    ),
-                  ),
-                  keyboardType: TextInputType.number,
-                  onChanged: (_) {
-                    setState(() => monthlyManuallySet = true);
-                  },
-                ),
-                const SizedBox(height: 12),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text(
-                    'First Instalment Date',
-                    style: TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
-                  subtitle: Text(
-                    '${selectedFirstDate.toLocal()}'.split(' ')[0],
-                    style: TextStyle(
-                      color: Theme.of(context).textTheme.bodyMedium?.color,
-                      fontSize: 14,
-                    ),
-                  ),
-                  trailing: const Icon(
-                    Icons.calendar_today,
-                    color: AppTheme.primaryGold,
-                    size: 18,
-                  ),
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: selectedFirstDate,
-                      firstDate: DateTime.now(),
-                      lastDate: DateTime.now().add(const Duration(days: 365)),
-                    );
-                    if (picked != null) {
-                      setState(() => selectedFirstDate = picked);
-                    }
-                  },
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
               ),
-              ElevatedButton(
-                onPressed: () async {
-                  final amount = double.tryParse(amountController.text) ?? 0;
-                  final term = int.tryParse(termController.text) ?? 6;
-                  final monthly =
-                      double.tryParse(monthlyController.text) ?? 0;
-                  final rate = interestBreakdown?['rate'] as double?;
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    final amount_ = double.tryParse(amountController.text) ?? 0;
+                    final term_ = int.tryParse(termController.text) ?? 6;
+                    final monthly_ = double.tryParse(monthlyController.text) ?? 0;
+                    final rate = interestBreakdown?['rate'] as double?;
 
-                  if (amount > 0 && selectedVendorId != null) {
-                    setState(
-                      () => amountController.text = 'Submitting...',
-                    );
-                    try {
-                      final newLoan =
-                          await context.read<LoanProvider>().addLoan(
-                        LoanModel(
-                          id: '',
-                          groupId: widget.group.id,
-                          vendorId: selectedVendorId,
-                          amount: amount,
-                          durationMonths: term,
-                          monthlyPayment: monthly,
-                          initiationFee: 150,
-                          monthlyAdminFee: 65,
-                          penaltyFee: 59,
-                          interestRate: rate,
-                          status: 'Active',
-                          firstInstalmentDate: selectedFirstDate,
-                          createdAt: DateTime.now(),
-                        ),
-                      );
-
-                      this.setState(() {
-                        _loans.insert(0, newLoan);
-                      });
-
-                      if (context.mounted) {
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Loan created successfully'),
+                    if (amount_ > 0 && selectedVendorId != null) {
+                      setState(() => amountController.text = 'Submitting...');
+                      try {
+                        final newLoan = await context.read<LoanProvider>().addLoan(
+                          LoanModel(
+                            id: '',
+                            groupId: widget.group.id,
+                            vendorId: selectedVendorId,
+                            amount: amount_,
+                            durationMonths: term_,
+                            monthlyPayment: monthly_,
+                            initiationFee: 150,
+                            monthlyAdminFee: 65,
+                            penaltyFee: 59,
+                            interestRate: rate,
+                            status: 'Active',
+                            firstInstalmentDate: selectedFirstDate,
+                            createdAt: DateTime.now(),
                           ),
                         );
+
+                        this.setState(() {
+                          _loans.insert(0, newLoan);
+                        });
+
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Loan created successfully')),
+                          );
+                        }
+                      } catch (e) {
+                        setState(() => amountController.text = amount_.toString());
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error: $e')),
+                        );
                       }
-                    } catch (e) {
-                      setState(
-                        () => amountController.text = amount.toString(),
-                      );
+                    } else if (selectedVendorId == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Error: $e')),
+                        const SnackBar(content: Text('Please select a member first')),
                       );
                     }
-                  } else if (selectedVendorId == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Please select a member first'),
-                      ),
-                    );
-                  }
-                },
-                child: const Text('Create'),
+                  },
+                  child: const Text('Create'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildInterestCard(
+    BuildContext context,
+    String? rateLabel,
+    double? interestAmount,
+    double? totalRepayment,
+    String? desc,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.amber.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.amber.withOpacity(0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.info_outline, color: Colors.amber, size: 13),
+              const SizedBox(width: 5),
+              Text('Interest Preview', style: TextStyle(color: Colors.amber.shade200, fontSize: 10, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              Tooltip(
+                message: desc ?? '',
+                child: Icon(Icons.help_outline, color: Colors.grey[500], size: 12),
               ),
             ],
-          );
-        },
+          ),
+          const SizedBox(height: 6),
+          _interestRow('Interest Rate', rateLabel ?? '--', Colors.amber),
+          _interestRow('Interest Amount', 'R${interestAmount?.toStringAsFixed(2) ?? '--'}', Colors.amber.shade200),
+          _interestRow('Principal + Interest', 'R${totalRepayment?.toStringAsFixed(2) ?? '--'}', Colors.greenAccent),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeesCard(
+    BuildContext context,
+    int term,
+    String monthlyInit,
+    String totalFeesMonthly,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.blueGrey.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.blueGrey.withOpacity(0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.receipt_long, color: Colors.blueGrey, size: 13),
+              const SizedBox(width: 5),
+              Text('Fees Breakdown', style: TextStyle(color: Colors.blueGrey.shade200, fontSize: 10, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          _interestRow('Initiation Fee (once-off)', 'R150.00', Colors.orangeAccent),
+          _interestRow('Monthly Initiation', 'R$monthlyInit', Colors.orangeAccent.withOpacity(0.7)),
+          _interestRow('Monthly Admin Fee', 'R65.00', Colors.blueAccent),
+          _interestRow('Penalty (only if overdue)', 'R59.00', Colors.redAccent.withOpacity(0.6)),
+          const Divider(color: Colors.white12, height: 6),
+          _interestRow('Total Fees / Month', 'R$totalFeesMonthly', Colors.white),
+        ],
       ),
     );
   }
