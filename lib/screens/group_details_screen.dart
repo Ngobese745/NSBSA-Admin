@@ -1045,7 +1045,10 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(width: 8),
-                          IconButton(
+                          if (AccessControlService.canProcessPayments(
+                            context.read<AuthProvider>().userProfile,
+                          ))
+                            IconButton(
                             icon: const Icon(
                               Icons.payment,
                               size: 20,

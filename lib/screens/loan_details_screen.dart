@@ -8,6 +8,8 @@ import '../providers/group_provider.dart';
 import '../providers/payment_provider.dart';
 import '../providers/vendor_provider.dart';
 import '../providers/loan_provider.dart';
+import '../providers/auth_provider.dart';
+import '../services/access_control_service.dart';
 import '../services/grace_period_reminder_service.dart';
 import '../core/pdf_branding.dart';
 import 'package:pdf/pdf.dart';
@@ -279,7 +281,10 @@ class LoanDetailsScreen extends StatelessWidget {
               ],
             ),
           ),
-          ElevatedButton.icon(
+          if (AccessControlService.canProcessPayments(
+            context.read<AuthProvider>().userProfile,
+          ))
+            ElevatedButton.icon(
             onPressed: () => _showRecordPaymentDialog(
               context,
               inArrears: inArrears,

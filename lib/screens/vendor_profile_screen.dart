@@ -754,7 +754,10 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              SizedBox(
+                              if (AccessControlService.canProcessPayments(
+                                context.read<AuthProvider>().userProfile,
+                              ))
+                                SizedBox(
                                 width: 28,
                                 height: 28,
                                 child: IconButton(
