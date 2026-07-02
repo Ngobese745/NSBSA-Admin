@@ -972,20 +972,24 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 fontWeight: FontWeight.bold,
               ),
             ),
-            Row(
+             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextButton.icon(
-                  onPressed: () => _showRecordGroupPaymentDialog(members),
-                  icon: const Icon(Icons.payments_outlined, size: 18),
-                  label: const Text('Group Payment'),
-                ),
-                const SizedBox(width: 8),
-                TextButton.icon(
-                  onPressed: () => _showAddLoanDialog(members),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Create Loan'),
-                ),
+                if (AccessControlService.canProcessPayments(
+                  context.read<AuthProvider>().userProfile,
+                )) ...[
+                  TextButton.icon(
+                    onPressed: () => _showRecordGroupPaymentDialog(members),
+                    icon: const Icon(Icons.payments_outlined, size: 18),
+                    label: const Text('Group Payment'),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: () => _showAddLoanDialog(members),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Create Loan'),
+                  ),
+                ],
               ],
             ),
           ],

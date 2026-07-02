@@ -103,10 +103,11 @@ class _MainShellState extends State<MainShell> {
   }
 
   Widget _shellBodyForIndex(int index) {
+    final auth = context.read<AuthProvider>();
+    final profile = auth.userProfile;
     switch (index) {
       case 0:
-        final authProvider = context.read<AuthProvider>();
-        if (authProvider.userProfile?.role == 'Super Admin') {
+        if (profile?.role == 'Super Admin') {
           return const FeatureGuard(featureKey: 'dashboard', child: SuperAdminDashboardScreen());
         }
         return const FeatureGuard(featureKey: 'dashboard', child: DashboardScreen());
@@ -115,14 +116,26 @@ class _MainShellState extends State<MainShell> {
       case 2:
         return const FeatureGuard(featureKey: 'vendors', child: VendorsScreen());
       case 3:
+        if (!AccessControlService.canProcessPayments(profile)) {
+          return const _AccessDenied(message: 'You do not have permission to access Loans.');
+        }
         return const FeatureGuard(featureKey: 'loans', child: LoansScreen());
       case 4:
+        if (!AccessControlService.canProcessPayments(profile)) {
+          return const _AccessDenied(message: 'You do not have permission to access Payments.');
+        }
         return const FeatureGuard(featureKey: 'payments', child: PaymentsScreen());
       case 5:
+        if (!AccessControlService.canViewReports(profile)) {
+          return const _AccessDenied(message: 'You do not have permission to access Analytics.');
+        }
         return const FeatureGuard(featureKey: 'analytics', child: AnalyticsScreen());
       case 6:
         return Builder(
           builder: (context) {
+            if (!AccessControlService.canViewReports(profile)) {
+              return const _AccessDenied(message: 'You do not have permission to access Reports.');
+            }
             final isLarge = MediaQuery.of(context).size.width >= AppBreakpoints.shellDesktopMin;
             if (!isLarge) {
               return const FeatureDisabledPlaceholder(
@@ -134,6 +147,9 @@ class _MainShellState extends State<MainShell> {
           },
         );
       case 7:
+        if (AccessControlService.isFieldAgent(profile)) {
+          return const _AccessDenied(message: 'You do not have permission to import data.');
+        }
         return const FeatureGuard(featureKey: 'import', child: ImportScreen());
       case 8:
         return const FeatureGuard(featureKey: 'marketing', child: MarketingHubScreen());
@@ -148,16 +164,17 @@ class _MainShellState extends State<MainShell> {
       case 13:
         return const NotificationHistoryScreen();
       case 14:
+        if (!AccessControlService.canProcessPayments(profile)) {
+          return const _AccessDenied(message: 'You do not have permission to access Master Loan Ledger.');
+        }
         return const FeatureGuard(featureKey: 'loans', child: MasterLoanLedgerScreen());
       case 15:
-        final auth = context.read<AuthProvider>();
-        if (!AccessControlService.canApproveRecords(auth.userProfile)) {
-          return const Center(child: Text('Access denied.'));
+        if (!AccessControlService.canApproveRecords(profile)) {
+          return const _AccessDenied(message: 'You do not have permission to access the Approval Queue.');
         }
         return const ApprovalQueueScreen();
       default:
-        final authProvider = context.read<AuthProvider>();
-        if (authProvider.userProfile?.role == 'Super Admin') {
+        if (profile?.role == 'Super Admin') {
           return const FeatureGuard(featureKey: 'dashboard', child: SuperAdminDashboardScreen());
         }
         return const FeatureGuard(featureKey: 'dashboard', child: DashboardScreen());
@@ -1029,6 +1046,30 @@ class _MainShellState extends State<MainShell> {
     );
   }
 }
+class _AccessDenied extends StatelessWidget {
+  final String message;
+  const _AccessDenied({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.lock_outline, size: 64, color: Colors.grey),
+              const SizedBox(height: 16),
+              Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, fontSize: 16)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class FeatureGuard extends StatelessWidget {
   final String featureKey;
   final Widget child;
