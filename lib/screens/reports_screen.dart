@@ -13,6 +13,7 @@ import '../theme/app_theme.dart';
 import '../providers/analytics_provider.dart';
 import '../services/loan_calculation_service.dart';
 import '../services/excel_export_service.dart';
+import '../services/system_audit_service.dart';
 import '../models/loan.dart';
 import '../models/payment.dart';
 import '../models/vendor.dart';
@@ -1023,6 +1024,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
         'collectionRate': collectionRate,
       },
       ledgerData: data,
+    );
+
+    SystemAuditService.logAction(
+      actionType: 'EXPORT_REPORT',
+      affectedEntity: 'Reports Screen',
+      description: 'Exported report to Excel (${filteredLoans.length} loans, ${filteredPayments.length} payments).',
     );
   }
 }

@@ -24,7 +24,8 @@ BEGIN
     ALTER TABLE loans
       ADD COLUMN IF NOT EXISTS grace_period_enabled  BOOLEAN NOT NULL DEFAULT FALSE,
       ADD COLUMN IF NOT EXISTS grace_period_months  INTEGER,
-      ADD COLUMN IF NOT EXISTS first_payment_date    DATE;
+      ADD COLUMN IF NOT EXISTS first_payment_date    DATE,
+      ADD COLUMN IF NOT EXISTS interest_rate         DOUBLE PRECISION;
 
     -- Backfill: mirror first_instalment_date for existing loans so
     -- first_payment_date is never NULL.

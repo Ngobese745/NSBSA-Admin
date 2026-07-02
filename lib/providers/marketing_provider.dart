@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/system_audit_service.dart';
 
 class MarketingProvider with ChangeNotifier {
   final _supabase = Supabase.instance.client;
@@ -66,6 +67,12 @@ class MarketingProvider with ChangeNotifier {
     try {
       await _supabase.from('marketing_campaigns').insert(campaignData);
       await fetchCampaigns();
+
+      SystemAuditService.logAction(
+        actionType: 'CREATE_CAMPAIGN',
+        affectedEntity: 'Campaign: ${campaignData['name'] ?? 'Unknown'}',
+        description: 'Created marketing campaign.',
+      );
     } catch (e) {
       debugPrint('Error creating campaign: $e');
       rethrow;
@@ -76,6 +83,12 @@ class MarketingProvider with ChangeNotifier {
     try {
       await _supabase.from('marketing_templates').insert(templateData);
       await fetchTemplates();
+
+      SystemAuditService.logAction(
+        actionType: 'CREATE_TEMPLATE',
+        affectedEntity: 'Template: ${templateData['name'] ?? 'Unknown'}',
+        description: 'Created marketing template.',
+      );
     } catch (e) {
       debugPrint('Error creating template: $e');
       rethrow;
@@ -86,6 +99,12 @@ class MarketingProvider with ChangeNotifier {
     try {
       await _supabase.from('marketing_leads').insert(leadData);
       await fetchLeads();
+
+      SystemAuditService.logAction(
+        actionType: 'ADD_LEAD',
+        affectedEntity: 'Lead: ${leadData['name'] ?? leadData['email'] ?? 'Unknown'}',
+        description: 'Added new marketing lead.',
+      );
     } catch (e) {
       debugPrint('Error adding lead: $e');
       rethrow;
@@ -103,6 +122,12 @@ class MarketingProvider with ChangeNotifier {
       }
       await _supabase.from('marketing_leads').update(updates).eq('id', leadId);
       await fetchLeads();
+
+      SystemAuditService.logAction(
+        actionType: 'UPDATE_LEAD_STATUS',
+        affectedEntity: 'Lead ID: $leadId',
+        description: 'Updated lead status to $status.',
+      );
     } catch (e) {
       debugPrint('Error updating lead status: $e');
       rethrow;

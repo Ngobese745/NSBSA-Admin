@@ -892,12 +892,10 @@ class LoanDetailsScreen extends StatelessWidget {
     }
   }
 
-  /// Sends the grace-period-end reminder for a single loan by directly
-  /// invoking the same flow as the cron-driven bulk method.
   Future<int> _sendGraceReminderForLoan(LoanModel targetLoan) async {
-    final summary = await GracePeriodReminderService.instance
-        .sendGracePeriodEndReminders();
-    return summary.sent;
+    final sent = await GracePeriodReminderService.instance
+        .sendGracePeriodEndReminderForLoan(targetLoan.id);
+    return sent;
   }
 
   void _showEditLoanDialog(BuildContext context) {

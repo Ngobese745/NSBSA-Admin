@@ -18,6 +18,15 @@ class VendorModel {
   final DateTime? savingsStartDate;
   final String? avatarUrl;
   final DateTime createdAt;
+  final String approvalStatus;
+  final String? createdBy;
+  final String? approvedBy;
+  final DateTime? approvedAt;
+  final String? rejectionReason;
+
+  bool get isPending => approvalStatus == 'Pending';
+  bool get isApproved => approvalStatus == 'Approved';
+  bool get isRejected => approvalStatus == 'Rejected';
 
   VendorModel({
     required this.id,
@@ -39,6 +48,11 @@ class VendorModel {
     this.savingsStartDate,
     this.avatarUrl,
     required this.createdAt,
+    this.approvalStatus = 'Approved',
+    this.createdBy,
+    this.approvedBy,
+    this.approvedAt,
+    this.rejectionReason,
   });
 
   VendorModel copyWith({
@@ -61,6 +75,11 @@ class VendorModel {
     DateTime? savingsStartDate,
     String? avatarUrl,
     DateTime? createdAt,
+    String? approvalStatus,
+    String? createdBy,
+    String? approvedBy,
+    DateTime? approvedAt,
+    String? rejectionReason,
   }) {
     return VendorModel(
       id: id ?? this.id,
@@ -82,6 +101,11 @@ class VendorModel {
       savingsStartDate: savingsStartDate ?? this.savingsStartDate,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       createdAt: createdAt ?? this.createdAt,
+      approvalStatus: approvalStatus ?? this.approvalStatus,
+      createdBy: createdBy ?? this.createdBy,
+      approvedBy: approvedBy ?? this.approvedBy,
+      approvedAt: approvedAt ?? this.approvedAt,
+      rejectionReason: rejectionReason ?? this.rejectionReason,
     );
   }
 
@@ -112,6 +136,13 @@ class VendorModel {
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'])
           : DateTime.now(),
+      approvalStatus: json['approval_status'] ?? 'Approved',
+      createdBy: json['created_by'],
+      approvedBy: json['approved_by'],
+      approvedAt: json['approved_at'] != null
+          ? DateTime.parse(json['approved_at'])
+          : null,
+      rejectionReason: json['rejection_reason'],
     );
   }
 
@@ -135,6 +166,8 @@ class VendorModel {
       'savings_start_date': savingsStartDate?.toIso8601String(),
       'avatar_url': avatarUrl,
       'created_at': createdAt.toIso8601String(),
+      'approval_status': approvalStatus,
+      'created_by': createdBy,
     };
     if (id.isNotEmpty) {
       map['id'] = id;

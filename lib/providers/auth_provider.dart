@@ -5,6 +5,7 @@ import '../models/profile.dart';
 import '../services/account_management_service.dart';
 import '../services/secure_storage_service.dart';
 import '../services/cache_service.dart';
+import '../services/system_audit_service.dart';
 
 class AuthProvider with ChangeNotifier {
   bool _isAuthenticated = false;
@@ -131,10 +132,20 @@ class AuthProvider with ChangeNotifier {
         }
         _isAuthenticated = true;
         notifyListeners();
+        SystemAuditService.logAction(
+          actionType: 'LOGIN',
+          affectedEntity: 'User: ${_userProfile?.email ?? email}',
+          description: 'User logged in. Role: ${_userProfile?.role ?? 'Unknown'}.',
+        );
         return null;
       }
     } catch (e) {
       debugPrint('Supabase login failed: $e');
+      SystemAuditService.logAction(
+        actionType: 'LOGIN_FAILED',
+        affectedEntity: 'User: $email',
+        description: 'Failed login attempt.',
+      );
       if (e is AuthException) return e.message;
       return 'Incorrect email or password.';
     }
@@ -152,11 +163,17 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> logout() async {
+    final userEmail = _userProfile?.email ?? _supabase.auth.currentUser?.email ?? 'Unknown User';
     await _supabase.auth.signOut();
     _isAuthenticated = false;
     _isPasswordRecovery = false;
     _userProfile = null;
     notifyListeners();
+    SystemAuditService.logAction(
+      actionType: 'LOGOUT',
+      affectedEntity: 'User: $userEmail',
+      description: 'User logged out.',
+    );
     // Best-effort cleanup – fire and forget
     SecureStorageService.clearAll().catchError((_) {});
     CacheService.clearAll().catchError((_) {});

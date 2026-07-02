@@ -287,6 +287,12 @@ class PaymentProvider with ChangeNotifier {
       }
 
       await fetchPayments(forceRefresh: true);
+
+      SystemAuditService.logAction(
+        actionType: 'BATCH_PAYMENT',
+        affectedEntity: 'Group ID: $groupId',
+        description: 'Recorded batch payment for ${memberPayments.length} members, total R${totalAmount.toStringAsFixed(2)}.',
+      );
     } catch (e) {
       throw Exception('Failed to add group payment. Please try again.');
     }
@@ -312,6 +318,12 @@ class PaymentProvider with ChangeNotifier {
     try {
       await _supabase.from('payments').delete().eq('id', id);
       _syncCacheAndNotify();
+
+      SystemAuditService.logAction(
+        actionType: 'DELETE_PAYMENT',
+        affectedEntity: 'Payment ID: $id',
+        description: 'Deleted payment of R${deleted.amountPaid} (Loan ID: ${deleted.loanId}).',
+      );
     } catch (e) {
       _payments.insert(oldIndex, deleted);
       notifyListeners();

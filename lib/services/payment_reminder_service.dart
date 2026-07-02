@@ -48,7 +48,6 @@ class PaymentReminderService {
     final summary = ReminderSummary();
 
     try {
-      // 1. Find vendors with active loans and outstanding balances
       final dueVendors = await _fetchDueVendors();
 
       for (final row in dueVendors) {
@@ -63,9 +62,15 @@ class PaymentReminderService {
         final dueDate = row['due_date'] != null
             ? DateTime.parse(row['due_date'] as String)
             : DateTime.now();
+        final daysPastDue = (row['days_past_due'] as num).toInt();
 
-        // Skip fully paid
         if (balance <= 0) continue;
+
+        // Determine escalation level based on days past due
+        final escalation = _determineEscalation(daysPastDue, reminderType);
+
+        // Skip if this escalation level was already sent
+        if (await _hasEscalationBeenSent(loanRef, escalation)) continue;
 
         final logEntry = ReminderLogModel(
           id: '',
@@ -78,28 +83,25 @@ class PaymentReminderService {
           balance: balance,
           loanRef: loanRef.substring(0, 8).toUpperCase(),
           dueDate: dueDate,
-          reminderType: reminderType,
+          reminderType: escalation,
           channel: 'Email',
           status: 'pending',
           createdAt: DateTime.now(),
         );
 
-        // 2. Send Email (queue via email_outbox)
         if (vendorEmail.isNotEmpty) {
-          await _sendEmailReminder(logEntry, reminderType);
+          await _sendEmailReminder(logEntry, escalation);
           summary.emailSent++;
         }
 
-        // 3. Send WhatsApp
         final whatsappTarget = vendorWhatsApp.isNotEmpty ? vendorWhatsApp : vendorPhone;
         if (whatsappTarget.isNotEmpty) {
-          await _sendWhatsAppReminder(logEntry, whatsappTarget, reminderType);
+          await _sendWhatsAppReminder(logEntry, whatsappTarget, escalation);
           summary.whatsappSent++;
         }
 
-        // 4. Send SMS (max 160 chars)
         if (vendorPhone.isNotEmpty) {
-          await _sendSmsReminder(logEntry, vendorPhone, reminderType);
+          await _sendSmsReminder(logEntry, vendorPhone, escalation);
           summary.smsSent++;
         }
 
@@ -112,6 +114,32 @@ class PaymentReminderService {
 
     debugPrint('[Reminder] Pass complete: $summary');
     return summary;
+  }
+
+  /// Maps [daysPastDue] to an escalation level. The [defaultType] is used for
+  /// vendors that are 0-6 days past due.
+  String _determineEscalation(int daysPastDue, String defaultType) {
+    if (daysPastDue >= 21) return 'penalty_warning';
+    if (daysPastDue >= 14) return 'final_notice';
+    if (daysPastDue >= 7) return 'follow_up';
+    if (daysPastDue >= 1) return defaultType;
+    // Due today or in advance: use the pass default
+    return defaultType == 'follow_up' ? 'initial' : defaultType;
+  }
+
+  /// Checks whether a given escalation level has already been logged for a loan.
+  Future<bool> _hasEscalationBeenSent(String loanRef, String escalation) async {
+    try {
+      final response = await _supabase
+          .from('communication_logs')
+          .select('id')
+          .eq('metadata->>reminder_type', escalation)
+          .eq('metadata->>loan_ref', loanRef.substring(0, 8).toUpperCase())
+          .limit(1);
+      return (response as List).isNotEmpty;
+    } catch (_) {
+      return false;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -171,6 +199,8 @@ class PaymentReminderService {
       final balance = (loanMap['amount'] as num).toDouble() - totalPaid;
       if (balance <= 0) continue;
 
+      final daysPastDue = now.difference(firstDate).inDays;
+
       results.add({
         'vendor_id': vendorData['id'] ?? loanMap['vendor_id'] ?? '',
         'vendor_name': vendorData['name'] ?? 'Member',
@@ -182,6 +212,7 @@ class PaymentReminderService {
         'loan_ref': loanMap['id'],
         'balance': balance,
         'due_date': firstDate.toIso8601String(),
+        'days_past_due': daysPastDue,
       });
     }
 
@@ -192,22 +223,62 @@ class PaymentReminderService {
   // Channel senders
   // ---------------------------------------------------------------------------
 
+  String _reminderSubject(String type) {
+    switch (type) {
+      case 'follow_up':
+        return 'Follow-Up Reminder — Loan Payment Due';
+      case 'final_notice':
+        return 'FINAL NOTICE — Loan Payment Overdue';
+      case 'penalty_warning':
+        return 'PENALTY APPLIED — Loan Payment Overdue';
+      default:
+        return 'Payment Reminder — NSBSA Loan';
+    }
+  }
+
+  String _reminderBody(String type) {
+    switch (type) {
+      case 'follow_up':
+        return 'This is a follow-up reminder that your loan payment is overdue. Please make payment as soon as possible.';
+      case 'final_notice':
+        return 'FINAL NOTICE: Your loan payment is now 14+ days overdue. If payment is not received within 7 days, a penalty fee of R59 will be applied.';
+      case 'penalty_warning':
+        return 'PENALTY APPLIED: Your loan payment is now over 21 days overdue and a penalty fee of R59 has been applied. Immediate payment is required to prevent further charges.';
+      default:
+        return 'This is a friendly reminder of your upcoming loan payment. Please ensure your account is settled by the due date.';
+    }
+  }
+
+  String _urgencyBanner(String type) {
+    switch (type) {
+      case 'follow_up':
+        return '''
+        <div style="background-color: #FF7B72; color: #FFFFFF; text-align: center; padding: 12px; font-weight: bold; font-size: 14px;">
+          ⚠️ FOLLOW-UP REMINDER — Your payment is now overdue. Please pay immediately.
+        </div>''';
+      case 'final_notice':
+        return '''
+        <div style="background-color: #D32F2F; color: #FFFFFF; text-align: center; padding: 12px; font-weight: bold; font-size: 14px;">
+          🚨 FINAL NOTICE — Pay within 7 days to avoid penalty fees.
+        </div>''';
+      case 'penalty_warning':
+        return '''
+        <div style="background-color: #B71C1C; color: #FFFFFF; text-align: center; padding: 12px; font-weight: bold; font-size: 14px;">
+          ⛔ PENALTY OF R59 APPLIED — Your loan is now in arrears. Immediate action required.
+        </div>''';
+      default:
+        return '';
+    }
+  }
+
   Future<void> _sendEmailReminder(ReminderLogModel entry, String type) async {
-    final isFollowUp = type == 'follow_up';
-    final subject = isFollowUp
-        ? 'Final Reminder — Loan Payment Due'
-        : 'Payment Reminder — NSBSA Loan';
+    final subject = _reminderSubject(type);
 
     final amountStr = entry.balance.toStringAsFixed(2);
     final dueStr =
         '${entry.dueDate.day} ${_monthName(entry.dueDate.month)} ${entry.dueDate.year}';
 
-    final urgencyBanner = isFollowUp
-        ? '''
-        <div style="background-color: #FF7B72; color: #FFFFFF; text-align: center; padding: 12px; font-weight: bold; font-size: 14px;">
-          ⚠️ FINAL REMINDER — Please pay immediately to avoid penalties.
-        </div>'''
-        : '';
+    final urgencyBanner = _urgencyBanner(type);
 
     final htmlContent = '''
 <!DOCTYPE html>
@@ -240,7 +311,7 @@ class PaymentReminderService {
         $urgencyBanner
         <div class="content">
             <p>Dear <strong>${entry.vendorName}</strong>,</p>
-            <p>${isFollowUp ? 'This is a final reminder that your loan payment is overdue.' : 'This is a friendly reminder of your upcoming loan payment.'}</p>
+            <p>${_reminderBody(type)}</p>
 
             <table class="info-table">
                 <tr><th>Loan Reference</th><td>${entry.loanRef}</td></tr>
@@ -294,29 +365,34 @@ class PaymentReminderService {
     }
   }
 
+  String _reminderWhatsAppText(ReminderLogModel entry, String type) {
+    final amountStr = entry.balance.toStringAsFixed(2);
+    final dueStr = '${entry.dueDate.day} ${_monthName(entry.dueDate.month)} ${entry.dueDate.year}';
+    switch (type) {
+      case 'follow_up':
+        return 'Follow-up: Your loan payment of *R$amountStr* is overdue. Ref: ${entry.loanRef}. Please pay immediately to avoid penalties.';
+      case 'final_notice':
+        return '*FINAL NOTICE*: Your loan payment of *R$amountStr* is 14+ days overdue. Ref: ${entry.loanRef}. Pay within 7 days or a R59 penalty will apply.';
+      case 'penalty_warning':
+        return '*PENALTY APPLIED*: A R59 penalty has been charged for your overdue loan. Ref: ${entry.loanRef}. Total due: R$amountStr. Pay immediately to stop further charges.';
+      default:
+        return 'Dear ${entry.vendorName}, your loan payment of *R$amountStr* is due on $dueStr. Ref: ${entry.loanRef}. Please settle to avoid penalties.';
+    }
+  }
+
   Future<void> _sendWhatsAppReminder(
     ReminderLogModel entry,
     String target,
     String type,
   ) async {
-    final isFollowUp = type == 'follow_up';
-    final amountStr = entry.balance.toStringAsFixed(2);
-    final dueStr =
-        '${entry.dueDate.day} ${_monthName(entry.dueDate.month)} ${entry.dueDate.year}';
-    final urgency = isFollowUp ? 'FINAL REMINDER — ' : '';
-
-    final message = isFollowUp
-        ? 'Final reminder: Your loan payment of *R$amountStr* is overdue. '
-            'Ref: ${entry.loanRef}. Please pay immediately to avoid penalties.'
-        : 'Dear ${entry.vendorName}, your loan payment of *R$amountStr* is due on '
-            '$dueStr. Ref: ${entry.loanRef}. Please settle to avoid penalties.';
+    final message = _reminderWhatsAppText(entry, type);
 
     try {
       final logRes = await _supabase.from('communication_logs').insert({
         'vendor_id': entry.vendorId,
         'channel': 'WhatsApp',
         'recipient': target,
-        'content': '$urgency$message',
+        'content': message,
         'status': 'pending',
         'metadata': {
           'reminder_type': entry.reminderType,
@@ -342,20 +418,29 @@ class PaymentReminderService {
     }
   }
 
+  String _reminderSmsText(String type, String amountStr, String loanRef, String dueStr) {
+    switch (type) {
+      case 'follow_up':
+        return 'NSBSA: Follow-up. Loan R$amountStr overdue. Ref: $loanRef. Pay now to avoid penalties.';
+      case 'final_notice':
+        return 'NSBSA: FINAL NOTICE. Loan R$amountStr overdue 14+ days. Ref: $loanRef. Pay within 7 days or R59 penalty applies.';
+      case 'penalty_warning':
+        return 'NSBSA: R59 PENALTY APPLIED. Loan R$amountStr overdue. Ref: $loanRef. Pay now to stop further charges.';
+      default:
+        return 'NSBSA: Loan R$amountStr due $dueStr. Ref: $loanRef. Pay now to avoid penalties.';
+    }
+  }
+
   Future<void> _sendSmsReminder(
     ReminderLogModel entry,
     String target,
     String type,
   ) async {
-    final isFollowUp = type == 'follow_up';
     final amountStr = entry.balance.toStringAsFixed(0);
     final dueStr =
         '${entry.dueDate.day} ${_monthName(entry.dueDate.month).substring(0, 3)} ${entry.dueDate.year}';
 
-    // Max ~160 chars with sender ID "NSBSA"
-    final message = isFollowUp
-        ? 'NSBSA: Final reminder. Loan payment R$amountStr overdue. Ref: ${entry.loanRef}. Pay immediately to avoid penalties.'
-        : 'NSBSA: Loan payment R$amountStr due $dueStr. Ref: ${entry.loanRef}. Pay now to avoid penalties.';
+    final message = _reminderSmsText(type, amountStr, entry.loanRef, dueStr);
 
     try {
       final logRes = await _supabase.from('communication_logs').insert({

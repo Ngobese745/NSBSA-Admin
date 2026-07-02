@@ -8,6 +8,8 @@ import 'core/app_config.dart';
 import 'app/app.dart';
 import 'services/offline_queue_service.dart';
 import 'services/background_sync_service.dart';
+import 'services/payment_reminder_service.dart';
+import 'services/grace_period_reminder_service.dart';
 
 bool _urlStrategySet = false;
 
@@ -66,6 +68,9 @@ Future<void> main() async {
       // Initialize Sync Services
       await OfflineQueueService().init();
       BackgroundSyncService().init();
+
+      // Start automated reminder cron (Flutter-side fallback for pg_cron)
+      PaymentReminderService.instance.startDailyCron();
     }
   } catch (e) {
     debugPrint('Initialization error: $e');

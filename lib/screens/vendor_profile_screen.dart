@@ -27,11 +27,13 @@ import '../services/vendor_pdf_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/excel_export_service.dart';
+import '../services/system_audit_service.dart';
 
 import '../widgets/communication/communication_dialog.dart';
 import '../widgets/reminder_history_section.dart';
 import '../widgets/nsbsa_loading_overlay.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/access_control_service.dart';
 
 class VendorProfileScreen extends StatefulWidget {
   final VendorModel vendor;
@@ -228,11 +230,14 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             },
           ),
           const SizedBox(width: 6),
-          _ProfileActionButton(
-            icon: Icons.edit_outlined,
-            tooltip: 'Edit Profile',
-            onPressed: () => _showEditVendorDialog(context),
-          ),
+          if (AccessControlService.canEditData(
+            context.read<AuthProvider>().userProfile,
+          ))
+            _ProfileActionButton(
+              icon: Icons.edit_outlined,
+              tooltip: 'Edit Profile',
+              onPressed: () => _showEditVendorDialog(context),
+            ),
           const SizedBox(width: 6),
           _ProfileActionButton(
             icon: Icons.picture_as_pdf_outlined,
@@ -1355,16 +1360,19 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                                   tooltip: 'View Document',
                                 ),
                               ),
-                              SizedBox(
-                                width: 28,
-                                height: 28,
-                                child: IconButton(
-                                  padding: EdgeInsets.zero,
-                                  icon: const Icon(Icons.delete_outline, size: 14, color: Colors.redAccent),
-                                  onPressed: () => docProvider.deleteDocument(doc),
-                                  tooltip: 'Delete Document',
+                              if (AccessControlService.canEditData(
+                                context.read<AuthProvider>().userProfile,
+                              ))
+                                SizedBox(
+                                  width: 28,
+                                  height: 28,
+                                  child: IconButton(
+                                    padding: EdgeInsets.zero,
+                                    icon: const Icon(Icons.delete_outline, size: 14, color: Colors.redAccent),
+                                    onPressed: () => docProvider.deleteDocument(doc),
+                                    tooltip: 'Delete Document',
+                                  ),
                                 ),
-                              ),
                             ],
                           ),
                         );
@@ -1428,6 +1436,12 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     await ExcelExportService.exportLoanHistory(
       memberName: currentVendor.name,
       loanData: loanData,
+    );
+
+    SystemAuditService.logAction(
+      actionType: 'EXPORT_REPORT',
+      affectedEntity: 'Vendor: ${currentVendor.name} (${currentVendor.id})',
+      description: 'Exported loan history for vendor to Excel.',
     );
   }
 
@@ -2211,7 +2225,14 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             ),
           ),
           actions: [
-            if (!_isEditing) ...[
+            if (!_isEditing && !AccessControlService.canEditData(
+              context.read<AuthProvider>().userProfile,
+            )) ...[
+              const TextButton(
+                onPressed: null,
+                child: Text('View only', style: TextStyle(color: Colors.grey)),
+              ),
+            ] else if (!_isEditing) ...[
               TextButton.icon(
                 onPressed: () {
                   showDialog(

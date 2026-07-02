@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:file_picker/file_picker.dart';
 import '../models/document.dart';
 import '../services/cache_service.dart';
+import '../services/system_audit_service.dart';
 import '../services/connectivity_service.dart';
 import '../services/offline_queue_service.dart';
 
@@ -146,6 +147,12 @@ class DocumentProvider with ChangeNotifier {
           _documents.map((e) => e.toJson()).toList(),
         );
       }
+
+      SystemAuditService.logAction(
+        actionType: 'UPLOAD_DOCUMENT',
+        affectedEntity: groupId != null ? 'Group ID: $groupId' : 'Vendor ID: $vendorId',
+        description: 'Uploaded document: $fileName.',
+      );
     } catch (e) {
       debugPrint('Error in uploadDocument: $e');
       rethrow;
@@ -185,6 +192,12 @@ class DocumentProvider with ChangeNotifier {
           _documents.map((e) => e.toJson()).toList(),
         );
       }
+
+      SystemAuditService.logAction(
+        actionType: 'DELETE_DOCUMENT',
+        affectedEntity: document.groupId != null ? 'Group ID: ${document.groupId}' : 'Vendor ID: ${document.vendorId}',
+        description: 'Deleted document: ${document.fileName}.',
+      );
     } catch (e) {
       _documents.insert(index, deletedDoc);
       notifyListeners();

@@ -5,6 +5,7 @@ import '../providers/providers.dart';
 import '../theme/app_theme.dart';
 import '../core/app_breakpoints.dart';
 import '../services/excel_export_service.dart';
+import '../services/system_audit_service.dart';
 
 class DFCentreReportsScreen extends StatefulWidget {
   const DFCentreReportsScreen({super.key});
@@ -151,6 +152,12 @@ class _DFCentreReportsScreenState extends State<DFCentreReportsScreen> {
     await ExcelExportService.exportTableReport(
       title: 'DF_Performance_Report',
       data: data,
+    );
+
+    SystemAuditService.logAction(
+      actionType: 'EXPORT_REPORT',
+      affectedEntity: 'DF Centre Reports',
+      description: 'Exported DF performance report to Excel.',
     );
   }
 

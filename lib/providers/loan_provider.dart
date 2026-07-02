@@ -170,11 +170,24 @@ class LoanProvider with ChangeNotifier {
       final safeUpdates = Map<String, dynamic>.from(updates);
       safeUpdates.remove('vendor_name');
       
+      final oldAmount = oldLoan.amount;
+      final oldStatus = oldLoan.status;
       final response = await _supabase.from('loans').update(safeUpdates).eq('id', id).select().single();
       final updatedLoan = LoanModel.fromJson(response);
 
       _loans[oldLoanIndex] = updatedLoan;
       _syncCacheAndNotify();
+
+      SystemAuditService.logAction(
+        actionType: 'UPDATE_LOAN',
+        affectedEntity: 'Loan ID: $id',
+        description: 'Updated loan ${updatedLoan.id}. Changes include: ${safeUpdates.keys.join(', ')}.',
+        metadata: {
+          'previous_amount': oldAmount,
+          'previous_status': oldStatus,
+          'updated_fields': safeUpdates.keys.toList(),
+        },
+      );
     } catch (e) {
       debugPrint('Error updating loan: $e');
       rethrow;
@@ -201,6 +214,12 @@ class LoanProvider with ChangeNotifier {
     try {
       await _supabase.from('loans').delete().eq('id', id);
       _syncCacheAndNotify();
+
+      SystemAuditService.logAction(
+        actionType: 'DELETE_LOAN',
+        affectedEntity: 'Loan ID: $id',
+        description: 'Deleted loan for vendor ${deletedLoan.vendorId} (amount: R${deletedLoan.amount}).',
+      );
     } catch (e) {
       _loans.insert(oldLoanIndex, deletedLoan);
       notifyListeners();

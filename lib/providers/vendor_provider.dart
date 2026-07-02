@@ -10,6 +10,9 @@ import '../services/realtime_service.dart';
 import '../services/offline_queue_service.dart';
 import '../services/connectivity_service.dart';
 import '../services/communication_service.dart';
+import '../services/notification_service.dart';
+import '../services/access_control_service.dart';
+import '../models/profile.dart';
 import 'dart:typed_data';
 import 'package:image/image.dart' as img;
 
@@ -94,8 +97,12 @@ class VendorProvider with ChangeNotifier {
   }
 
   Future<VendorModel> addVendor(VendorModel vendor) async {
-    // Optimistic
-    _vendors.insert(0, vendor);
+    final user = _supabase.auth.currentUser;
+    final effectiveVendor = vendor.copyWith(
+      createdBy: vendor.createdBy ?? user?.id,
+    );
+
+    _vendors.insert(0, effectiveVendor);
     notifyListeners();
 
     if (ConnectivityService().currentStatus == AppConnectivityStatus.offline) {
@@ -103,45 +110,61 @@ class VendorProvider with ChangeNotifier {
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         table: 'vendors',
         type: OfflineActionType.create,
-        data: vendor.toJson(),
+        data: effectiveVendor.toJson(),
         timestamp: DateTime.now(),
       ));
-      return vendor;
+      return effectiveVendor;
     }
 
     try {
-      String? dfId = vendor.dfId;
-      String? dfName = vendor.dfName;
+      String? dfId = effectiveVendor.dfId;
+      String? dfName = effectiveVendor.dfName;
 
       if (dfId == null || dfName == null) {
-        final groupRes = await _supabase.from('groups').select('df_id, df_name').eq('id', vendor.groupId).single();
+        final groupRes = await _supabase.from('groups').select('df_id, df_name').eq('id', effectiveVendor.groupId).single();
         dfId ??= groupRes['df_id'];
         dfName ??= groupRes['df_name'];
       }
 
-      final data = vendor.toJson();
+      final data = effectiveVendor.toJson();
       data['df_id'] = dfId;
       data['df_name'] = dfName;
 
       final response = await _supabase.from('vendors').insert(data).select().single();
       final newVendor = VendorModel.fromJson(response);
 
-      final index = _vendors.indexWhere((v) => v.id == vendor.id || v.id == '');
+      final index = _vendors.indexWhere((v) => v.id == effectiveVendor.id || v.id == '');
       if (index != -1) _vendors[index] = newVendor;
 
       _syncCacheAndNotify();
       _logAction(newVendor);
 
-      // Trigger Privacy Policy notification for newly added member
       _triggerPrivacyPolicyNotification(newVendor);
+
+      if (newVendor.isPending) {
+        _notifyAdminVendorApprovalNeeded(newVendor);
+      }
 
       return newVendor;
     } catch (e) {
-      _vendors.removeWhere((v) => v.id == vendor.id);
+      _vendors.removeWhere((v) => v.id == effectiveVendor.id);
       notifyListeners();
       debugPrint('Error adding vendor: $e');
       rethrow;
     }
+  }
+
+  void _notifyAdminVendorApprovalNeeded(VendorModel vendor) {
+    NotificationService.notifyAdmins(
+      'Vendor Approval Needed',
+      '${vendor.name} requires Admin verification.',
+      type: 'ACTIVITY',
+    );
+    NotificationService.notifySuperAdmin(
+      'Vendor Pending Approval',
+      '${vendor.name} (${vendor.idNumber ?? vendor.phone ?? 'N/A'}) has been registered and is pending review.',
+      type: 'ACTIVITY',
+    );
   }
 
   void _logAction(VendorModel vendor) {
@@ -150,6 +173,42 @@ class VendorProvider with ChangeNotifier {
       affectedEntity: 'Vendor: ${vendor.name} (${vendor.idNumber ?? vendor.phone})',
       description: 'Created a new vendor/member.',
     );
+  }
+
+  Future<void> approveVendor(String id, {String? rejectionReason}) async {
+    final index = _vendors.indexWhere((v) => v.id == id);
+    if (index == -1) return;
+
+    final user = _supabase.auth.currentUser;
+    final updates = <String, dynamic>{
+      if (rejectionReason == null) ...{
+        'approval_status': 'Approved',
+        'approved_by': user?.id,
+        'approved_at': DateTime.now().toIso8601String(),
+      } else ...{
+        'approval_status': 'Rejected',
+        'approved_by': user?.id,
+        'approved_at': DateTime.now().toIso8601String(),
+        'rejection_reason': rejectionReason,
+      }
+    };
+
+    try {
+      final response = await _supabase.from('vendors').update(updates).eq('id', id).select().single();
+      _vendors[index] = VendorModel.fromJson(response);
+      _syncCacheAndNotify();
+
+      SystemAuditService.logAction(
+        actionType: rejectionReason == null ? 'APPROVE_VENDOR' : 'REJECT_VENDOR',
+        affectedEntity: 'Vendor ID: $id',
+        description: rejectionReason == null
+            ? 'Approved vendor registration.'
+            : 'Rejected vendor registration. Reason: $rejectionReason',
+      );
+    } catch (e) {
+      debugPrint('Error updating vendor approval status: $e');
+      rethrow;
+    }
   }
 
   Future<void> _triggerPrivacyPolicyNotification(VendorModel vendor) async {

@@ -34,6 +34,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../widgets/nsbsa_loading_overlay.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/access_control_service.dart';
 
 class GroupDetailsScreen extends StatefulWidget {
   final GroupModel group;
@@ -553,10 +554,13 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.edit, size: 20, color: Colors.grey),
-                    onPressed: _showEditDialog,
-                  ),
+                  if (AccessControlService.canEditData(
+                    context.read<AuthProvider>().userProfile,
+                  ))
+                    IconButton(
+                      icon: const Icon(Icons.edit, size: 20, color: Colors.grey),
+                      onPressed: _showEditDialog,
+                    ),
                 ],
               ),
               const SizedBox(height: 4),
@@ -919,27 +923,31 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     ),
                   );
                 },
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: const Icon(
-                        Icons.edit,
-                        size: 18,
-                        color: Colors.grey,
-                      ),
-                      onPressed: () => _showEditMemberDialog(member),
-                    ),
-                    IconButton(
-                      icon: const Icon(
-                        Icons.delete_outline,
-                        size: 18,
-                        color: Colors.redAccent,
-                      ),
-                      onPressed: () => _showDeleteMemberConfirm(member),
-                    ),
-                  ],
-                ),
+                trailing: AccessControlService.canEditData(
+                  context.read<AuthProvider>().userProfile,
+                )
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(
+                              Icons.edit,
+                              size: 18,
+                              color: Colors.grey,
+                            ),
+                            onPressed: () => _showEditMemberDialog(member),
+                          ),
+                          IconButton(
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              size: 18,
+                              color: Colors.redAccent,
+                            ),
+                            onPressed: () => _showDeleteMemberConfirm(member),
+                          ),
+                        ],
+                      )
+                    : const SizedBox.shrink(),
               );
             },
           ),
@@ -3697,15 +3705,18 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                             },
                             tooltip: 'View Document',
                           ),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.delete_outline,
-                              size: 20,
-                              color: Colors.redAccent,
+                          if (AccessControlService.canEditData(
+                            context.read<AuthProvider>().userProfile,
+                          ))
+                            IconButton(
+                              icon: const Icon(
+                                Icons.delete_outline,
+                                size: 20,
+                                color: Colors.redAccent,
+                              ),
+                              onPressed: () => docProvider.deleteDocument(doc),
+                              tooltip: 'Delete Document',
                             ),
-                            onPressed: () => docProvider.deleteDocument(doc),
-                            tooltip: 'Delete Document',
-                          ),
                         ],
                       ),
                     );
@@ -3848,7 +3859,14 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             ),
           ),
           actions: [
-            if (!_isEditing) ...[
+            if (!_isEditing && !AccessControlService.canEditData(
+              context.read<AuthProvider>().userProfile,
+            )) ...[
+              const TextButton(
+                onPressed: null,
+                child: Text('View only', style: TextStyle(color: Colors.grey)),
+              ),
+            ] else if (!_isEditing) ...[
               TextButton.icon(
                 onPressed: () {
                   showDialog(

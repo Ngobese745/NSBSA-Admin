@@ -9,6 +9,15 @@ class GroupModel {
   final String? dfName;
   final String? creatorId;
   final String? creatorName;
+  final String approvalStatus;
+  final String? createdBy;
+  final String? approvedBy;
+  final DateTime? approvedAt;
+  final String? rejectionReason;
+
+  bool get isPending => approvalStatus == 'Pending';
+  bool get isApproved => approvalStatus == 'Approved';
+  bool get isRejected => approvalStatus == 'Rejected';
 
   GroupModel({
     required this.id,
@@ -20,6 +29,11 @@ class GroupModel {
     this.dfName,
     this.creatorId,
     this.creatorName,
+    this.approvalStatus = 'Approved',
+    this.createdBy,
+    this.approvedBy,
+    this.approvedAt,
+    this.rejectionReason,
   });
 
   /// Placeholder when a group cannot be resolved (lists, lookups).
@@ -43,6 +57,13 @@ class GroupModel {
       dfName: json['df_name'],
       creatorId: json['creator_id'],
       creatorName: json['creator_name'],
+      approvalStatus: json['approval_status'] ?? 'Approved',
+      createdBy: json['created_by'],
+      approvedBy: json['approved_by'],
+      approvedAt: json['approved_at'] != null
+          ? DateTime.parse(json['approved_at'])
+          : null,
+      rejectionReason: json['rejection_reason'],
     );
   }
 
@@ -56,6 +77,8 @@ class GroupModel {
       'df_name': dfName,
       'creator_id': creatorId,
       'creator_name': creatorName,
+      'approval_status': approvalStatus,
+      'created_by': createdBy,
     };
     if (id.isNotEmpty) {
       map['id'] = id;

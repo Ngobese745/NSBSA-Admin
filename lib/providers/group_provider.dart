@@ -8,6 +8,7 @@ import '../services/system_audit_service.dart';
 import '../services/communication_service.dart';
 import '../services/connectivity_service.dart';
 import '../services/offline_queue_service.dart';
+import '../services/notification_service.dart';
 
 class GroupProvider with ChangeNotifier {
   final _supabase = Supabase.instance.client;
@@ -126,6 +127,7 @@ class GroupProvider with ChangeNotifier {
       final String? dfId = centerRes['df_id']?.toString();
       final dfName = centerRes['df_name']?.toString() ?? 'NSBSA Facilitator';
 
+      final user = _supabase.auth.currentUser;
       final response = await _supabase
           .from('groups')
           .insert({
@@ -136,6 +138,7 @@ class GroupProvider with ChangeNotifier {
             'df_name': dfName,
             'creator_id': (creatorId == null || creatorId.isEmpty) ? null : creatorId,
             'creator_name': creatorName,
+            'created_by': user?.id,
           })
           .select()
           .single();
@@ -240,9 +243,59 @@ class GroupProvider with ChangeNotifier {
         description: 'Created a new group with ${members.length} members.',
       );
 
+      if (newGroup.isPending) {
+        NotificationService.notifyAdmins(
+          'Group Approval Needed',
+          'Group "$name" requires Admin verification.',
+          type: 'ACTIVITY',
+        );
+        NotificationService.notifySuperAdmin(
+          'Group Pending Approval',
+          'Group "$name" ($referenceNumber) has been created and is pending review.',
+          type: 'ACTIVITY',
+        );
+      }
+
       return newGroup;
     } catch (e) {
       debugPrint('Error adding group: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> approveGroup(String id, {String? rejectionReason}) async {
+    final index = _groups.indexWhere((g) => g.id == id);
+    if (index == -1) return;
+
+    final user = _supabase.auth.currentUser;
+    final updates = <String, dynamic>{
+      if (rejectionReason == null) ...{
+        'approval_status': 'Approved',
+        'approved_by': user?.id,
+        'approved_at': DateTime.now().toIso8601String(),
+      } else ...{
+        'approval_status': 'Rejected',
+        'approved_by': user?.id,
+        'approved_at': DateTime.now().toIso8601String(),
+        'rejection_reason': rejectionReason,
+      }
+    };
+
+    try {
+      final response = await _supabase.from('groups').update(updates).eq('id', id).select().single();
+      _groups[index] = GroupModel.fromJson(response);
+      CacheService.saveCache('groups_cache', _groups.map((e) => e.toJson()).toList());
+      notifyListeners();
+
+      SystemAuditService.logAction(
+        actionType: rejectionReason == null ? 'APPROVE_GROUP' : 'REJECT_GROUP',
+        affectedEntity: 'Group ID: $id',
+        description: rejectionReason == null
+            ? 'Approved group registration.'
+            : 'Rejected group registration. Reason: $rejectionReason',
+      );
+    } catch (e) {
+      debugPrint('Error updating group approval status: $e');
       rethrow;
     }
   }

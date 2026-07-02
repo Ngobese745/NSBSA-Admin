@@ -6,6 +6,7 @@ import '../providers/loan_provider.dart';
 import '../providers/vendor_provider.dart';
 import '../providers/payment_provider.dart';
 import '../providers/auth_provider.dart';
+import '../services/access_control_service.dart';
 import 'group_details_screen.dart';
 
 class GroupsScreen extends StatelessWidget {
@@ -95,41 +96,44 @@ class GroupsScreen extends StatelessWidget {
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            PopupMenuButton<String>(
-                              icon: const Icon(
-                                Icons.more_vert,
-                                size: 16,
-                                color: Colors.grey,
-                              ),
-                              padding: EdgeInsets.zero,
-                              onSelected: (val) {
-                                if (val == 'delete') {
-                                  _showDeleteConfirmation(context, group);
-                                }
-                              },
-                              itemBuilder: (context) => [
-                                const PopupMenuItem(
-                                  value: 'delete',
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        Icons.delete,
-                                        size: 14,
-                                        color: Colors.red,
-                                      ),
-                                      SizedBox(width: 8),
-                                      Text(
-                                        'Delete',
-                                        style: TextStyle(
-                                          color: Colors.red,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                            if (AccessControlService.canEditData(
+                              context.read<AuthProvider>().userProfile,
+                            ))
+                              PopupMenuButton<String>(
+                                icon: const Icon(
+                                  Icons.more_vert,
+                                  size: 16,
+                                  color: Colors.grey,
                                 ),
-                              ],
-                            ),
+                                padding: EdgeInsets.zero,
+                                onSelected: (val) {
+                                  if (val == 'delete') {
+                                    _showDeleteConfirmation(context, group);
+                                  }
+                                },
+                                itemBuilder: (context) => [
+                                  const PopupMenuItem(
+                                    value: 'delete',
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.delete,
+                                          size: 14,
+                                          color: Colors.red,
+                                        ),
+                                        SizedBox(width: 8),
+                                        Text(
+                                          'Delete',
+                                          style: TextStyle(
+                                            color: Colors.red,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
                             const SizedBox(width: 4),
                             Icon(
                               Icons.chevron_right,

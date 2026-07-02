@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/comment.dart';
 import '../services/cache_service.dart';
 import '../services/realtime_service.dart';
+import '../services/system_audit_service.dart';
 import '../services/connectivity_service.dart';
 import '../services/offline_queue_service.dart';
 
@@ -207,6 +208,12 @@ class CommentProvider with ChangeNotifier {
           _comments.map((e) => e.toJson()).toList(),
         );
       }
+
+      SystemAuditService.logAction(
+        actionType: 'ADD_COMMENT',
+        affectedEntity: comment.groupId != null ? 'Group ID: ${comment.groupId}' : 'Vendor ID: ${comment.vendorId}',
+        description: 'Added comment by ${comment.authorName}.',
+      );
     } catch (e) {
       _comments.removeWhere((c) => c.id == tempId);
       notifyListeners();
@@ -263,6 +270,12 @@ class CommentProvider with ChangeNotifier {
           _comments.map((e) => e.toJson()).toList(),
         );
       }
+
+      SystemAuditService.logAction(
+        actionType: 'UPDATE_COMMENT',
+        affectedEntity: 'Comment ID: $id',
+        description: 'Updated comment content.',
+      );
     } catch (e) {
       _comments[index] = oldComment;
       notifyListeners();
@@ -297,6 +310,12 @@ class CommentProvider with ChangeNotifier {
           _comments.map((e) => e.toJson()).toList(),
         );
       }
+
+      SystemAuditService.logAction(
+        actionType: 'DELETE_COMMENT',
+        affectedEntity: 'Comment ID: $id',
+        description: 'Deleted comment by ${deletedComment.authorName}.',
+      );
     } catch (e) {
       _comments.insert(index, deletedComment);
       notifyListeners();

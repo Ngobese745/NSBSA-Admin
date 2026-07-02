@@ -11,18 +11,23 @@ class SystemAuditService {
     required String actionType,
     required String affectedEntity,
     required String description,
+    Map<String, dynamic>? metadata,
   }) async {
     try {
       final user = _supabase.auth.currentUser;
       final performedBy = user?.email ?? 'Unknown User';
 
-      await _supabase.from('system_audit_log').insert({
+      final insert = <String, dynamic>{
         'action_type': actionType,
         'performed_by': performedBy,
         'affected_entity': affectedEntity,
         'description': description,
-        // timestamp is handled by the database default (now())
-      });
+      };
+      if (metadata != null) {
+        insert['metadata'] = metadata;
+      }
+
+      await _supabase.from('system_audit_log').insert(insert);
     } catch (e) {
       debugPrint('SystemAuditService.logAction error: $e');
     }

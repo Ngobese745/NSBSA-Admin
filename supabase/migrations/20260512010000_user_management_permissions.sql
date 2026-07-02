@@ -32,7 +32,7 @@ BEGIN
   FROM public.profiles
   WHERE id = auth.uid();
 
-  IF current_role IS DISTINCT FROM 'Super Admin' THEN
+  IF current_role IS DISTINCT FROM 'Super Admin' AND auth.uid() IS NOT NULL THEN
     IF NEW.role IS DISTINCT FROM OLD.role OR NEW.status IS DISTINCT FROM OLD.status THEN
       RAISE EXCEPTION 'Only Super Admins can change user roles or status.';
     END IF;

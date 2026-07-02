@@ -67,10 +67,17 @@ class ImportProvider with ChangeNotifier {
       _statusMessage = result.verificationMessage;
       _progress = 1.0;
     } catch (e) {
-      _statusMessage = e.toString().startsWith('Exception:')
+      final errorMsg = e.toString().startsWith('Exception:')
           ? e.toString().replaceFirst('Exception: ', '')
           : 'Month values could not be imported correctly. '
               'Please check your Excel file format. ($e)';
+      _statusMessage = errorMsg;
+
+      SystemAuditService.logAction(
+        actionType: 'IMPORT_FAILED',
+        affectedEntity: 'EXCEL_IMPORT',
+        description: 'Import failed for $fileName: $errorMsg',
+      );
     } finally {
       _isImporting = false;
       notifyListeners();

@@ -157,15 +157,24 @@ class AccountManagementService {
     required String operatorEmail,
     required bool canChangeCriticalFields,
   }) async {
+    final existing = await _admin.from('profiles').select('role, status').eq('id', userId).maybeSingle();
+    final oldRole = existing?['role'] as String?;
+    final oldStatus = existing?['status'] as String?;
+
     final update = <String, dynamic>{
       'full_name': fullName,
       'email': email,
       'department': department.isEmpty ? null : department,
     };
 
+    final bool statusChanged = (oldStatus ?? status) != status;
+
     if (canChangeCriticalFields) {
       update['role'] = role;
       update['status'] = status;
+    }
+
+    if (statusChanged) {
       await _admin.auth.admin.updateUserById(
         userId,
         attributes: AdminUserAttributes(
@@ -187,13 +196,21 @@ class AccountManagementService {
         'department': department,
         if (canChangeCriticalFields) 'role': role,
         if (canChangeCriticalFields) 'status': status,
+        if (oldRole != null && oldRole != role) 'old_role': oldRole,
+        if (oldStatus != null && oldStatus != status) 'old_status': oldStatus,
       },
     );
 
     SystemAuditService.logAction(
       actionType: 'UPDATE_USER',
       affectedEntity: 'User ID: $userId',
-      description: 'Updated staff profile details for $email.',
+      description: 'Updated staff profile details for ${email}.',
+      metadata: {
+        if (oldRole != null && oldRole != role) 'changed_role_from': oldRole,
+        if (oldRole != null && oldRole != role) 'changed_role_to': role,
+        if (oldStatus != null && oldStatus != status) 'changed_status_from': oldStatus,
+        if (oldStatus != null && oldStatus != status) 'changed_status_to': status,
+      },
     );
   }
 

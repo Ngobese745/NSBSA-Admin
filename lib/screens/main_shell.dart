@@ -37,6 +37,7 @@ import '../widgets/notification_bell.dart';
 import 'marketing/marketing_hub_screen.dart';
 import 'notification_history_screen.dart';
 import 'master_loan_ledger_screen.dart';
+import 'approval_queue_screen.dart';
 import '../providers/shell_navigation_provider.dart';
 
 class MainShell extends StatefulWidget {
@@ -56,7 +57,7 @@ class _MainShellState extends State<MainShell> {
   final Set<int> _loadedIndices = {0}; // Dashboard is always loaded
 
   final List<GlobalKey<NavigatorState>> _navigatorKeys = List.generate(
-    15,
+    16,
     (index) => GlobalKey<NavigatorState>(),
   );
 
@@ -76,6 +77,7 @@ class _MainShellState extends State<MainShell> {
     'Account Preferences',
     'Notification History',
     'Master Loan Ledger',
+    'Approval Queue',
   ];
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
@@ -147,6 +149,12 @@ class _MainShellState extends State<MainShell> {
         return const NotificationHistoryScreen();
       case 14:
         return const FeatureGuard(featureKey: 'loans', child: MasterLoanLedgerScreen());
+      case 15:
+        final auth = context.read<AuthProvider>();
+        if (!AccessControlService.canApproveRecords(auth.userProfile)) {
+          return const Center(child: Text('Access denied.'));
+        }
+        return const ApprovalQueueScreen();
       default:
         final authProvider = context.read<AuthProvider>();
         if (authProvider.userProfile?.role == 'Super Admin') {
@@ -673,6 +681,22 @@ class _MainShellState extends State<MainShell> {
               if (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false))
                 _buildNavItem(Icons.business, 'Centers', 9, navIndex, dev, profile: profile, isCollapsed: isCollapsed),
 
+              if (AccessControlService.canApproveRecords(profile)) ...[
+                const Divider(
+                  height: 24,
+                  thickness: 0.3,
+                  indent: 16,
+                  endIndent: 16,
+                ),
+                _buildNavItem(
+                  Icons.approval,
+                  'Approval Queue',
+                  15,
+                  navIndex,
+                  dev,
+                  profile: profile, isCollapsed: isCollapsed,
+                ),
+              ],
               if (AccessControlService.canManageUsers(profile)) ...[
                 const Divider(
                   height: 24,

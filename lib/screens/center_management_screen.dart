@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/providers.dart';
+import '../services/access_control_service.dart';
 import '../models/center.dart';
 import '../models/leadership.dart';
 import '../models/group.dart';
@@ -77,7 +78,9 @@ class _CenterManagementScreenState extends State<CenterManagementScreen> {
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              if (center.name != 'Main Center')
+                              if (center.name != 'Main Center' && AccessControlService.canEditData(
+                                context.read<AuthProvider>().userProfile,
+                              ))
                                 IconButton(
                                   onPressed: () => _deleteCenter(
                                     context,

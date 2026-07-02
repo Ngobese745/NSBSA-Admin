@@ -27,33 +27,43 @@ class GracePeriodReminderService {
   /// Public entry point. Finds loans whose grace period ends today (or has
   /// just ended and was not notified yet) and dispatches the reminder.
   Future<GraceReminderSummary> sendGracePeriodEndReminders() async {
+    return _processDueLoans(null);
+  }
+
+  Future<int> sendGracePeriodEndReminderForLoan(String loanId) async {
+    final summary = await _processDueLoans(loanId);
+    return summary.sent;
+  }
+
+  Future<GraceReminderSummary> _processDueLoans(String? targetLoanId) async {
     debugPrint('[Grace Reminder] Scanning loans for grace period expiry...');
     final summary = GraceReminderSummary();
 
     try {
-      // 1. Find loans where:
-      //    - grace_period_enabled = true
-      //    - first_payment_date <= today
-      //    - AND a reminder for this loan has NOT been logged yet
-      final response = await _supabase
+      var query = _supabase
           .from('loans')
           .select('''
             id, amount, monthly_payment, first_payment_date,
             grace_period_months, status,
             vendors:vendor_id ( id, name, phone, email, whatsapp )
           ''')
-          .eq('grace_period_enabled', true)
-          .lte('first_payment_date', DateTime.now().toIso8601String().split('T').first)
           .eq('status', 'Active');
 
+      if (targetLoanId != null) {
+        query = query.eq('grace_period_enabled', true).eq('id', targetLoanId);
+      } else {
+        query = query
+            .eq('grace_period_enabled', true)
+            .lte('first_payment_date', DateTime.now().toIso8601String().split('T').first);
+      }
+
+      final response = await query;
       final dueLoans = (response as List);
       debugPrint('[Grace Reminder] Found ${dueLoans.length} candidate loan(s)');
 
       for (final row in dueLoans) {
         final loanId = row['id'] as String;
-        // Skip if we have already logged a grace-end reminder for this loan
-        final alreadyNotified = await _hasReminderBeenSent(loanId);
-        if (alreadyNotified) continue;
+        if (await _hasReminderBeenSent(loanId)) continue;
 
         final vendor = (row['vendors'] is Map) ? row['vendors'] as Map : null;
         if (vendor == null) continue;
@@ -62,10 +72,15 @@ class GracePeriodReminderService {
         final vendorPhone = (vendor['phone'] as String?) ?? '';
         final vendorEmail = (vendor['email'] as String?) ?? '';
         final vendorWhatsApp = (vendor['whatsapp'] as String?) ?? '';
+        final vendorId = (vendor['id'] as String?) ?? '';
 
         final monthlyPayment = (row['monthly_payment'] as num).toDouble();
+        final loanAmount = (row['amount'] as num).toDouble();
         final graceMonths = (row['grace_period_months'] as num?)?.toInt() ?? 0;
         final loanRef = 'L-${loanId.substring(0, 8).toUpperCase()}';
+        final dueDate = row['first_payment_date'] != null
+            ? DateTime.parse(row['first_payment_date'] as String)
+            : DateTime.now();
 
         final message =
             'Dear $vendorName, your loan repayment period (ref $loanRef) '
@@ -73,36 +88,31 @@ class GracePeriodReminderService {
             'Your monthly instalment is R${monthlyPayment.toStringAsFixed(2)}. '
             'Please ensure your first payment is made to avoid penalties.';
 
-        // Truncate to SMS-safe length (160 chars). We don't need to on this
-        // message because it stays well under 160, but we apply the same
-        // guard as the regular reminder service for safety.
         final smsMessage = message.length > 160
             ? '${message.substring(0, 157)}...'
             : message;
 
         final logEntry = ReminderLogModel(
           id: '',
-          vendorId: (vendor['id'] as String?) ?? '',
+          vendorId: vendorId,
           vendorName: vendorName,
           vendorPhone: vendorPhone,
           vendorEmail: vendorEmail,
           vendorWhatsApp: vendorWhatsApp,
-          loanAmount: (row['amount'] as num).toDouble(),
+          loanAmount: loanAmount,
           balance: monthlyPayment,
           loanRef: loanRef,
-          dueDate: row['first_payment_date'] != null
-              ? DateTime.parse(row['first_payment_date'] as String)
-              : DateTime.now(),
+          dueDate: dueDate,
           reminderType: 'grace_period_end',
           channel: 'multi',
           status: 'pending',
+          errorMessage: null,
           createdAt: DateTime.now(),
         );
 
         bool sent = false;
         String? errorMsg;
 
-        // WhatsApp (preferred)
         if (vendorWhatsApp.isNotEmpty || vendorPhone.isNotEmpty) {
           try {
             await _whatsappService.sendWhatsApp(
@@ -115,7 +125,6 @@ class GracePeriodReminderService {
           }
         }
 
-        // SMS fallback
         if (vendorPhone.isNotEmpty) {
           try {
             await _smsService.sendSMS(
@@ -128,16 +137,13 @@ class GracePeriodReminderService {
           }
         }
 
-        // Email (logged — actual delivery is handled by a Supabase Edge
-        // function or external SMTP relay). We at minimum write a
-        // notifications row so the audit trail captures the event.
         if (vendorEmail.isNotEmpty) {
           try {
             await _supabase.from('notifications').insert({
               'title': 'Loan Repayment Period Started',
               'message': message,
               'type': 'GRACE_PERIOD_END',
-              'recipient_id': logEntry.vendorId,
+              'recipient_id': vendorId,
             });
             sent = true;
           } catch (e) {
@@ -145,7 +151,6 @@ class GracePeriodReminderService {
           }
         }
 
-        // Persist the log
         await _logReminder(
           logEntry,
           sent: sent,
@@ -199,8 +204,11 @@ class GracePeriodReminderService {
         'loan_ref': log.loanRef,
         'due_date': log.dueDate.toIso8601String(),
         'reminder_type': log.reminderType,
+        'channel': log.channel,
+        'status': sent ? 'sent' : 'failed',
         'sent': sent,
         if (errorMessage != null) 'error': errorMessage,
+        if (errorMessage != null) 'error_message': errorMessage,
         'created_at': DateTime.now().toIso8601String(),
       });
     } catch (e) {

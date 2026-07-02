@@ -72,4 +72,20 @@ class AccessControlService {
   /// View Assigned Portfolio (Field Agents)
   static bool isFieldAgent(ProfileModel? profile) =>
       profile?.role == 'Development Facilitator';
+
+  /// DF can register vendors (always allowed — goes to Pending).
+  static bool canRegisterVendors(ProfileModel? profile) =>
+      profile != null;
+
+  /// DF can create groups (always allowed — goes to Pending).
+  static bool canCreateGroups(ProfileModel? profile) =>
+      profile != null;
+
+  /// Approve/reject pending records (Admin/Super Admin only).
+  static bool canApproveRecords(ProfileModel? profile) =>
+      hasRole(profile, ['Super Admin', 'Admin']);
+
+  /// Can view pending/unapproved records.
+  static bool canViewUnapprovedRecords(ProfileModel? profile) =>
+      hasRole(profile, ['Super Admin', 'Admin']);
 }

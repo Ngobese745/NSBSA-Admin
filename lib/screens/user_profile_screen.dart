@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/inactivity_timeout_service.dart';
+import '../services/system_audit_service.dart';
 
 class UserProfileScreen extends StatefulWidget {
   const UserProfileScreen({super.key});
@@ -86,6 +87,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         ),
       );
       setState(() => _displayName = _nameController.text);
+      SystemAuditService.logAction(
+        actionType: 'UPDATE_SELF_PROFILE',
+        affectedEntity: 'Self Profile',
+        description: 'Updated own profile (name, phone).',
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Profile saved successfully.')),
@@ -118,6 +124,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
       await InactivityTimeoutService.instance.refreshPreference();
 
+      SystemAuditService.logAction(
+        actionType: 'UPDATE_TIMEOUT_PREFERENCE',
+        affectedEntity: 'User: ${user.email ?? 'Unknown'}',
+        description: 'Updated inactivity timeout preference to ${_timeoutDisabled ? "disabled" : "$_timeoutMinutes minutes"}.',
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
