@@ -42,6 +42,12 @@ CREATE TABLE public.loans (
     penalty_fee NUMERIC,
     opening_amount NUMERIC,
     first_instalment_date DATE,
+    -- Grace period: optional months before regular repayments begin
+    grace_period_enabled  BOOLEAN NOT NULL DEFAULT FALSE,
+    grace_period_months  INTEGER,
+    first_payment_date    DATE,
+    -- Interest rate percentage for audit and recalculation purposes
+    interest_rate DOUBLE PRECISION,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 

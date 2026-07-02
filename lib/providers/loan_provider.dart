@@ -134,7 +134,14 @@ class LoanProvider with ChangeNotifier {
     } catch (e) {
       _loans.removeWhere((l) => l.id == loan.id);
       notifyListeners();
-      throw Exception('Failed to add loan. Please try again.');
+      debugPrint('Error adding loan: $e');
+      // Surface the underlying Supabase error so the user (and the developer)
+      // can see why the insert failed (e.g. missing column, RLS, etc).
+      final msg = e.toString();
+      if (msg.length > 200) {
+        throw Exception('Failed to add loan. ${msg.substring(0, 200)}...');
+      }
+      throw Exception('Failed to add loan. $msg');
     }
   }
 
