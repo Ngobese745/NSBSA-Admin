@@ -1816,7 +1816,9 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
   }
 
   void _showRecordPaymentDialog(BuildContext context, LoanModel loan) {
-    final amountController = TextEditingController(text: loan.monthlyPayment.toStringAsFixed(0));
+    final monthlyAdminFee = loan.monthlyAdminFee ?? 65.0;
+    final defaultAmount = (loan.monthlyPayment + monthlyAdminFee).toStringAsFixed(0);
+    final amountController = TextEditingController(text: defaultAmount);
     String selectedType = 'Cash';
 
     showDialog(
@@ -1856,6 +1858,9 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                 decoration: InputDecoration(
                   prefixText: 'R ',
                   prefixStyle: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                  helperText:
+                      'R ${loan.monthlyPayment.toStringAsFixed(0)} monthly + R ${monthlyAdminFee.toStringAsFixed(0)} admin',
+                  helperStyle: const TextStyle(color: Colors.grey, fontSize: 10),
                 ),
               ),
             ],

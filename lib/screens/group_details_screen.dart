@@ -1558,10 +1558,18 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       );
     }
 
-    showDialog(
+    showGeneralDialog(
       context: context,
-      builder: (ctx) {
-        final isWide = MediaQuery.of(ctx).size.width > 600;
+      barrierDismissible: false,
+      barrierLabel: 'Create Loan',
+      transitionDuration: Duration.zero,
+      pageBuilder: (context, animation, secondaryAnimation) {
+        final isWide = MediaQuery.of(context).size.width > 600;
+
+        // Trigger initial calculation so preview cards are visible immediately
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          recalc(setState);
+        });
 
         return StatefulBuilder(
           builder: (context, setState) {
@@ -2099,9 +2107,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   }
 
   void _showRecordPaymentDialog(LoanModel loan) {
-    final amountController = TextEditingController(
-      text: loan.monthlyPayment.toStringAsFixed(0),
-    );
+    final monthlyAdminFee = loan.monthlyAdminFee ?? 65.0;
+    final defaultAmount = (loan.monthlyPayment + monthlyAdminFee).toStringAsFixed(0);
+    final amountController = TextEditingController(text: defaultAmount);
     String selectedType = 'Cash';
 
     showDialog(
@@ -2155,6 +2163,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   prefixStyle: TextStyle(
                     color: Theme.of(context).textTheme.bodyMedium?.color,
                   ),
+                  helperText:
+                      'R ${loan.monthlyPayment.toStringAsFixed(0)} monthly + R ${monthlyAdminFee.toStringAsFixed(0)} admin',
+                  helperStyle: const TextStyle(color: Colors.grey, fontSize: 10),
                 ),
                 keyboardType: TextInputType.number,
               ),
@@ -2561,7 +2572,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
 
     double totalExpected = activeLoans.fold(
       0.0,
-      (sum, l) => sum + l.monthlyPayment,
+      (sum, l) => sum + l.monthlyPayment + (l.monthlyAdminFee ?? 65.0),
     );
     bool isSubmitting = false;
 
@@ -2857,7 +2868,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             .toList();
         totalLiability += loan.openingAmount != null
             ? loan.openingAmount! + LoanCalculationService.calculateAppliedPenalty(loan, loanPayments)
-            : (loan.monthlyPayment * loan.durationMonths) +
+            : (loan.monthlyPayment + (loan.monthlyAdminFee ?? 65.0)) * loan.durationMonths +
             (loan.initiationFee ?? 0) +
             LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
       }
@@ -2919,7 +2930,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   .toList();
               loanInitialLiability[loan.id] = loan.openingAmount != null
                   ? loan.openingAmount! + LoanCalculationService.calculateAppliedPenalty(loan, loanPayments)
-                  : (loan.monthlyPayment * loan.durationMonths) +
+                  : (loan.monthlyPayment + (loan.monthlyAdminFee ?? 65.0)) * loan.durationMonths +
                   (loan.initiationFee ?? 0) +
                   LoanCalculationService.calculateAppliedPenalty(
                     loan,

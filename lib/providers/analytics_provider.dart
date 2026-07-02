@@ -362,7 +362,7 @@ class AnalyticsProvider with ChangeNotifier {
         final loanPayments = payments.where((p) => p.loanId == loan.id).toList();
         final expected = loan.openingAmount != null
             ? loan.openingAmount! + LoanCalculationService.calculateAppliedPenalty(loan, loanPayments)
-            : (loan.monthlyPayment * loan.durationMonths) +
+            : (loan.monthlyPayment + (loan.monthlyAdminFee ?? 65.0)) * loan.durationMonths +
             (loan.initiationFee ?? 0) +
             LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
 

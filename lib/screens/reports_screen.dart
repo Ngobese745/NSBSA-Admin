@@ -75,7 +75,7 @@ class ReportsScreen extends StatefulWidget {
 }
 
 class _ReportsScreenState extends State<ReportsScreen> {
-  int _selectedMonthFilter = DateTime.now().month;
+  int _selectedMonthFilter = 0; // Default: All Months
 
   List<Map<String, dynamic>> _getMonthFilterOptions() {
     final now = DateTime.now();
@@ -137,13 +137,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final List<VendorModel> filteredVendors;
 
     if (_selectedMonthFilter == 0) {
-      filteredLoans = loanProvider.loans.where((l) {
-        final date = l.firstInstalmentDate ?? l.createdAt;
-        return date.year == currentYear && date.month <= currentMonth;
-      }).toList();
-      filteredPayments = paymentProvider.payments.where((p) =>
-        p.datePaid.year == currentYear && p.datePaid.month <= currentMonth
-      ).toList();
+      filteredLoans = loanProvider.loans.toList();
+      filteredPayments = paymentProvider.payments.toList();
       filteredVendors = vendorProvider.vendors;
     } else {
       filteredLoans = loanProvider.loans.where((l) {

@@ -252,8 +252,9 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                                         .toList();
                                     if (loans.length == 1) {
                                       selectedLoan = loans.first;
-                                      amountController.text = selectedLoan!
-                                          .monthlyPayment
+                                      amountController.text = (selectedLoan!
+                                              .monthlyPayment +
+                                          (selectedLoan!.monthlyAdminFee ?? 65.0))
                                           .toStringAsFixed(0);
                                     }
                                   });
@@ -327,7 +328,8 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                         setState(() {
                           selectedLoan = val;
                           if (val != null)
-                            amountController.text = val.monthlyPayment
+                            amountController.text = (val.monthlyPayment +
+                                    (val.monthlyAdminFee ?? 65.0))
                                 .toStringAsFixed(0);
                         });
                       },
@@ -435,7 +437,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
 
     final totalExpected = loan.openingAmount != null
         ? loan.openingAmount!
-        : (loan.monthlyPayment * loan.durationMonths) + (loan.initiationFee ?? 0);
+        : (loan.monthlyPayment + (loan.monthlyAdminFee ?? 65.0)) * loan.durationMonths + (loan.initiationFee ?? 0);
 
     double runningBalance = totalExpected;
     double balanceAfterPayment = totalExpected;

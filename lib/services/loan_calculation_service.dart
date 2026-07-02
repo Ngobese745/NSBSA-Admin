@@ -69,7 +69,7 @@ class LoanCalculationService {
     final appliedPenalty = calculateAppliedPenalty(loan, payments);
 
     final totalLiability =
-        (loan.monthlyPayment * loan.durationMonths) +
+        (loan.monthlyPayment + (loan.monthlyAdminFee ?? 0)) * loan.durationMonths +
         (loan.initiationFee ?? 0) +
         appliedPenalty;
 

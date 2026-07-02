@@ -215,9 +215,9 @@ class LoanDetailsScreen extends StatelessWidget {
   }
 
   void _showRecordPaymentDialog(BuildContext context) {
-    final amountController = TextEditingController(
-      text: loan.monthlyPayment.toStringAsFixed(0),
-    );
+    final monthlyAdminFee = loan.monthlyAdminFee ?? 65.0;
+    final defaultAmount = (loan.monthlyPayment + monthlyAdminFee).toStringAsFixed(0);
+    final amountController = TextEditingController(text: defaultAmount);
     String selectedType = 'Cash';
 
     showDialog(
@@ -273,6 +273,9 @@ class LoanDetailsScreen extends StatelessWidget {
                   prefixStyle: TextStyle(
                     color: Theme.of(context).textTheme.bodyMedium?.color,
                   ),
+                  helperText:
+                      'R ${loan.monthlyPayment.toStringAsFixed(0)} monthly + R ${monthlyAdminFee.toStringAsFixed(0)} admin',
+                  helperStyle: const TextStyle(color: Colors.grey, fontSize: 10),
                 ),
               ),
             ],
@@ -462,7 +465,7 @@ class LoanDetailsScreen extends StatelessWidget {
             'Total Loan Liability',
             loan.openingAmount != null
                 ? 'R ${(loan.openingAmount! + appliedPenalty).toStringAsFixed(0)}'
-                : 'R ${((loan.monthlyPayment * loan.durationMonths) + (loan.initiationFee ?? 0) + appliedPenalty).toStringAsFixed(0)}',
+                : 'R ${((loan.monthlyPayment + (loan.monthlyAdminFee ?? 65.0)) * loan.durationMonths + (loan.initiationFee ?? 0) + appliedPenalty).toStringAsFixed(0)}',
             isValueBold: true,
             valueColor: AppTheme.primaryGold,
           ),
@@ -1103,7 +1106,7 @@ class LoanDetailsScreen extends StatelessWidget {
                   pw.Divider(color: PdfColors.grey300),
                   _pdfBreakdownRow('Total Loan Liability', loan.openingAmount != null
                       ? 'R ${(loan.openingAmount! + LoanCalculationService.calculateAppliedPenalty(loan, payments)).toStringAsFixed(2)}' 
-                      : 'R ${((loan.monthlyPayment * loan.durationMonths) + (loan.initiationFee ?? 0) + LoanCalculationService.calculateAppliedPenalty(loan, payments)).toStringAsFixed(2)}', isBold: true),
+                      : 'R ${((loan.monthlyPayment + (loan.monthlyAdminFee ?? 65.0)) * loan.durationMonths + (loan.initiationFee ?? 0) + LoanCalculationService.calculateAppliedPenalty(loan, payments)).toStringAsFixed(2)}', isBold: true),
                   _pdfBreakdownRow('Total Amount Paid', 'R ${totalPaid.toStringAsFixed(2)}'),
                   _pdfBreakdownRow('Outstanding Balance', 'R ${balance.toStringAsFixed(2)}', isBold: true),
                 ],
