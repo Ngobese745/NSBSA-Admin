@@ -175,7 +175,7 @@ class AccountManagementService {
       );
     }
 
-    await _client.from('profiles').update(update).eq('id', userId);
+    await _admin.from('profiles').update(update).eq('id', userId);
 
     await logEvent(
       eventType: 'user_updated',
@@ -207,7 +207,7 @@ class AccountManagementService {
       userId,
       attributes: AdminUserAttributes(banDuration: '876000h'),
     );
-    await _client
+    await _admin
         .from('profiles')
         .update({'status': 'Blocked'})
         .eq('id', userId);
@@ -244,7 +244,7 @@ class AccountManagementService {
       userId,
       attributes: AdminUserAttributes(banDuration: 'none'),
     );
-    await _client
+    await _admin
         .from('profiles')
         .update({'status': 'Active'})
         .eq('id', userId);

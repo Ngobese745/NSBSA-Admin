@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/developer_controls.dart';
 import '../models/profile.dart';
 import '../services/access_control_service.dart';
 import '../services/developer_controls_service.dart';
+import '../services/realtime_service.dart';
 import '../services/system_audit_service.dart';
 
 /// Loads system banners, feature flags, and developer audit entries from Supabase.
@@ -21,6 +23,91 @@ class DeveloperControlsProvider extends ChangeNotifier {
   bool get tablesMissing => _tablesMissing;
   bool get isLoading => _isLoading;
   String? get lastError => _lastError;
+
+  DeveloperControlsProvider() {
+    _initRealtime();
+  }
+
+  void _initRealtime() {
+    RealtimeService().subscribeToTable(
+      tableName: 'system_banners',
+      onData: (payload) {
+        try {
+          final event = payload.eventType;
+          if (event == PostgresChangeEvent.insert) {
+            final newBanner = SystemBannerModel.fromJson(payload.newRecord);
+            if (!_banners.any((b) => b.id == newBanner.id)) {
+              _banners.insert(0, newBanner);
+              notifyListeners();
+            }
+          } else if (event == PostgresChangeEvent.update) {
+            final updated = SystemBannerModel.fromJson(payload.newRecord);
+            final index = _banners.indexWhere((b) => b.id == updated.id);
+            if (index != -1) {
+              _banners[index] = updated;
+              notifyListeners();
+            }
+          } else if (event == PostgresChangeEvent.delete) {
+            final id = payload.oldRecord['id'];
+            final before = _banners.length;
+            _banners.removeWhere((b) => b.id == id);
+            if (_banners.length != before) notifyListeners();
+          }
+        } catch (e) {
+          debugPrint('Error processing banners realtime: $e');
+        }
+      },
+    );
+
+    RealtimeService().subscribeToTable(
+      tableName: 'feature_flags',
+      onData: (payload) {
+        try {
+          final event = payload.eventType;
+          if (event == PostgresChangeEvent.insert) {
+            final newFlag = FeatureFlagModel.fromJson(payload.newRecord);
+            if (!_flags.any((f) => f.featureKey == newFlag.featureKey)) {
+              _flags.add(newFlag);
+              notifyListeners();
+            }
+          } else if (event == PostgresChangeEvent.update) {
+            final updated = FeatureFlagModel.fromJson(payload.newRecord);
+            final index = _flags.indexWhere((f) => f.featureKey == updated.featureKey);
+            if (index != -1) {
+              _flags[index] = updated;
+              notifyListeners();
+            }
+          } else if (event == PostgresChangeEvent.delete) {
+            final key = payload.oldRecord['feature_key'];
+            final before = _flags.length;
+            _flags.removeWhere((f) => f.featureKey == key);
+            if (_flags.length != before) notifyListeners();
+          }
+        } catch (e) {
+          debugPrint('Error processing feature flags realtime: $e');
+        }
+      },
+    );
+
+    RealtimeService().subscribeToTable(
+      tableName: 'developer_action_log',
+      onData: (payload) {
+        try {
+          if (payload.eventType == PostgresChangeEvent.insert) {
+            final newLog = DeveloperActionLogModel.fromJson(payload.newRecord);
+            _logs.insert(0, newLog);
+            // Keep list bounded
+            if (_logs.length > 200) {
+              _logs = _logs.sublist(0, 200);
+            }
+            notifyListeners();
+          }
+        } catch (e) {
+          debugPrint('Error processing dev action log realtime: $e');
+        }
+      },
+    );
+  }
 
   /// If migrations are not applied, all features stay enabled (fail-open).
   bool isFeatureEnabled(String featureKey) {

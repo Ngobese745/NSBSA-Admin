@@ -12,6 +12,9 @@ class LoanModel {
   final double? openingAmount;
   final double? interestRate;
   final DateTime? firstInstalmentDate;
+  final DateTime? firstPaymentDate;
+  final bool gracePeriodEnabled;
+  final int? gracePeriodMonths;
   final String? vendorName;
   final String? loanType;
   final DateTime createdAt;
@@ -32,6 +35,9 @@ class LoanModel {
     this.openingAmount,
     this.interestRate,
     this.firstInstalmentDate,
+    this.firstPaymentDate,
+    this.gracePeriodEnabled = false,
+    this.gracePeriodMonths,
     required this.createdAt,
   });
 
@@ -72,6 +78,11 @@ class LoanModel {
       firstInstalmentDate: json['first_instalment_date'] != null
           ? DateTime.parse(json['first_instalment_date'])
           : null,
+      firstPaymentDate: json['first_payment_date'] != null
+          ? DateTime.parse(json['first_payment_date'])
+          : null,
+      gracePeriodEnabled: json['grace_period_enabled'] == true,
+      gracePeriodMonths: json['grace_period_months'] as int?,
       createdAt: DateTime.parse(json['created_at']),
     );
   }
@@ -92,11 +103,29 @@ class LoanModel {
       'opening_amount': openingAmount,
       'interest_rate': interestRate,
       'first_instalment_date': firstInstalmentDate?.toIso8601String(),
+      'first_payment_date': firstPaymentDate?.toIso8601String(),
+      'grace_period_enabled': gracePeriodEnabled,
+      'grace_period_months': gracePeriodMonths,
       'created_at': createdAt.toIso8601String(),
     };
     if (id.isNotEmpty) {
       map['id'] = id;
     }
     return map;
+  }
+
+  /// Returns the effective first-payment date.
+  /// Falls back to firstInstalmentDate when firstPaymentDate is not set.
+  DateTime? get effectiveFirstPaymentDate =>
+      firstPaymentDate ?? firstInstalmentDate;
+
+  /// True if the loan is currently in its grace period.
+  /// The grace period ends on the first payment date.
+  bool get isInGracePeriod {
+    if (!gracePeriodEnabled) return false;
+    final start = firstPaymentDate;
+    if (start == null) return false;
+    final now = DateTime.now();
+    return now.isBefore(DateTime(start.year, start.month, start.day));
   }
 }

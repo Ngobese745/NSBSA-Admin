@@ -2,12 +2,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/notification.dart';
+import '../services/realtime_service.dart';
 
 class NotificationProvider with ChangeNotifier {
   final _supabase = Supabase.instance.client;
   List<NotificationModel> _notifications = [];
   bool _isLoading = false;
-  RealtimeChannel? _channel;
+  Timer? _refreshDebounce;
 
   List<NotificationModel> get notifications => _notifications;
   int get unreadCount => _notifications.where((n) => !n.isRead).length;
@@ -18,17 +19,47 @@ class NotificationProvider with ChangeNotifier {
   }
 
   void _initRealtime() {
-    _channel = _supabase
-        .channel('public:notifications')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'notifications',
-          callback: (payload) {
-            fetchNotifications();
-          },
-        )
-        .subscribe();
+    RealtimeService().subscribeToTable(
+      tableName: 'notifications',
+      onData: (payload) {
+        try {
+          final event = payload.eventType;
+          if (event == PostgresChangeEvent.insert) {
+            final newNotif = NotificationModel.fromJson(payload.newRecord);
+            _notifications.insert(0, newNotif);
+            // Keep list bounded
+            if (_notifications.length > 100) {
+              _notifications = _notifications.sublist(0, 100);
+            }
+            notifyListeners();
+          } else if (event == PostgresChangeEvent.update) {
+            final updated = NotificationModel.fromJson(payload.newRecord);
+            final index = _notifications.indexWhere((n) => n.id == updated.id);
+            if (index != -1) {
+              _notifications[index] = updated;
+              notifyListeners();
+            } else {
+              // The updated notification wasn't in our visible window
+              _scheduleRefresh();
+            }
+          } else if (event == PostgresChangeEvent.delete) {
+            final id = payload.oldRecord['id'];
+            final before = _notifications.length;
+            _notifications.removeWhere((n) => n.id == id);
+            if (_notifications.length != before) notifyListeners();
+          }
+        } catch (e) {
+          debugPrint('Error processing notifications realtime: $e');
+        }
+      },
+    );
+  }
+
+  /// Debounced re-fetch for cases where incremental updates aren't sufficient
+  /// (e.g., back-fill after a delete that pushed a new notification off-screen).
+  void _scheduleRefresh() {
+    _refreshDebounce?.cancel();
+    _refreshDebounce = Timer(const Duration(seconds: 2), fetchNotifications);
   }
 
   Future<void> fetchNotifications() async {
@@ -112,7 +143,7 @@ class NotificationProvider with ChangeNotifier {
 
   @override
   void dispose() {
-    _channel?.unsubscribe();
+    _refreshDebounce?.cancel();
     super.dispose();
   }
 }

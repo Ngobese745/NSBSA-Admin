@@ -1447,6 +1447,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     final termController = TextEditingController(text: '6');
     final monthlyController = TextEditingController();
     final customRateController = TextEditingController();
+    final gracePeriodController = TextEditingController(text: '3');
     DateTime selectedFirstDate = DateTime.now().add(const Duration(days: 30));
 
     String? selectedVendorId;
@@ -1455,6 +1456,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     bool useCustomRate = false;
     bool rateLocked = false;
     bool monthlyManuallySet = false;
+    bool gracePeriodEnabled = false;
 
     void recalc(StateSetter setState, {double? rateOverride}) {
       final breakdown = _recalculateLoan(
@@ -1854,13 +1856,93 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
 
                       const SizedBox(height: 8),
 
-                      // ── First Instalment Date ──
+                      // ── Grace Period ──
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: gracePeriodEnabled
+                              ? Colors.amber.withOpacity(0.06)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: gracePeriodEnabled
+                                ? Colors.amber.withOpacity(0.3)
+                                : Colors.grey.withOpacity(0.2),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.hourglass_empty,
+                                    color: Colors.amber, size: 16),
+                                const SizedBox(width: 6),
+                                const Text(
+                                  'Grace Period',
+                                  style: TextStyle(
+                                    color: Colors.amber,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const Spacer(),
+                                Switch(
+                                  value: gracePeriodEnabled,
+                                  activeColor: AppTheme.primaryGold,
+                                  onChanged: (val) => setState(() {
+                                    gracePeriodEnabled = val;
+                                    // Re-anchor the first-payment date
+                                    final gp = int.tryParse(gracePeriodController.text) ?? 3;
+                                    selectedFirstDate = DateTime.now()
+                                        .add(Duration(days: 30 * (val ? gp : 1)));
+                                  }),
+                                ),
+                              ],
+                            ),
+                            if (gracePeriodEnabled) ...[
+                              const SizedBox(height: 6),
+                              TextField(
+                                controller: gracePeriodController,
+                                style: TextStyle(
+                                  color: Theme.of(context).textTheme.bodyMedium?.color,
+                                  fontSize: 13,
+                                ),
+                                decoration: InputDecoration(
+                                  labelText: 'Grace Period Duration (months)',
+                                  labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
+                                  isDense: true,
+                                  helperText: 'Min 1, max 12. Client only pays R150 init during grace.',
+                                  helperStyle: const TextStyle(color: Colors.grey, fontSize: 9),
+                                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                                ),
+                                keyboardType: TextInputType.number,
+                                onChanged: (_) {
+                                  final gp = int.tryParse(gracePeriodController.text);
+                                  if (gp != null && gp >= 1 && gp <= 12) {
+                                    setState(() {
+                                      selectedFirstDate = DateTime.now()
+                                          .add(Duration(days: 30 * gp));
+                                    });
+                                  }
+                                },
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 8),
+
+                      // ── First Instalment / First Payment Date ──
                       ListTile(
                         contentPadding: EdgeInsets.zero,
                         dense: true,
                         visualDensity: VisualDensity.compact,
-                        title: const Text(
-                          'First Instalment Date',
+                        title: Text(
+                          gracePeriodEnabled
+                              ? 'First Payment Date (end of grace)'
+                              : 'First Instalment Date',
                           style: TextStyle(color: Colors.grey, fontSize: 11),
                         ),
                         subtitle: Text(
@@ -1876,7 +1958,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                             context: context,
                             initialDate: selectedFirstDate,
                             firstDate: DateTime.now(),
-                            lastDate: DateTime.now().add(const Duration(days: 365)),
+                            lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
                           );
                           if (picked != null) {
                             setState(() => selectedFirstDate = picked);
@@ -1902,6 +1984,25 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     if (amount_ > 0 && selectedVendorId != null) {
                       setState(() => amountController.text = 'Submitting...');
                       try {
+                        // Grace period validation
+                        int? graceMonths;
+                        if (gracePeriodEnabled) {
+                          final parsed = int.tryParse(gracePeriodController.text);
+                          if (parsed == null || parsed < 1 || parsed > 12) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Grace Period must be between 1 and 12 months.'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                            setState(() => amountController.text = amount_.toString());
+                            return;
+                          }
+                          graceMonths = parsed;
+                        }
+
                         final newLoan = await context.read<LoanProvider>().addLoan(
                           LoanModel(
                             id: '',
@@ -1916,6 +2017,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                             interestRate: rate,
                             status: 'Active',
                             firstInstalmentDate: selectedFirstDate,
+                            firstPaymentDate: selectedFirstDate,
+                            gracePeriodEnabled: gracePeriodEnabled,
+                            gracePeriodMonths: graceMonths,
                             createdAt: DateTime.now(),
                           ),
                         );

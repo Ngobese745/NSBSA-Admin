@@ -2,51 +2,122 @@ import '../models/loan.dart';
 import '../models/payment.dart';
 
 class LoanCalculationService {
-  /// Calculates the total penalty fee applied to a loan based on payment timing.
-  /// A penalty is applied for each month where the cumulative payments by the due date
-  /// are less than the expected cumulative amount for that month.
-  static double calculateAppliedPenalty(
-    LoanModel loan,
-    List<PaymentModel> payments,
-  ) {
-    if (loan.penaltyFee == null || loan.penaltyFee == 0) return 0.0;
-    if (loan.firstInstalmentDate == null) return 0.0;
+  // Standard admin fee (R65) used when loan.monthlyAdminFee is null
+  static const double defaultAdminFee = 65.0;
+  // Standard penalty fee (R59) used when loan.penaltyFee is null/0
+  static const double defaultPenaltyFee = 59.0;
 
-    double totalPenalty = 0.0;
-    final now = DateTime.now();
+  /// Returns the full expected monthly amount (monthly instalment + admin fee).
+  /// The admin fee is ALWAYS included.
+  static double expectedMonthlyAmount(LoanModel loan) {
+    return loan.monthlyPayment + (loan.monthlyAdminFee ?? defaultAdminFee);
+  }
 
-    // Sort payments by date to simplify cumulative calculations
-    final sortedPayments = List<PaymentModel>.from(payments)
-      ..sort((a, b) => a.datePaid.compareTo(b.datePaid));
+  /// Returns the effective penalty fee value, defaulting to standard if not set.
+  static double effectivePenaltyFee(LoanModel loan) {
+    return (loan.penaltyFee ?? 0) > 0 ? loan.penaltyFee! : defaultPenaltyFee;
+  }
 
+  /// Number of full monthly instalments that should already have been paid
+  /// based on the loan's first payment date and the current date.
+  /// For loans with a grace period, instalments are only counted from the
+  /// `firstPaymentDate` (which sits at the end of the grace period).
+  static int instalmentsDue(LoanModel loan, {DateTime? now}) {
+    final anchor = loan.effectiveFirstPaymentDate;
+    if (anchor == null) return 0;
+    final current = now ?? DateTime.now();
+    int count = 0;
     for (int i = 0; i < loan.durationMonths; i++) {
-      // Calculate due date for the i-th installment (0-indexed)
       final dueDate = DateTime(
-        loan.firstInstalmentDate!.year,
-        loan.firstInstalmentDate!.month + i,
-        loan.firstInstalmentDate!.day,
+        anchor.year,
+        anchor.month + i,
+        anchor.day,
       );
-
-      // If the due date hasn't passed yet, don't check for penalty
-      if (now.isBefore(dueDate)) break;
-
-      // Expected cumulative amount by this due date
-      final expectedCumulative = loan.monthlyPayment * (i + 1);
-
-      // Total paid on or before this due date
-      final paidByDueDate = sortedPayments
-          .where(
-            (p) => p.datePaid.isBefore(dueDate.add(const Duration(days: 1))),
-          ) // inclusive of the day
-          .fold(0.0, (sum, p) => sum + p.amountPaid);
-
-      if (paidByDueDate < expectedCumulative - 0.01) {
-        // 0.01 for floating point safety
-        totalPenalty += loan.penaltyFee!;
+      if (current.isAfter(dueDate) || current.isAtSameMomentAs(dueDate)) {
+        count = i + 1;
+      } else {
+        break;
       }
     }
+    return count;
+  }
 
-    return totalPenalty;
+  /// Total amount that should have been paid by now (admin fee included).
+  static double totalExpected(LoanModel loan, {DateTime? now}) {
+    final due = instalmentsDue(loan, now: now);
+    return expectedMonthlyAmount(loan) * due;
+  }
+
+  /// Sum of all payments ever made against this loan.
+  static double totalPaidAmount(List<PaymentModel> payments) {
+    return payments.fold(0.0, (sum, p) => sum + p.amountPaid);
+  }
+
+  /// Arrears amount = expected total - paid total. Always positive.
+  /// Returns 0 when the loan has not yet started (no instalments due).
+  static double calculateArrears(
+    LoanModel loan,
+    List<PaymentModel> payments, {
+    DateTime? now,
+  }) {
+    if (loan.firstInstalmentDate == null) return 0.0;
+    final due = instalmentsDue(loan, now: now);
+    if (due == 0) return 0.0;
+    final expected = totalExpected(loan, now: now);
+    final paid = totalPaidAmount(payments);
+    final arrears = expected - paid;
+    return arrears > 0 ? arrears : 0.0;
+  }
+
+  /// Number of months the client is currently behind. Each full
+  /// expected-monthly shortfall counts as one month in arrears.
+  static int monthsInArrears(
+    LoanModel loan,
+    List<PaymentModel> payments, {
+    DateTime? now,
+  }) {
+    final arrears = calculateArrears(loan, payments, now: now);
+    final monthly = expectedMonthlyAmount(loan);
+    if (monthly <= 0) return 0;
+    if (arrears <= 0) return 0;
+    return (arrears / monthly).ceil();
+  }
+
+  /// True when the client is behind on at least one instalment.
+  static bool isInArrears(
+    LoanModel loan,
+    List<PaymentModel> payments, {
+    DateTime? now,
+  }) {
+    return calculateArrears(loan, payments, now: now) > 0;
+  }
+
+  /// Arrears fee = penalty fee × number of months in arrears.
+  /// Penalty continues to apply for as long as the loan remains
+  /// in arrears (until the loan is settled / closed).
+  static double arrearsFee(
+    LoanModel loan,
+    List<PaymentModel> payments, {
+    DateTime? now,
+  }) {
+    if (loan.penaltyFee == null || loan.penaltyFee == 0) {
+      // Still apply default penalty when arrears exist
+      final months = monthsInArrears(loan, payments, now: now);
+      if (months == 0) return 0.0;
+      return defaultPenaltyFee * months;
+    }
+    final months = monthsInArrears(loan, payments, now: now);
+    return months == 0 ? 0.0 : loan.penaltyFee! * months;
+  }
+
+  /// Alias retained for backwards compatibility with the rest of the
+  /// codebase. Equivalent to [arrearsFee].
+  static double calculateAppliedPenalty(
+    LoanModel loan,
+    List<PaymentModel> payments, {
+    DateTime? now,
+  }) {
+    return arrearsFee(loan, payments, now: now);
   }
 
   /// Calculates the current balance of a loan.
@@ -57,25 +128,25 @@ class LoanCalculationService {
   ///
   /// For system-created loans (openingAmount == null) we use the standard
   /// formula:
-  ///   (monthlyPayment × duration) + penalty - totalPaid
+  ///   (monthlyPayment + adminFee) × duration
+  ///   + initiationFee
+  ///   + arrearsFee
+  ///   - totalPaid
   static double calculateBalance(LoanModel loan, List<PaymentModel> payments) {
-    // Imported loans carry the authoritative balance in openingAmount
     if (loan.openingAmount != null) {
       return loan.openingAmount!;
     }
 
-    final totalPaid = payments.fold(0.0, (sum, p) => sum + p.amountPaid);
-
-    final appliedPenalty = calculateAppliedPenalty(loan, payments);
+    final totalPaid = totalPaidAmount(payments);
+    final penalty = arrearsFee(loan, payments);
 
     final totalLiability =
-        (loan.monthlyPayment + (loan.monthlyAdminFee ?? 0)) * loan.durationMonths +
+        expectedMonthlyAmount(loan) * loan.durationMonths +
         (loan.initiationFee ?? 0) +
-        appliedPenalty;
+        penalty;
 
     final balance = totalLiability - totalPaid;
 
-    // Prevent over-calculation resulting in negative balances
     return balance < 0.01 ? 0.0 : balance;
   }
 
@@ -84,43 +155,16 @@ class LoanCalculationService {
     return calculateBalance(loan, payments) <= 0.01;
   }
 
-  /// Calculates total arrears for a loan (amount overdue from missed/partial instalments).
-  static double calculateArrears(LoanModel loan, List<PaymentModel> payments) {
-    if (loan.firstInstalmentDate == null) return 0.0;
-    final now = DateTime.now();
-    final sortedPayments = List<PaymentModel>.from(payments)
-      ..sort((a, b) => a.datePaid.compareTo(b.datePaid));
-
-    // How many instalments should have been paid by now
-    int instalmentsDue = 0;
-    for (int i = 0; i < loan.durationMonths; i++) {
-      final dueDate = DateTime(
-        loan.firstInstalmentDate!.year,
-        loan.firstInstalmentDate!.month + i,
-        loan.firstInstalmentDate!.day,
-      );
-      if (now.isAfter(dueDate) || now.isAtSameMomentAs(dueDate)) {
-        instalmentsDue = i + 1;
-      } else {
-        break;
-      }
-    }
-
-    final expectedPaid = loan.monthlyPayment * instalmentsDue;
-    final totalPaid = sortedPayments.fold(0.0, (sum, p) => sum + p.amountPaid);
-    final arrears = expectedPaid - totalPaid;
-    return arrears > 0 ? arrears : 0.0;
-  }
-
   /// Returns the next payment due date for a loan.
   static DateTime? nextPaymentDate(LoanModel loan) {
-    if (loan.firstInstalmentDate == null) return null;
+    final anchor = loan.effectiveFirstPaymentDate;
+    if (anchor == null) return null;
     final now = DateTime.now();
     for (int i = 0; i < loan.durationMonths; i++) {
       final dueDate = DateTime(
-        loan.firstInstalmentDate!.year,
-        loan.firstInstalmentDate!.month + i,
-        loan.firstInstalmentDate!.day,
+        anchor.year,
+        anchor.month + i,
+        anchor.day,
       );
       if (dueDate.isAfter(now)) return dueDate;
     }

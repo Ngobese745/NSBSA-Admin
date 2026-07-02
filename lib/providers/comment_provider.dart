@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/comment.dart';
 import '../services/cache_service.dart';
+import '../services/realtime_service.dart';
 import '../services/connectivity_service.dart';
 import '../services/offline_queue_service.dart';
 
@@ -10,9 +12,90 @@ class CommentProvider with ChangeNotifier {
   List<CommentModel> _comments = [];
   bool _isLoading = false;
   String? _currentScope;
+  String? _currentScopeValue;
+  Timer? _cacheDebounce;
 
   List<CommentModel> get comments => _comments;
   bool get isLoading => _isLoading;
+
+  CommentProvider() {
+    _initRealtime();
+  }
+
+  void _initRealtime() {
+    RealtimeService().subscribeToTable(
+      tableName: 'comments',
+      onData: (payload) {
+        final event = payload.eventType;
+        final data = payload.newRecord;
+        final oldData = payload.oldRecord;
+
+        try {
+          // Only apply if the change matches our current scope
+          if (event == PostgresChangeEvent.insert) {
+            final newComment = CommentModel.fromJson(data);
+            if (_matchesScope(newComment, oldData: data)) {
+              if (!_comments.any((c) => c.id == newComment.id)) {
+                _comments.insert(0, newComment);
+                _syncCacheAndNotify();
+              }
+            }
+          } else if (event == PostgresChangeEvent.update) {
+            final updated = CommentModel.fromJson(data);
+            if (_matchesScope(updated, oldData: data)) {
+              final index = _comments.indexWhere((c) => c.id == updated.id);
+              if (index != -1) {
+                _comments[index] = updated;
+                _syncCacheAndNotify();
+              }
+            }
+          } else if (event == PostgresChangeEvent.delete) {
+            final id = oldData['id'];
+            final before = _comments.length;
+            _comments.removeWhere((c) => c.id == id);
+            if (_comments.length != before) {
+              _syncCacheAndNotify();
+            }
+          }
+        } catch (e) {
+          debugPrint('Error processing comments realtime update: $e');
+        }
+      },
+    );
+  }
+
+  /// Returns true if the comment belongs to the currently-viewed scope.
+  bool _matchesScope(CommentModel comment, {Map<String, dynamic>? oldData}) {
+    if (_currentScope == null) return false;
+    final source = oldData ?? const {};
+    if (_currentScope!.startsWith('group_')) {
+      final groupId = _currentScope!.substring('group_'.length);
+      return (comment.groupId == groupId) || (source['group_id'] == groupId);
+    } else if (_currentScope!.startsWith('vendor_')) {
+      final vendorId = _currentScope!.substring('vendor_'.length);
+      return (comment.vendorId == vendorId) || (source['vendor_id'] == vendorId);
+    }
+    return false;
+  }
+
+  void _syncCacheAndNotify() {
+    notifyListeners();
+    final scope = _currentScope;
+    if (scope == null) return;
+    _cacheDebounce?.cancel();
+    _cacheDebounce = Timer(const Duration(seconds: 2), () {
+      CacheService.saveCache(
+        'comments_$scope',
+        _comments.map((e) => e.toJson()).toList(),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _cacheDebounce?.cancel();
+    super.dispose();
+  }
 
   Future<void> fetchCommentsByGroup(String groupId) async {
     _currentScope = 'group_$groupId';

@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/group.dart';
 import '../services/cache_service.dart';
+import '../services/realtime_service.dart';
 import '../services/system_audit_service.dart';
 import '../services/communication_service.dart';
 import '../services/connectivity_service.dart';
@@ -12,9 +14,68 @@ class GroupProvider with ChangeNotifier {
   final _communicationService = CommunicationService();
   List<GroupModel> _groups = [];
   bool _isLoading = false;
+  Timer? _cacheDebounce;
 
   List<GroupModel> get groups => _groups;
   bool get isLoading => _isLoading;
+
+  GroupProvider() {
+    _initRealtime();
+  }
+
+  void _initRealtime() {
+    RealtimeService().subscribeToTable(
+      tableName: 'groups',
+      onData: (payload) {
+        final event = payload.eventType;
+        final data = payload.newRecord;
+        final oldData = payload.oldRecord;
+
+        try {
+          if (event == PostgresChangeEvent.insert) {
+            final newGroup = GroupModel.fromJson(data);
+            if (!_groups.any((g) => g.id == newGroup.id)) {
+              _groups.insert(0, newGroup);
+              _syncCacheAndNotify();
+            }
+          } else if (event == PostgresChangeEvent.update) {
+            final updatedGroup = GroupModel.fromJson(data);
+            final index = _groups.indexWhere((g) => g.id == updatedGroup.id);
+            if (index != -1) {
+              _groups[index] = updatedGroup;
+              _syncCacheAndNotify();
+            }
+          } else if (event == PostgresChangeEvent.delete) {
+            final id = oldData['id'];
+            final before = _groups.length;
+            _groups.removeWhere((g) => g.id == id);
+            if (_groups.length != before) {
+              _syncCacheAndNotify();
+            }
+          }
+        } catch (e) {
+          debugPrint('Error processing groups realtime update: $e');
+        }
+      },
+    );
+  }
+
+  void _syncCacheAndNotify() {
+    notifyListeners();
+    _cacheDebounce?.cancel();
+    _cacheDebounce = Timer(const Duration(seconds: 2), () {
+      CacheService.saveCache(
+        'groups_cache',
+        _groups.map((e) => e.toJson()).toList(),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _cacheDebounce?.cancel();
+    super.dispose();
+  }
 
   Future<void> fetchGroups({bool forceRefresh = false}) async {
     if (!forceRefresh) {

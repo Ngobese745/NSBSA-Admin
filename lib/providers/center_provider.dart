@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/center.dart';
 import '../models/leadership.dart';
 import '../services/cache_service.dart';
+import '../services/realtime_service.dart';
 import '../services/system_audit_service.dart';
 import '../services/connectivity_service.dart';
 import '../services/offline_queue_service.dart';
@@ -11,9 +13,68 @@ class CenterProvider with ChangeNotifier {
   final _supabase = Supabase.instance.client;
   List<CenterModel> _centers = [];
   bool _isLoading = false;
+  Timer? _cacheDebounce;
 
   List<CenterModel> get centers => _centers;
   bool get isLoading => _isLoading;
+
+  CenterProvider() {
+    _initRealtime();
+  }
+
+  void _initRealtime() {
+    RealtimeService().subscribeToTable(
+      tableName: 'centers',
+      onData: (payload) {
+        final event = payload.eventType;
+        final data = payload.newRecord;
+        final oldData = payload.oldRecord;
+
+        try {
+          if (event == PostgresChangeEvent.insert) {
+            final newCenter = CenterModel.fromJson(data);
+            if (!_centers.any((c) => c.id == newCenter.id)) {
+              _centers.insert(0, newCenter);
+              _syncCacheAndNotify();
+            }
+          } else if (event == PostgresChangeEvent.update) {
+            final updatedCenter = CenterModel.fromJson(data);
+            final index = _centers.indexWhere((c) => c.id == updatedCenter.id);
+            if (index != -1) {
+              _centers[index] = updatedCenter;
+              _syncCacheAndNotify();
+            }
+          } else if (event == PostgresChangeEvent.delete) {
+            final id = oldData['id'];
+            final before = _centers.length;
+            _centers.removeWhere((c) => c.id == id);
+            if (_centers.length != before) {
+              _syncCacheAndNotify();
+            }
+          }
+        } catch (e) {
+          debugPrint('Error processing centers realtime update: $e');
+        }
+      },
+    );
+  }
+
+  void _syncCacheAndNotify() {
+    notifyListeners();
+    _cacheDebounce?.cancel();
+    _cacheDebounce = Timer(const Duration(seconds: 2), () {
+      CacheService.saveCache(
+        'centers_cache',
+        _centers.map((e) => e.toJson()).toList(),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _cacheDebounce?.cancel();
+    super.dispose();
+  }
 
   Future<void> fetchCenters({bool forceRefresh = false}) async {
     if (!forceRefresh) {

@@ -248,7 +248,8 @@ class _MasterLoanLedgerScreenState extends State<MasterLoanLedgerScreen> {
                         7: FlexColumnWidth(1.5),   // Total Paid
                         8: FlexColumnWidth(1.5),   // Monthly
                         9: FlexColumnWidth(1.2),   // Status
-                        10: FlexColumnWidth(0.8),  // Actions
+                        10: FlexColumnWidth(1.2),  // Grace
+                        11: FlexColumnWidth(0.8),  // Actions
                       },
                       border: TableBorder(
                         horizontalInside: BorderSide(
@@ -272,6 +273,7 @@ class _MasterLoanLedgerScreenState extends State<MasterLoanLedgerScreen> {
                             _th('Total Paid'),
                             _th('Monthly'),
                             _th('Status'),
+                            _th('Grace'),
                             _th(''),
                           ],
                         ),
@@ -304,12 +306,28 @@ class _MasterLoanLedgerScreenState extends State<MasterLoanLedgerScreen> {
     final totalPaid = loanPayments.fold(0.0, (s, p) => s + p.amountPaid);
     final balance = LoanCalculationService.calculateBalance(loan, loanPayments);
     final imported = loan.openingAmount != null;
+    final inArrears = !imported && LoanCalculationService.isInArrears(loan, loanPayments);
+    final arrearsAmount = inArrears
+        ? LoanCalculationService.calculateArrears(loan, loanPayments)
+        : 0.0;
+    final arrearsFee = inArrears
+        ? LoanCalculationService.arrearsFee(loan, loanPayments)
+        : 0.0;
+    final monthsBehind = inArrears
+        ? LoanCalculationService.monthsInArrears(loan, loanPayments)
+        : 0;
 
     return TableRow(
       children: [
         imported
-            ? _td(loan.vendorName ?? vendor?.name ?? '—', icon: Icons.download_for_offline, iconTooltip: 'Imported')
-            : _td(loan.vendorName ?? vendor?.name ?? '—'),
+            ? _td(loan.vendorName ?? vendor?.name ?? '—',
+                icon: Icons.download_for_offline, iconTooltip: 'Imported')
+            : inArrears
+                ? _td(loan.vendorName ?? vendor?.name ?? '—',
+                    icon: Icons.warning_amber_rounded,
+                    iconColor: Colors.redAccent,
+                    iconTooltip: 'In Arrears (${monthsBehind}m) — R ${arrearsAmount.toStringAsFixed(0)} owed, R ${arrearsFee.toStringAsFixed(0)} penalty')
+                : _td(loan.vendorName ?? vendor?.name ?? '—'),
         _td(vendor?.idNumber ?? '—'),
         _td(vendor?.phone ?? '—'),
         _td(group?.name ?? '—'),
@@ -319,12 +337,14 @@ class _MasterLoanLedgerScreenState extends State<MasterLoanLedgerScreen> {
         imported
             ? _td('${loan.durationMonths}m', color: Colors.blueGrey)
             : _editableTd(loan.id, 'term', loan.durationMonths.toString(), suffix: 'm'),
-        _td('R ${balance.toStringAsFixed(0)}', color: Colors.orange),
+        _td('R ${balance.toStringAsFixed(0)}',
+            color: inArrears ? Colors.redAccent : Colors.orange),
         _td('R ${totalPaid.toStringAsFixed(0)}', color: Colors.green),
         imported
             ? _td('R ${loan.monthlyPayment.toStringAsFixed(0)}', color: Colors.blueGrey)
             : _editableTd(loan.id, 'monthlyPayment', loan.monthlyPayment.toStringAsFixed(0), prefix: 'R '),
-        _statusBadge(loan.status),
+        _statusCell(loan.status, inArrears),
+        _graceCell(loan),
         _actionsCell(loan.id, theme, imported: imported),
       ],
     );
@@ -345,8 +365,7 @@ class _MasterLoanLedgerScreenState extends State<MasterLoanLedgerScreen> {
       ),
     );
   }
-
-  Widget _td(String text, {Color? color, IconData? icon, String? iconTooltip}) {
+  Widget _td(String text, {Color? color, IconData? icon, Color? iconColor, String? iconTooltip}) {
     final textWidget = Text(
       text,
       style: TextStyle(
@@ -355,6 +374,7 @@ class _MasterLoanLedgerScreenState extends State<MasterLoanLedgerScreen> {
       ),
       overflow: TextOverflow.ellipsis,
     );
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
       child: icon != null
@@ -366,12 +386,103 @@ class _MasterLoanLedgerScreenState extends State<MasterLoanLedgerScreen> {
                   padding: const EdgeInsets.only(left: 4),
                   child: Tooltip(
                     message: iconTooltip ?? '',
-                    child: Icon(icon, size: 12, color: Colors.blueGrey.shade300),
+                    child: Icon(icon, size: 12, color: iconColor ?? Colors.blueGrey.shade300),
                   ),
                 ),
               ],
             )
           : textWidget,
+    );
+  }
+
+  Widget _statusCell(String status, bool inArrears) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+      child: Wrap(
+        spacing: 4,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          _statusBadge(status),
+          if (inArrears)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.redAccent.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.redAccent.withOpacity(0.4)),
+              ),
+              child: Text(
+                'ARREARS',
+                style: TextStyle(
+                  color: Colors.redAccent,
+                  fontSize: 9,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _graceCell(LoanModel loan) {
+    if (!loan.gracePeriodEnabled) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        child: Text('—', style: TextStyle(color: Colors.grey, fontSize: 11)),
+      );
+    }
+    final isActive = loan.isInGracePeriod;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+      child: Tooltip(
+        message: isActive
+            ? 'Client is in grace period. Payments start ${loan.firstPaymentDate?.toString().substring(0, 10) ?? ''}.'
+            : 'Grace period ended. First payment was due ${loan.firstPaymentDate?.toString().substring(0, 10) ?? ''}.',
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: isActive
+                ? Colors.amber.withOpacity(0.15)
+                : Colors.green.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(
+              color: isActive
+                  ? Colors.amber.withOpacity(0.4)
+                  : Colors.green.withOpacity(0.3),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isActive ? Icons.hourglass_empty : Icons.check_circle_outline,
+                size: 10,
+                color: isActive ? Colors.amber : Colors.green,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                isActive ? 'GRACE' : 'ENDED',
+                style: TextStyle(
+                  color: isActive ? Colors.amber : Colors.green,
+                  fontSize: 9,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '${loan.gracePeriodMonths ?? 0}m',
+                style: TextStyle(
+                  color: isActive ? Colors.amber.shade100 : Colors.green.shade100,
+                  fontSize: 9,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

@@ -8,6 +8,7 @@ import '../providers/group_provider.dart';
 import '../providers/payment_provider.dart';
 import '../providers/vendor_provider.dart';
 import '../providers/loan_provider.dart';
+import '../services/grace_period_reminder_service.dart';
 import '../core/pdf_branding.dart';
 import 'package:pdf/pdf.dart';
 import '../widgets/nsbsa_loading_overlay.dart';
@@ -46,6 +47,10 @@ class LoanDetailsScreen extends StatelessWidget {
       loan,
       loanPayments,
     );
+    final bool inArrears = LoanCalculationService.isInArrears(loan, loanPayments);
+    final double arrearsAmount = LoanCalculationService.calculateArrears(loan, loanPayments);
+    final double arrearsFee = LoanCalculationService.arrearsFee(loan, loanPayments);
+    final int monthsBehind = LoanCalculationService.monthsInArrears(loan, loanPayments);
 
     return Scaffold(
       appBar: AppBar(
@@ -62,6 +67,10 @@ class LoanDetailsScreen extends StatelessWidget {
               totalPaid,
               balance,
               loanPayments,
+              inArrears: inArrears,
+              monthsBehind: monthsBehind,
+              arrearsAmount: arrearsAmount,
+              arrearsFee: arrearsFee,
             ),
             tooltip: 'Download Statement',
           ),
@@ -70,6 +79,13 @@ class LoanDetailsScreen extends StatelessWidget {
             onPressed: () => _showEditLoanDialog(context),
             tooltip: 'Edit Loan',
           ),
+          if (loan.gracePeriodEnabled)
+            IconButton(
+              icon: const Icon(Icons.notifications_active_outlined,
+                  color: Colors.amber),
+              onPressed: () => _triggerGraceReminder(context),
+              tooltip: 'Send grace-period-end reminder',
+            ),
           IconButton(
             icon: const Icon(Icons.delete, color: Colors.redAccent),
             onPressed: () => _showDeleteConfirmation(context),
@@ -89,9 +105,9 @@ class LoanDetailsScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildLoanHeader(context, theme, group, vendor),
+                  _buildLoanHeader(context, theme, group, vendor, inArrears, monthsBehind, arrearsAmount, arrearsFee),
                   const SizedBox(height: 24),
-                  _buildFinancialGrid(theme, totalPaid, balance),
+                  _buildFinancialGrid(theme, totalPaid, balance, inArrears, arrearsAmount, arrearsFee, monthsBehind),
                   const SizedBox(height: 24),
                   _buildFeeDetails(theme, loanPayments),
                 ],
@@ -117,6 +133,10 @@ class LoanDetailsScreen extends StatelessWidget {
     ThemeData theme,
     GroupModel group,
     dynamic vendor,
+    bool inArrears,
+    int monthsBehind,
+    double arrearsAmount,
+    double arrearsFee,
   ) {
     return Container(
       padding: const EdgeInsets.all(24),
@@ -170,37 +190,103 @@ class LoanDetailsScreen extends StatelessWidget {
                   style: TextStyle(color: Colors.grey[400], fontSize: 14),
                 ),
                 const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: loan.status == 'Active'
-                        ? Colors.green.withOpacity(0.1)
-                        : loan.status == 'Settled'
-                        ? Colors.blue.withOpacity(0.1)
-                        : Colors.amber.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    loan.status.toUpperCase(),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: loan.status == 'Active'
+                            ? Colors.green.withOpacity(0.1)
+                            : loan.status == 'Settled'
+                            ? Colors.blue.withOpacity(0.1)
+                            : Colors.amber.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        loan.status.toUpperCase(),
+                        style: TextStyle(
+                          color: loan.status == 'Active'
+                              ? Colors.green
+                              : loan.status == 'Settled'
+                              ? Colors.blueAccent
+                              : Colors.amber,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    if (inArrears)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: Colors.redAccent.withOpacity(0.4),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.warning_amber_rounded,
+                              color: Colors.redAccent,
+                              size: 14,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'IN ARREARS',
+                              style: TextStyle(
+                                color: Colors.redAccent,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '(${monthsBehind}m)',
+                              style: TextStyle(
+                                color: Colors.redAccent.shade100,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+                if (inArrears) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Arrears: R ${arrearsAmount.toStringAsFixed(2)}  •  '
+                    'Arrears Fee: R ${arrearsFee.toStringAsFixed(2)}',
                     style: TextStyle(
-                      color: loan.status == 'Active'
-                          ? Colors.green
-                          : loan.status == 'Settled'
-                          ? Colors.blueAccent
-                          : Colors.amber,
-                      fontWeight: FontWeight.bold,
+                      color: Colors.redAccent.shade100,
                       fontSize: 12,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
           ElevatedButton.icon(
-            onPressed: () => _showRecordPaymentDialog(context),
+            onPressed: () => _showRecordPaymentDialog(
+              context,
+              inArrears: inArrears,
+              monthsBehind: monthsBehind,
+              arrearsAmount: arrearsAmount,
+              arrearsFee: arrearsFee,
+            ),
             icon: const Icon(Icons.payment, size: 18),
             label: const Text('Record Payment'),
             style: ElevatedButton.styleFrom(
@@ -214,7 +300,13 @@ class LoanDetailsScreen extends StatelessWidget {
     );
   }
 
-  void _showRecordPaymentDialog(BuildContext context) {
+  void _showRecordPaymentDialog(
+    BuildContext context, {
+    required bool inArrears,
+    required int monthsBehind,
+    required double arrearsAmount,
+    required double arrearsFee,
+  }) {
     final monthlyAdminFee = loan.monthlyAdminFee ?? 65.0;
     final defaultAmount = (loan.monthlyPayment + monthlyAdminFee).toStringAsFixed(0);
     final amountController = TextEditingController(text: defaultAmount);
@@ -237,6 +329,39 @@ class LoanDetailsScreen extends StatelessWidget {
                 'Enter the amount received for this loan repayment.',
                 style: TextStyle(color: Colors.grey, fontSize: 14),
               ),
+              if (inArrears) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.redAccent.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.warning_amber_rounded,
+                        color: Colors.redAccent,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'IN ARREARS — $monthsBehind month(s) behind. '
+                          'Arrears: R ${arrearsAmount.toStringAsFixed(2)}  •  '
+                          'Arrears Fee: R ${arrearsFee.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            color: Colors.redAccent,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 20),
               const Text(
                 'Payment Type',
@@ -343,7 +468,12 @@ class LoanDetailsScreen extends StatelessWidget {
     ThemeData theme,
     double totalPaid,
     double balance,
+    bool inArrears,
+    double arrearsAmount,
+    double arrearsFee,
+    int monthsBehind,
   ) {
+    final monthlyTotal = LoanCalculationService.expectedMonthlyAmount(loan);
     return Column(
       children: [
         Row(
@@ -358,8 +488,8 @@ class LoanDetailsScreen extends StatelessWidget {
             const SizedBox(width: 16),
             Expanded(
               child: _buildSimpleStat(
-                'Monthly Payment',
-                'R ${loan.monthlyPayment.toStringAsFixed(0)}',
+                'Monthly (incl. admin)',
+                'R ${monthlyTotal.toStringAsFixed(0)}',
                 theme,
               ),
             ),
@@ -382,11 +512,53 @@ class LoanDetailsScreen extends StatelessWidget {
                 'Est. Balance',
                 'R ${balance.toStringAsFixed(0)}',
                 theme,
-                color: Colors.amberAccent,
+                color: inArrears ? Colors.redAccent : Colors.amberAccent,
               ),
             ),
           ],
         ),
+        if (inArrears) ...[
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.redAccent.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.redAccent.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Client is in Arrears',
+                        style: TextStyle(
+                          color: Colors.redAccent,
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '$monthsBehind month(s) behind  •  '
+                        'Arrears: R ${arrearsAmount.toStringAsFixed(2)}  •  '
+                        'Arrears Fee: R ${arrearsFee.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          color: Colors.redAccent.shade100,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -479,6 +651,25 @@ class LoanDetailsScreen extends StatelessWidget {
             'First Instalment',
             loan.firstInstalmentDate?.toString().substring(0, 10) ?? 'N/A',
           ),
+          if (loan.gracePeriodEnabled) ...[
+            _buildInfoRow(
+              'Grace Period',
+              '${loan.gracePeriodMonths ?? 0} month(s) — client only pays R150 init until ${loan.firstPaymentDate?.toString().substring(0, 10) ?? 'N/A'}',
+              valueColor: Colors.amber,
+            ),
+            if (loan.isInGracePeriod)
+              _buildInfoRow(
+                'Grace Status',
+                'Active — ${_daysUntilEndOfGrace(loan)} day(s) remaining',
+                valueColor: Colors.amber,
+              )
+            else
+              _buildInfoRow(
+                'Grace Status',
+                'Ended — payments now due',
+                valueColor: Colors.green,
+              ),
+          ],
           _buildInfoRow(
             'Created On',
             loan.createdAt.toString().substring(0, 10),
@@ -486,6 +677,13 @@ class LoanDetailsScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  int _daysUntilEndOfGrace(LoanModel loan) {
+    final end = loan.firstPaymentDate;
+    if (end == null) return 0;
+    final now = DateTime.now();
+    return end.difference(now).inDays.clamp(0, 365);
   }
 
   Widget _buildInfoRow(
@@ -648,6 +846,58 @@ class LoanDetailsScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// Manually triggers the grace-period-end reminder for this loan.
+  Future<void> _triggerGraceReminder(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        backgroundColor: Theme.of(c).colorScheme.surface,
+        title: const Text('Send Grace-Period-End Reminder'),
+        content: Text(
+          'This will send an email, WhatsApp, and SMS to '
+          '${loan.vendorName ?? 'the client'} reminding them that their '
+          'grace period (${loan.gracePeriodMonths ?? 0} month(s)) has ended '
+          'and monthly payments are now due.\n\nContinue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Send Reminder'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final result = await runWithLoading(
+      context,
+      task: () => _sendGraceReminderForLoan(loan),
+      successMessage:
+          'Grace-period reminder sent to ${loan.vendorName ?? 'client'}',
+    );
+    if (!context.mounted) return;
+    if (result is! int || result == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Reminder already sent or no channel available.'),
+          backgroundColor: Colors.amber,
+        ),
+      );
+    }
+  }
+
+  /// Sends the grace-period-end reminder for a single loan by directly
+  /// invoking the same flow as the cron-driven bulk method.
+  Future<int> _sendGraceReminderForLoan(LoanModel targetLoan) async {
+    final summary = await GracePeriodReminderService.instance
+        .sendGracePeriodEndReminders();
+    return summary.sent;
   }
 
   void _showEditLoanDialog(BuildContext context) {
@@ -996,8 +1246,12 @@ class LoanDetailsScreen extends StatelessWidget {
     VendorModel? vendor,
     double totalPaid,
     double balance,
-    List<PaymentModel> payments,
-  ) async {
+    List<PaymentModel> payments, {
+    bool inArrears = false,
+    int monthsBehind = 0,
+    double arrearsAmount = 0,
+    double arrearsFee = 0,
+  }) async {
     runWithLoading(context, task: () async {
     final pdf = pw.Document();
     final logo = await PdfBranding.loadLogo();
@@ -1099,14 +1353,18 @@ class LoanDetailsScreen extends StatelessWidget {
                 children: [
                   _pdfBreakdownRow('Principal Amount', 'R ${loan.amount.toStringAsFixed(2)}'),
                   _pdfBreakdownRow('Monthly Instalment', 'R ${loan.monthlyPayment.toStringAsFixed(2)}'),
+                  _pdfBreakdownRow('Monthly Admin Fee', 'R ${(loan.monthlyAdminFee ?? 65.0).toStringAsFixed(2)}'),
+                  _pdfBreakdownRow('Monthly Total (incl. admin)', 'R ${LoanCalculationService.expectedMonthlyAmount(loan).toStringAsFixed(2)}'),
                   _pdfBreakdownRow('First Instalment', loan.firstInstalmentDate?.toLocal().toString().substring(0, 10) ?? 'N/A'),
                   _pdfBreakdownRow('Initiation Fee', 'R ${loan.initiationFee?.toStringAsFixed(2) ?? '0.00'}'),
                   _pdfBreakdownRow('Total Admin Fees (${loan.durationMonths} months)', 'R ${((loan.monthlyAdminFee ?? 0) * loan.durationMonths).toStringAsFixed(2)}'),
-                  _pdfBreakdownRow('Applied Penalties', 'R ${LoanCalculationService.calculateAppliedPenalty(loan, payments).toStringAsFixed(2)}'),
+                  if (inArrears) _pdfBreakdownRow('Status', 'IN ARREARS (${monthsBehind} month(s) behind)', valueColor: PdfColors.red),
+                  if (inArrears) _pdfBreakdownRow('Arrears Amount', 'R ${arrearsAmount.toStringAsFixed(2)}', valueColor: PdfColors.red),
+                  _pdfBreakdownRow('Arrears Fee (${LoanCalculationService.monthsInArrears(loan, payments)}m)', 'R ${LoanCalculationService.calculateAppliedPenalty(loan, payments).toStringAsFixed(2)}', valueColor: LoanCalculationService.calculateAppliedPenalty(loan, payments) > 0 ? PdfColors.red : null),
                   pw.Divider(color: PdfColors.grey300),
                   _pdfBreakdownRow('Total Loan Liability', loan.openingAmount != null
-                      ? 'R ${(loan.openingAmount! + LoanCalculationService.calculateAppliedPenalty(loan, payments)).toStringAsFixed(2)}' 
-                      : 'R ${((loan.monthlyPayment + (loan.monthlyAdminFee ?? 65.0)) * loan.durationMonths + (loan.initiationFee ?? 0) + LoanCalculationService.calculateAppliedPenalty(loan, payments)).toStringAsFixed(2)}', isBold: true),
+                      ? 'R ${(loan.openingAmount! + LoanCalculationService.calculateAppliedPenalty(loan, payments)).toStringAsFixed(2)}'
+                      : 'R ${(LoanCalculationService.expectedMonthlyAmount(loan) * loan.durationMonths + (loan.initiationFee ?? 0) + LoanCalculationService.calculateAppliedPenalty(loan, payments)).toStringAsFixed(2)}', isBold: true),
                   _pdfBreakdownRow('Total Amount Paid', 'R ${totalPaid.toStringAsFixed(2)}'),
                   _pdfBreakdownRow('Outstanding Balance', 'R ${balance.toStringAsFixed(2)}', isBold: true),
                 ],
@@ -1154,14 +1412,14 @@ class LoanDetailsScreen extends StatelessWidget {
     }, successMessage: 'Loan PDF generated.');
   }
 
-  pw.Widget _pdfBreakdownRow(String label, String value, {bool isBold = false}) {
+  pw.Widget _pdfBreakdownRow(String label, String value, {bool isBold = false, PdfColor? valueColor}) {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(vertical: 4),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text(label, style: pw.TextStyle(fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal)),
-          pw.Text(value, style: pw.TextStyle(fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal, color: PdfColors.black)),
+          pw.Text(value, style: pw.TextStyle(fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal, color: valueColor ?? PdfColors.black)),
         ],
       ),
     );
