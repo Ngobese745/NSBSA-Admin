@@ -2223,7 +2223,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   }
 
   void _showRecordPaymentDialog(LoanModel loan) {
-    final monthlyAdminFee = loan.monthlyAdminFee ?? 65.0;
+    final monthlyAdminFee = LoanCalculationService.effectiveAdminFee(loan);
     final defaultAmount = (loan.monthlyPayment + monthlyAdminFee).toStringAsFixed(0);
     final amountController = TextEditingController(text: defaultAmount);
     String selectedType = 'Cash';
@@ -2688,7 +2688,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
 
     double totalExpected = activeLoans.fold(
       0.0,
-      (sum, l) => sum + l.monthlyPayment + (l.monthlyAdminFee ?? 65.0),
+      (sum, l) => sum + l.monthlyPayment + LoanCalculationService.effectiveAdminFee(l),
     );
     bool isSubmitting = false;
 
@@ -2984,8 +2984,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             .toList();
         totalLiability += loan.openingAmount != null
             ? loan.openingAmount! + LoanCalculationService.calculateAppliedPenalty(loan, loanPayments)
-            : (loan.monthlyPayment + (loan.monthlyAdminFee ?? 65.0)) * loan.durationMonths +
-            (loan.initiationFee ?? 0) +
+            : (loan.monthlyPayment + LoanCalculationService.effectiveAdminFee(loan)) * loan.durationMonths +
+            LoanCalculationService.effectiveInitiationFee(loan) +
             LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
       }
       final totalPaid = groupPayments.fold<double>(
@@ -3046,8 +3046,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   .toList();
               loanInitialLiability[loan.id] = loan.openingAmount != null
                   ? loan.openingAmount! + LoanCalculationService.calculateAppliedPenalty(loan, loanPayments)
-                  : (loan.monthlyPayment + (loan.monthlyAdminFee ?? 65.0)) * loan.durationMonths +
-                  (loan.initiationFee ?? 0) +
+                  : (loan.monthlyPayment + LoanCalculationService.effectiveAdminFee(loan)) * loan.durationMonths +
+                  LoanCalculationService.effectiveInitiationFee(loan) +
                   LoanCalculationService.calculateAppliedPenalty(
                     loan,
                     loanPayments,

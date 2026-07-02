@@ -591,11 +591,11 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     double totalLiability = 0;
     for (var loan in _loans) {
       final loanPayments = allPayments.where((p) => p.loanId == loan.id).toList();
-      totalLiability +=
-          loan.amount +
-          (loan.initiationFee ?? 0) +
-          ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) +
-          LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
+      totalLiability += loan.openingAmount != null
+          ? loan.openingAmount! + LoanCalculationService.calculateAppliedPenalty(loan, loanPayments)
+          : (loan.monthlyPayment + LoanCalculationService.effectiveAdminFee(loan)) * loan.durationMonths +
+              LoanCalculationService.effectiveInitiationFee(loan) +
+              LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
     }
 
     final outstanding = totalLiability - totalPaid;
@@ -1414,10 +1414,11 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     for (var loan in _loans) {
       final loanPayments = paymentProvider.payments.where((p) => p.loanId == loan.id).toList();
       final totalPaid = loanPayments.fold(0.0, (sum, p) => sum + p.amountPaid);
-      final liability = loan.amount +
-          (loan.initiationFee ?? 0) +
-          ((loan.monthlyAdminFee ?? 0) * loan.durationMonths) +
-          LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
+      final liability = loan.openingAmount != null
+          ? loan.openingAmount! + LoanCalculationService.calculateAppliedPenalty(loan, loanPayments)
+          : (loan.monthlyPayment + LoanCalculationService.effectiveAdminFee(loan)) * loan.durationMonths +
+              LoanCalculationService.effectiveInitiationFee(loan) +
+              LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
       final balance = liability - totalPaid;
       final arrears = LoanCalculationService.calculateArrears(loan, loanPayments);
 
@@ -1830,7 +1831,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
   }
 
   void _showRecordPaymentDialog(BuildContext context, LoanModel loan) {
-    final monthlyAdminFee = loan.monthlyAdminFee ?? 65.0;
+    final monthlyAdminFee = LoanCalculationService.effectiveAdminFee(loan);
     final defaultAmount = (loan.monthlyPayment + monthlyAdminFee).toStringAsFixed(0);
     final amountController = TextEditingController(text: defaultAmount);
     String selectedType = 'Cash';
@@ -1952,10 +1953,10 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             .toList()
           ..sort((a, b) => a.datePaid.compareTo(b.datePaid));
 
-    final totalExpected =
-        loan.amount +
-        (loan.initiationFee ?? 0) +
-        ((loan.monthlyAdminFee ?? 0) * loan.durationMonths);
+    final totalExpected = loan.openingAmount != null
+        ? loan.openingAmount!
+        : (loan.monthlyPayment + LoanCalculationService.effectiveAdminFee(loan)) * loan.durationMonths +
+            LoanCalculationService.effectiveInitiationFee(loan);
 
     double runningBalance = totalExpected;
     double balanceAfterPayment = totalExpected;

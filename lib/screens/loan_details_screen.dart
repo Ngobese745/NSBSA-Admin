@@ -307,7 +307,7 @@ class LoanDetailsScreen extends StatelessWidget {
     required double arrearsAmount,
     required double arrearsFee,
   }) {
-    final monthlyAdminFee = loan.monthlyAdminFee ?? 65.0;
+    final monthlyAdminFee = LoanCalculationService.effectiveAdminFee(loan);
     final defaultAmount = (loan.monthlyPayment + monthlyAdminFee).toStringAsFixed(0);
     final amountController = TextEditingController(text: defaultAmount);
     String selectedType = 'Cash';
@@ -635,7 +635,7 @@ class LoanDetailsScreen extends StatelessWidget {
           const Divider(height: 24, thickness: 0.5),
           _buildInfoRow(
             'Total Loan Liability',
-            'R ${((loan.monthlyPayment + (loan.monthlyAdminFee ?? 65.0)) * loan.durationMonths + (loan.initiationFee ?? 0) + appliedPenalty).toStringAsFixed(0)}',
+            'R ${((loan.monthlyPayment + LoanCalculationService.effectiveAdminFee(loan)) * loan.durationMonths + LoanCalculationService.effectiveInitiationFee(loan) + appliedPenalty).toStringAsFixed(0)}',
             isValueBold: true,
             valueColor: AppTheme.primaryGold,
           ),
@@ -1349,16 +1349,16 @@ class LoanDetailsScreen extends StatelessWidget {
                 children: [
                   _pdfBreakdownRow('Principal Amount', 'R ${loan.amount.toStringAsFixed(2)}'),
                   _pdfBreakdownRow('Monthly Instalment', 'R ${loan.monthlyPayment.toStringAsFixed(2)}'),
-                  _pdfBreakdownRow('Monthly Admin Fee', 'R ${(loan.monthlyAdminFee ?? 65.0).toStringAsFixed(2)}'),
+                  _pdfBreakdownRow('Monthly Admin Fee', 'R ${LoanCalculationService.effectiveAdminFee(loan).toStringAsFixed(2)}'),
                   _pdfBreakdownRow('Monthly Total (incl. admin)', 'R ${LoanCalculationService.expectedMonthlyAmount(loan).toStringAsFixed(2)}'),
                   _pdfBreakdownRow('First Instalment', loan.firstInstalmentDate?.toLocal().toString().substring(0, 10) ?? 'N/A'),
-                  _pdfBreakdownRow('Initiation Fee', 'R ${loan.initiationFee?.toStringAsFixed(2) ?? '0.00'}'),
-                  _pdfBreakdownRow('Total Admin Fees (${loan.durationMonths} months)', 'R ${((loan.monthlyAdminFee ?? 0) * loan.durationMonths).toStringAsFixed(2)}'),
+                  _pdfBreakdownRow('Initiation Fee', 'R ${LoanCalculationService.effectiveInitiationFee(loan).toStringAsFixed(2)}'),
+                  _pdfBreakdownRow('Total Admin Fees (${loan.durationMonths} months)', 'R ${(LoanCalculationService.effectiveAdminFee(loan) * loan.durationMonths).toStringAsFixed(2)}'),
                   if (inArrears) _pdfBreakdownRow('Status', 'IN ARREARS (${monthsBehind} month(s) behind)', valueColor: PdfColors.red),
                   if (inArrears) _pdfBreakdownRow('Arrears Amount', 'R ${arrearsAmount.toStringAsFixed(2)}', valueColor: PdfColors.red),
                   _pdfBreakdownRow('Arrears Fee (${LoanCalculationService.monthsInArrears(loan, payments)}m)', 'R ${LoanCalculationService.calculateAppliedPenalty(loan, payments).toStringAsFixed(2)}', valueColor: LoanCalculationService.calculateAppliedPenalty(loan, payments) > 0 ? PdfColors.red : null),
                   pw.Divider(color: PdfColors.grey300),
-                  _pdfBreakdownRow('Total Loan Liability', 'R ${(LoanCalculationService.expectedMonthlyAmount(loan) * loan.durationMonths + (loan.initiationFee ?? 0) + LoanCalculationService.calculateAppliedPenalty(loan, payments)).toStringAsFixed(2)}', isBold: true),
+                  _pdfBreakdownRow('Total Loan Liability', 'R ${(LoanCalculationService.expectedMonthlyAmount(loan) * loan.durationMonths + LoanCalculationService.effectiveInitiationFee(loan) + LoanCalculationService.calculateAppliedPenalty(loan, payments)).toStringAsFixed(2)}', isBold: true),
                   _pdfBreakdownRow('Total Amount Paid', 'R ${totalPaid.toStringAsFixed(2)}'),
                   _pdfBreakdownRow('Outstanding Balance', 'R ${balance.toStringAsFixed(2)}', isBold: true),
                 ],

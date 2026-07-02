@@ -7,10 +7,24 @@ class LoanCalculationService {
   // Standard penalty fee (R59) used when loan.penaltyFee is null/0
   static const double defaultPenaltyFee = 59.0;
 
+  /// Returns the effective monthly admin fee, defaulting to R65 when
+  /// the stored value is null or zero (matching the create dialog's hardcoded default).
+  static double effectiveAdminFee(LoanModel loan) {
+    final fee = loan.monthlyAdminFee;
+    return (fee != null && fee > 0) ? fee : defaultAdminFee;
+  }
+
+  /// Returns the effective initiation fee, defaulting to R150 when
+  /// the stored value is null or zero (matching the create dialog's hardcoded default).
+  static double effectiveInitiationFee(LoanModel loan) {
+    final fee = loan.initiationFee;
+    return (fee != null && fee > 0) ? fee : 150.0;
+  }
+
   /// Returns the full expected monthly amount (monthly instalment + admin fee).
   /// The admin fee is ALWAYS included.
   static double expectedMonthlyAmount(LoanModel loan) {
-    return loan.monthlyPayment + (loan.monthlyAdminFee ?? defaultAdminFee);
+    return loan.monthlyPayment + effectiveAdminFee(loan);
   }
 
   /// Returns the effective penalty fee value, defaulting to standard if not set.
@@ -133,7 +147,7 @@ class LoanCalculationService {
 
     final totalLiability =
         expectedMonthlyAmount(loan) * loan.durationMonths +
-        (loan.initiationFee ?? 0) +
+        effectiveInitiationFee(loan) +
         penalty;
 
     final balance = totalLiability - totalPaid;
