@@ -136,7 +136,10 @@ class LoanCalculationService {
 
   /// Calculates the current balance of a loan.
   ///
-  /// Formula (same for imported and system-created loans):
+  /// For imported loans (openingAmount != null):
+  ///   openingAmount + arrearsFee - totalPaid
+  ///
+  /// For system-created loans:
   ///   (monthlyPayment + adminFee) × duration
   ///   + initiationFee
   ///   + arrearsFee
@@ -145,10 +148,11 @@ class LoanCalculationService {
     final totalPaid = totalPaidAmount(payments);
     final penalty = arrearsFee(loan, payments);
 
-    final totalLiability =
-        expectedMonthlyAmount(loan) * loan.durationMonths +
-        effectiveInitiationFee(loan) +
-        penalty;
+    final double totalLiability = loan.openingAmount != null
+        ? loan.openingAmount! + penalty
+        : expectedMonthlyAmount(loan) * loan.durationMonths +
+            effectiveInitiationFee(loan) +
+            penalty;
 
     final balance = totalLiability - totalPaid;
 

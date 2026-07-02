@@ -229,7 +229,7 @@ class AnalyticsProvider with ChangeNotifier {
             );
             if (dueDate.year == now.year && dueDate.month == m) {
               expectedCollections += l.monthlyPayment;
-              adminFees += (l.monthlyAdminFee ?? 65.0);
+              adminFees += LoanCalculationService.effectiveAdminFee(l);
             }
           }
         }
@@ -362,8 +362,8 @@ class AnalyticsProvider with ChangeNotifier {
         final loanPayments = payments.where((p) => p.loanId == loan.id).toList();
         final expected = loan.openingAmount != null
             ? loan.openingAmount! + LoanCalculationService.calculateAppliedPenalty(loan, loanPayments)
-            : (loan.monthlyPayment + (loan.monthlyAdminFee ?? 65.0)) * loan.durationMonths +
-            (loan.initiationFee ?? 0) +
+            : (loan.monthlyPayment + LoanCalculationService.effectiveAdminFee(loan)) * loan.durationMonths +
+            LoanCalculationService.effectiveInitiationFee(loan) +
             LoanCalculationService.calculateAppliedPenalty(loan, loanPayments);
 
         final paid = loanPayments.fold(0.0, (sum, p) => sum + p.amountPaid);

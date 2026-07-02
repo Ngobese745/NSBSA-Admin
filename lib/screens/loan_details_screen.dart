@@ -635,7 +635,9 @@ class LoanDetailsScreen extends StatelessWidget {
           const Divider(height: 24, thickness: 0.5),
           _buildInfoRow(
             'Total Loan Liability',
-            'R ${((loan.monthlyPayment + LoanCalculationService.effectiveAdminFee(loan)) * loan.durationMonths + LoanCalculationService.effectiveInitiationFee(loan) + appliedPenalty).toStringAsFixed(0)}',
+            loan.openingAmount != null
+                ? 'R ${(loan.openingAmount! + appliedPenalty).toStringAsFixed(0)}'
+                : 'R ${((loan.monthlyPayment + LoanCalculationService.effectiveAdminFee(loan)) * loan.durationMonths + LoanCalculationService.effectiveInitiationFee(loan) + appliedPenalty).toStringAsFixed(0)}',
             isValueBold: true,
             valueColor: AppTheme.primaryGold,
           ),
@@ -1358,7 +1360,9 @@ class LoanDetailsScreen extends StatelessWidget {
                   if (inArrears) _pdfBreakdownRow('Arrears Amount', 'R ${arrearsAmount.toStringAsFixed(2)}', valueColor: PdfColors.red),
                   _pdfBreakdownRow('Arrears Fee (${LoanCalculationService.monthsInArrears(loan, payments)}m)', 'R ${LoanCalculationService.calculateAppliedPenalty(loan, payments).toStringAsFixed(2)}', valueColor: LoanCalculationService.calculateAppliedPenalty(loan, payments) > 0 ? PdfColors.red : null),
                   pw.Divider(color: PdfColors.grey300),
-                  _pdfBreakdownRow('Total Loan Liability', 'R ${(LoanCalculationService.expectedMonthlyAmount(loan) * loan.durationMonths + LoanCalculationService.effectiveInitiationFee(loan) + LoanCalculationService.calculateAppliedPenalty(loan, payments)).toStringAsFixed(2)}', isBold: true),
+                  _pdfBreakdownRow('Total Loan Liability', loan.openingAmount != null
+                      ? 'R ${(loan.openingAmount! + LoanCalculationService.calculateAppliedPenalty(loan, payments)).toStringAsFixed(2)}'
+                      : 'R ${(LoanCalculationService.expectedMonthlyAmount(loan) * loan.durationMonths + LoanCalculationService.effectiveInitiationFee(loan) + LoanCalculationService.calculateAppliedPenalty(loan, payments)).toStringAsFixed(2)}', isBold: true),
                   _pdfBreakdownRow('Total Amount Paid', 'R ${totalPaid.toStringAsFixed(2)}'),
                   _pdfBreakdownRow('Outstanding Balance', 'R ${balance.toStringAsFixed(2)}', isBold: true),
                 ],

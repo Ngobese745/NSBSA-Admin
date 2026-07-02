@@ -505,7 +505,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                 const SizedBox(height: 4),
                 _buildDetailRow(
                   'Initiation Fee',
-                  'R ${(loan.initiationFee ?? 0).toStringAsFixed(0)}',
+                  'R ${LoanCalculationService.effectiveInitiationFee(loan).toStringAsFixed(0)}',
                 ),
                 _buildDetailRow(
                   'Monthly Admin Fee',
@@ -652,11 +652,11 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
               ),
               _pdfInfoRow(
                 'Initiation Fee:',
-                'R ${(loan.initiationFee ?? 0).toStringAsFixed(2)}',
+                'R ${LoanCalculationService.effectiveInitiationFee(loan).toStringAsFixed(2)}',
               ),
               _pdfInfoRow(
                 'Admin Fees:',
-                'R ${((loan.monthlyAdminFee ?? 0) * loan.durationMonths).toStringAsFixed(2)} (Total)',
+                'R ${(LoanCalculationService.effectiveAdminFee(loan) * loan.durationMonths).toStringAsFixed(2)} (Total)',
               ),
 
               pw.SizedBox(height: 24),

@@ -185,8 +185,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
       totalDisbursed += loan.amount;
       totalCollected += totalPaid;
       totalOutstanding += balance;
-      totalInitiationFees += (loan.initiationFee ?? 0);
-      totalAdminFees += (loan.monthlyAdminFee ?? 0) * loan.durationMonths;
+      totalInitiationFees += LoanCalculationService.effectiveInitiationFee(loan);
+      totalAdminFees += LoanCalculationService.effectiveAdminFee(loan) * loan.durationMonths;
       totalPenaltyFees += appliedPenalty;
 
       if (balance > 0) {
@@ -987,8 +987,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
         vendor?.businessType ?? '-',
         'R ${loan.amount.toStringAsFixed(0)}',
         '${loan.durationMonths}m',
-        'R ${loan.initiationFee?.toStringAsFixed(0) ?? '0'}',
-        'R ${loan.monthlyAdminFee?.toStringAsFixed(0) ?? '0'}',
+        'R ${LoanCalculationService.effectiveInitiationFee(loan).toStringAsFixed(0)}',
+        'R ${LoanCalculationService.effectiveAdminFee(loan).toStringAsFixed(0)}',
         'R ${penalty.toStringAsFixed(0)}',
         'R ${loan.monthlyPayment.toStringAsFixed(0)}',
         'R ${totalPaid.toStringAsFixed(0)}',
@@ -1008,8 +1008,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     ).toList();
 
     final totalSavings = filteredVendors.fold(0.0, (sum, v) => sum + (v.savingsAmount ?? 0.0));
-    final totalInitFees = filteredLoans.fold(0.0, (sum, l) => sum + (l.initiationFee ?? 0));
-    final totalAdminFees = filteredLoans.fold(0.0, (sum, l) => sum + ((l.monthlyAdminFee ?? 0) * l.durationMonths));
+    final totalInitFees = filteredLoans.fold(0.0, (sum, l) => sum + LoanCalculationService.effectiveInitiationFee(l));
+    final totalAdminFees = filteredLoans.fold(0.0, (sum, l) => sum + (LoanCalculationService.effectiveAdminFee(l) * l.durationMonths));
     final totalExpectedFees = totalInitFees + totalAdminFees;
     final collectionRate = totalDisbursed > 0 ? (totalCollected / totalDisbursed * 100).toStringAsFixed(1) : '0';
 
