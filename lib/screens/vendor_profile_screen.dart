@@ -230,7 +230,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             },
           ),
           const SizedBox(width: 6),
-          if (AccessControlService.canEditData(
+          if (AccessControlService.canRegisterVendors(
             context.read<AuthProvider>().userProfile,
           ))
             _ProfileActionButton(
