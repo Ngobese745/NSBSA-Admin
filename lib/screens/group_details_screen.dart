@@ -2757,6 +2757,14 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     );
     bool isSubmitting = false;
     DateTime selectedDate = DateTime.now();
+    final paymentControllers = activeLoans.map((loan) {
+      final loanPayments = context.read<PaymentProvider>().payments
+          .where((p) => p.loanId == loan.id)
+          .toList();
+      final currentBalance = LoanCalculationService.calculateBalance(loan, loanPayments);
+      final capped = loan.monthlyPayment > currentBalance ? currentBalance : loan.monthlyPayment;
+      return TextEditingController(text: capped.toStringAsFixed(2));
+    }).toList();
 
     showDialog(
       context: context,
@@ -2859,16 +2867,32 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                           createdAt: DateTime.now(),
                         ),
                       );
-                      return ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(
-                          member.name,
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                        trailing: Text(
-                          'R ${loan.monthlyPayment}',
-                          style: const TextStyle(fontSize: 12),
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                member.name,
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            SizedBox(
+                              width: 120,
+                              child: TextField(
+                                controller: paymentControllers[index],
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                style: const TextStyle(fontSize: 12),
+                                decoration: const InputDecoration(
+                                  isDense: true,
+                                  contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                  prefixText: 'R ',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       );
                     },
@@ -2923,6 +2947,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                         List<PaymentModel> memberPayments = activeLoans.map((
                           loan,
                         ) {
+                          final idx = activeLoans.indexOf(loan);
+                          final entered = double.tryParse(paymentControllers[idx].text) ?? 0;
                           final loanPayments = paymentProvider.payments
                               .where((p) => p.loanId == loan.id)
                               .toList();
@@ -2932,17 +2958,16 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                                 loanPayments,
                               );
                           // Cap payment at remaining balance
-                          final amountToPay =
-                              loan.monthlyPayment > currentBalance
+                          final amountToPay = entered > currentBalance
                               ? currentBalance
-                              : loan.monthlyPayment;
+                              : entered;
 
                           return PaymentModel(
                             id: '',
                             loanId: loan.id,
                             amountPaid: amountToPay,
                              datePaid: selectedDate,
-                             createdAt: DateTime.now(),
+                              createdAt: DateTime.now(),
                           );
                         }).toList();
 
