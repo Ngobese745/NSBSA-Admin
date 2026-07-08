@@ -173,6 +173,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     String selectedType = 'Cash';
     final amountController = TextEditingController();
     String searchQuery = '';
+    DateTime selectedDate = DateTime.now();
 
     showDialog(
       context: context,
@@ -374,6 +375,37 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    const Text('5. Payment Date', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: selectedDate,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime.now(),
+                        );
+                        if (picked != null) setState(() => selectedDate = picked);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.calendar_today, size: 16, color: Colors.grey),
+                            const SizedBox(width: 8),
+                            Text(
+                              selectedDate.toLocal().toString().split(' ')[0],
+                              style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ],
                 ],
               ),
@@ -395,7 +427,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                               loanId: selectedLoan!.id,
                               amountPaid: amount,
                               paymentMethod: selectedType,
-                              datePaid: DateTime.now(),
+                              datePaid: selectedDate,
                               createdAt: DateTime.now(),
                             ),
                             loan: selectedLoan,

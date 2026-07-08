@@ -2230,6 +2230,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     final defaultAmount = (loan.monthlyPayment + monthlyAdminFee).toStringAsFixed(0);
     final amountController = TextEditingController(text: defaultAmount);
     String selectedType = 'Cash';
+    DateTime selectedDate = DateTime.now();
 
     showDialog(
       context: context,
@@ -2288,6 +2289,42 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 ),
                 keyboardType: TextInputType.number,
               ),
+              const SizedBox(height: 16),
+              const Text(
+                'Payment Date',
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              InkWell(
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: selectedDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now(),
+                  );
+                  if (picked != null) setState(() => selectedDate = picked);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.calendar_today, size: 16, color: Colors.grey),
+                      const SizedBox(width: 8),
+                      Text(
+                        selectedDate.toLocal().toString().split(' ')[0],
+                        style: TextStyle(
+                          color: Theme.of(context).textTheme.bodyMedium?.color,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
           actions: [
@@ -2309,7 +2346,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                         loanId: loan.id,
                         amountPaid: amount,
                         paymentMethod: selectedType,
-                        datePaid: DateTime.now(),
+                        datePaid: selectedDate,
                         createdAt: DateTime.now(),
                       ),
                       loan: loan,
@@ -2694,6 +2731,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       (sum, l) => sum + l.monthlyPayment + LoanCalculationService.effectiveAdminFee(l),
     );
     bool isSubmitting = false;
+    DateTime selectedDate = DateTime.now();
 
     showDialog(
       context: context,
@@ -2811,6 +2849,37 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     },
                   ),
                 ),
+                const SizedBox(height: 20),
+                const Text('Payment Date', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now(),
+                    );
+                    if (picked != null) setState(() => selectedDate = picked);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.calendar_today, size: 16, color: Colors.grey),
+                        const SizedBox(width: 8),
+                        Text(
+                          selectedDate.toLocal().toString().split(' ')[0],
+                          style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -2847,8 +2916,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                             id: '',
                             loanId: loan.id,
                             amountPaid: amountToPay,
-                            datePaid: DateTime.now(),
-                            createdAt: DateTime.now(),
+                             datePaid: selectedDate,
+                             createdAt: DateTime.now(),
                           );
                         }).toList();
 
