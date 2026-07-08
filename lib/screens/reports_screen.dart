@@ -18,6 +18,7 @@ import '../models/loan.dart';
 import '../models/payment.dart';
 import '../models/vendor.dart';
 import '../models/group.dart';
+import 'loan_details_screen.dart';
 
 class _ReportHeaderAction extends StatelessWidget {
   final IconData icon;
@@ -696,19 +697,34 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   // Member rows
                   ...entry.value.map((loan) => Padding(
                     padding: const EdgeInsets.only(left: 16, top: 4),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            loan.vendorName ?? loan.vendorId ?? 'Unknown',
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => LoanDetailsScreen(loan: loan),
+                          ),
+                        );
+                      },
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              loan.vendorName ?? loan.vendorId ?? 'Unknown',
+                              style: TextStyle(
+                                color: Colors.grey[400],
+                                fontSize: 12,
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            'R ${loan.amount.toStringAsFixed(0)}',
                             style: TextStyle(color: Colors.grey[400], fontSize: 12),
                           ),
-                        ),
-                        Text(
-                          'R ${loan.amount.toStringAsFixed(0)}',
-                          style: TextStyle(color: Colors.grey[400], fontSize: 12),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   )),
                 ],
