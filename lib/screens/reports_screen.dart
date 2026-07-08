@@ -305,6 +305,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           iconColor: theme.colorScheme.primary,
                           title: 'Total Disbursed',
                           value: 'R ${totalDisbursed.toStringAsFixed(0)}',
+                          onTap: () => _showDisbursedDrillDown(context, filteredLoans, groupMap),
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -564,46 +565,161 @@ class _ReportsScreenState extends State<ReportsScreen> {
     required Color iconColor,
     required String title,
     required String value,
+    VoidCallback? onTap,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: theme.dividerColor.withOpacity(0.5),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: theme.cardColor,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: theme.dividerColor.withOpacity(0.5),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: iconColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Icon(icon, size: 16, color: iconColor),
+                ),
+                if (onTap != null) ...[
+                  const Spacer(),
+                  Icon(Icons.chevron_right, size: 16, color: iconColor.withOpacity(0.5)),
+                ],
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.textTheme.bodySmall?.color?.withOpacity(0.6),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: iconColor,
+              ),
+            ),
+          ],
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: iconColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Icon(icon, size: 16, color: iconColor),
+    );
+  }
+
+  void _showDisbursedDrillDown(
+    BuildContext context,
+    List<LoanModel> loans,
+    Map<String, GroupModel> groupMap,
+  ) {
+    // Group loans by groupId
+    final Map<String, List<LoanModel>> byGroup = {};
+    for (final loan in loans) {
+      byGroup.putIfAbsent(loan.groupId, () => []).add(loan);
+    }
+
+    final sortedGroups = byGroup.entries.toList()
+      ..sort((a, b) => (groupMap[a.key]?.name ?? '').compareTo(groupMap[b.key]?.name ?? ''));
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: Row(
+          children: [
+            const Icon(Icons.payments_outlined, color: Colors.green, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Loans Disbursed — R ${loans.fold<double>(0, (s, l) => s + l.amount).toStringAsFixed(0)}',
+                style: const TextStyle(color: Colors.white, fontSize: 16),
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            title,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.textTheme.bodySmall?.color?.withOpacity(0.6),
             ),
+          ],
+        ),
+        content: SizedBox(
+          width: 500,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: sortedGroups.length,
+            itemBuilder: (context, i) {
+              final entry = sortedGroups[i];
+              final group = groupMap[entry.key];
+              final groupTotal = entry.value.fold<double>(0, (s, l) => s + l.amount);
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (i > 0) const Divider(height: 16, color: Colors.white10),
+                  // Group header
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            group?.name ?? entry.key,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          'R ${groupTotal.toStringAsFixed(0)}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.greenAccent,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  // Member rows
+                  ...entry.value.map((loan) => Padding(
+                    padding: const EdgeInsets.only(left: 16, top: 4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            loan.vendorName ?? loan.vendorId ?? 'Unknown',
+                            style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                          ),
+                        ),
+                        Text(
+                          'R ${loan.amount.toStringAsFixed(0)}',
+                          style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  )),
+                ],
+              );
+            },
           ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: iconColor,
-            ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
           ),
         ],
       ),
