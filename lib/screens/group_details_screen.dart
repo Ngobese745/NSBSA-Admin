@@ -2363,12 +2363,15 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     );
   }
 
-  void _showAddMemberDialog(List<VendorModel> members) {
+  Future<void> _showAddMemberDialog(List<VendorModel> members) async {
+    final supabase = Supabase.instance.client;
+    final dfResponse = await supabase.from('profiles').select().eq('role', 'Development Facilitator');
+    final dfProfiles = dfResponse as List;
+
     final nameController = TextEditingController();
     final phoneController = TextEditingController();
     final idController = TextEditingController();
     final businessController = TextEditingController();
-    final dfController = TextEditingController();
     final whatsappController = TextEditingController();
     final emailController = TextEditingController();
     final addressController = TextEditingController();
@@ -2377,6 +2380,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     String selectedRole = 'Member';
     String selectedFrequency = 'Monthly';
     DateTime selectedSavingsDate = DateTime.now();
+    String? selectedDfId;
+    String? selectedDfName;
 
     showDialog(
       context: context,
@@ -2536,8 +2541,11 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                       labelStyle: TextStyle(color: Colors.grey),
                     ),
                   ),
-                  TextField(
-                    controller: dfController,
+                  DropdownButtonFormField<String>(
+                    value: selectedDfId,
+                    isExpanded: true,
+                    hint: const Text('Select DF'),
+                    dropdownColor: Theme.of(context).cardColor,
                     style: TextStyle(
                       color: Theme.of(context).textTheme.bodyMedium?.color,
                     ),
@@ -2545,6 +2553,22 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                       labelText: 'DF Name',
                       labelStyle: TextStyle(color: Colors.grey),
                     ),
+                    items: dfProfiles
+                        .map((p) => DropdownMenuItem(
+                              value: p['id'] as String,
+                              child: Text(p['full_name'] ?? p['email'] ?? 'Unknown'),
+                            ))
+                        .toList(),
+                    onChanged: (val) {
+                      setState(() {
+                        selectedDfId = val;
+                        selectedDfName = val != null
+                            ? (dfProfiles.firstWhere((p) => p['id'] == val)['full_name'] ??
+                                dfProfiles.firstWhere((p) => p['id'] == val)['email'] ??
+                                'Unknown')
+                            : null;
+                      });
+                    },
                   ),
                   TextField(
                     controller: addressController,
@@ -2687,7 +2711,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   idNumber: idController.text,
                   gender: selectedGender,
                   businessType: businessController.text,
-                  dfName: dfController.text,
+                  dfId: selectedDfId,
+                  dfName: selectedDfName,
                   whatsappNumber: whatsappController.text,
                   email: emailController.text,
                   address: addressController.text,

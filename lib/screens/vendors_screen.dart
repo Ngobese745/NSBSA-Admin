@@ -20,6 +20,7 @@ import '../providers/payment_provider.dart';
 import '../theme/app_theme.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class _VendorHeaderAction extends StatelessWidget {
   final IconData icon;
@@ -734,8 +735,12 @@ class _VendorsScreenState extends State<VendorsScreen> {
     );
   }
 
-  void _showAddMemberDialog(BuildContext context) {
+  Future<void> _showAddMemberDialog(BuildContext context) async {
     final groupProvider = context.read<GroupProvider>();
+
+    final supabase = Supabase.instance.client;
+    final dfResponse = await supabase.from('profiles').select().eq('role', 'Development Facilitator');
+    final dfProfiles = dfResponse as List;
 
     final nameController = TextEditingController();
     final idNumberController = TextEditingController();
@@ -751,6 +756,8 @@ class _VendorsScreenState extends State<VendorsScreen> {
     String selectedGender = 'F';
     String selectedRole = 'Member';
     bool isNewGroup = false;
+    String? selectedDfId;
+    String? selectedDfName;
 
     showDialog(
       context: context,
@@ -1021,6 +1028,37 @@ class _VendorsScreenState extends State<VendorsScreen> {
                           ),
                         ),
                       ),
+                      const SizedBox(height: 20),
+                      _SectionLabel(label: 'DF ASSIGNMENT'),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        value: selectedDfId,
+                        isExpanded: true,
+                        hint: const Text('Select Development Facilitator'),
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                        ),
+                        items: dfProfiles
+                            .map((p) => DropdownMenuItem(
+                                  value: p['id'] as String,
+                                  child: Text(p['full_name'] ?? p['email'] ?? 'Unknown'),
+                                ))
+                            .toList(),
+                        onChanged: (val) {
+                          setState(() {
+                            selectedDfId = val;
+                            selectedDfName = val != null
+                                ? (dfProfiles.firstWhere((p) => p['id'] == val)['full_name'] ??
+                                    dfProfiles.firstWhere((p) => p['id'] == val)['email'] ??
+                                    'Unknown')
+                                : null;
+                          });
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -1112,6 +1150,8 @@ class _VendorsScreenState extends State<VendorsScreen> {
                         address: addressController.text,
                         role: selectedRole,
                         referenceNumber: ref,
+                        dfId: selectedDfId,
+                        dfName: selectedDfName,
                         createdAt: DateTime.now(),
                       );
 
