@@ -88,4 +88,8 @@ class AccessControlService {
   /// Can view pending/unapproved records.
   static bool canViewUnapprovedRecords(ProfileModel? profile) =>
       hasRole(profile, ['Super Admin', 'Admin']);
+
+  /// Import Data (Super Admin, Admin, Finance)
+  static bool canImportData(ProfileModel? profile) =>
+      hasRole(profile, ['Super Admin', 'Admin', 'Finance']);
 }

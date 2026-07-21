@@ -150,6 +150,9 @@ class _MainShellState extends State<MainShell> {
         if (AccessControlService.isFieldAgent(profile)) {
           return const _AccessDenied(message: 'You do not have permission to import data.');
         }
+        if (profile?.isFinance == true) {
+          return const ImportScreen();
+        }
         return const FeatureGuard(featureKey: 'import', child: ImportScreen());
       case 8:
         return const FeatureGuard(featureKey: 'marketing', child: MarketingHubScreen());
@@ -662,14 +665,14 @@ class _MainShellState extends State<MainShell> {
                   featureKey: 'reports',
                   profile: profile, isCollapsed: isCollapsed,
                 ),
-              if (!AccessControlService.isFieldAgent(profile) && (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false)))
+              if (!AccessControlService.isFieldAgent(profile) && (!(profile?.isMarketing ?? false) || (profile?.isSuperAdmin ?? false) || (profile?.isFinance ?? false)))
                 _buildNavItem(
                   Icons.upload_file,
                   'Import Data',
                   7,
                   navIndex,
                   dev,
-                  featureKey: 'import',
+                  featureKey: (profile?.isFinance ?? false) ? null : 'import',
                   profile: profile, isCollapsed: isCollapsed,
                 ),
 
