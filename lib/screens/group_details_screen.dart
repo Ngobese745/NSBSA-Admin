@@ -3451,7 +3451,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                           ),
                           children: [
                             _pdfCell('Member', isBold: true),
-                            _pdfCell('Amount', isBold: true),
+                            _pdfCell('Loan Amount', isBold: true),
                             _pdfCell('Duration', isBold: true),
                             _pdfCell('Monthly', isBold: true),
                             _pdfCell('Status', isBold: true),
@@ -3499,7 +3499,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                           ),
                           children: [
                             _pdfCell('Date', isBold: true),
-                            _pdfCell('Amount', isBold: true),
+                            _pdfCell('Payment Receipts', isBold: true),
                             _pdfCell('Method', isBold: true),
                             _pdfCell('Loan', isBold: true),
                             _pdfCell('Balance', isBold: true),
