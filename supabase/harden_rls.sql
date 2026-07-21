@@ -40,7 +40,7 @@ USING (auth.role() = 'authenticated');
 
 DROP POLICY IF EXISTS "Admins can manage groups" ON public.groups;
 CREATE POLICY "Admins can manage groups" ON public.groups FOR ALL
-USING (public.has_role(ARRAY['Super Admin', 'Admin']));
+USING (public.has_role(ARRAY['Super Admin', 'Admin', 'Finance']));
 
 -- VENDORS
 DROP POLICY IF EXISTS "Staff can view vendors" ON public.vendors;
@@ -158,7 +158,7 @@ USING (auth.role() = 'authenticated');
 
 DROP POLICY IF EXISTS "Admins can manage centers" ON public.centers;
 CREATE POLICY "Admins can manage centers" ON public.centers FOR ALL
-USING (public.has_role(ARRAY['Super Admin', 'Admin']));
+USING (public.has_role(ARRAY['Super Admin', 'Admin', 'Finance']));
 
 -- 4. Enable RLS on all tables (Just in case)
 ALTER TABLE public.groups ENABLE ROW LEVEL SECURITY;
