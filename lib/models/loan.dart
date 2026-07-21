@@ -13,6 +13,7 @@ class LoanModel {
   final double? interestRate;
   final DateTime? firstInstalmentDate;
   final DateTime? firstPaymentDate;
+  final DateTime? disbursedDate;
   final bool gracePeriodEnabled;
   final int? gracePeriodMonths;
   final String? vendorName;
@@ -36,6 +37,7 @@ class LoanModel {
     this.interestRate,
     this.firstInstalmentDate,
     this.firstPaymentDate,
+    this.disbursedDate,
     this.gracePeriodEnabled = false,
     this.gracePeriodMonths,
     required this.createdAt,
@@ -81,6 +83,9 @@ class LoanModel {
       firstPaymentDate: json['first_payment_date'] != null
           ? DateTime.parse(json['first_payment_date'])
           : null,
+      disbursedDate: json['disbursed_date'] != null
+          ? DateTime.parse(json['disbursed_date'])
+          : null,
       gracePeriodEnabled: json['grace_period_enabled'] == true,
       gracePeriodMonths: json['grace_period_months'] as int?,
       createdAt: DateTime.parse(json['created_at']),
@@ -104,6 +109,7 @@ class LoanModel {
       'interest_rate': interestRate,
       'first_instalment_date': firstInstalmentDate?.toIso8601String(),
       'first_payment_date': firstPaymentDate?.toIso8601String(),
+      'disbursed_date': disbursedDate?.toIso8601String(),
       'grace_period_enabled': gracePeriodEnabled,
       'grace_period_months': gracePeriodMonths,
       'created_at': createdAt.toIso8601String(),

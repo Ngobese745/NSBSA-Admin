@@ -69,6 +69,7 @@ class ImportResult {
     const required = {
       'Name', 'ID Number', 'Phone', 'Group Name',
       'Loan Amount', 'Loan Term', 'Opening Balance',
+      'Date Disbursed',
     };
     return required.difference(mappedColumnLabels);
   }
@@ -109,7 +110,11 @@ class ImportResult {
 
     final missing = missingColumns;
     if (missing.isNotEmpty) {
-      msg += '\nNote: ${missing.join(", ")} not found — skipped.';
+      if (missing.contains('Date Disbursed')) {
+        msg += '\nDate Disbursed column not found. Please include this column in your Excel file.';
+      } else {
+        msg += '\nNote: ${missing.join(", ")} not found — skipped.';
+      }
     }
 
     // Centre / D.F Name feedback
@@ -339,6 +344,7 @@ class ImportService {
           final amount            = _toDouble(row, cols['loan_amount']);
           final term              = _toInt(row, cols['loan_term']);
           final firstPaymentDate  = _toDateTime(row, cols['first_payment']);
+          final disbursedDate    = _toDateTime(row, cols['disbursed_date']);
           final openingAmount     = _toDouble(row, cols['opening_amount']);
           final initiationFee     = _toDouble(row, cols['init_fee']);
           final adminFee          = _toDouble(row, cols['admin_fee']);
@@ -385,6 +391,7 @@ class ImportService {
               penaltyFee: penaltyFee,
               openingAmount: openingAmount,
               firstPaymentDate: firstPaymentDate,
+              disbursedDate: disbursedDate,
             );
 
             if (totalPaid != 0) {
@@ -589,6 +596,11 @@ class ImportService {
     "interest rate": 'interest_rate',
     "rate": 'interest_rate',
     "interest": 'interest_rate',
+    // Disbursed date
+    "date disbursed": 'disbursed_date',
+    "disbursed date": 'disbursed_date',
+    "disbursement date": 'disbursed_date',
+    "date issued": 'disbursed_date',
   };
 
   /// Maps internal field keys to user-facing labels for column-mapping
@@ -615,6 +627,7 @@ class ImportService {
     'paid_penalty': 'Paid Penalty',
     'interest_rate': 'Interest Rate',
     'centre_name': 'Centre Name',
+    'disbursed_date': 'Date Disbursed',
   };
 
   /// Strips common prefixes/suffixes from raw column headers so that
@@ -920,6 +933,7 @@ class ImportService {
     double? penaltyFee,
     double? openingAmount,
     DateTime? firstPaymentDate,
+    DateTime? disbursedDate,
   }) async {
     final existingLoanId = await _findExistingLoan(vendorId, amount);
 
@@ -935,6 +949,7 @@ class ImportService {
       'penalty_fee': penaltyFee,
       'opening_amount': openingAmount,
       'first_instalment_date': firstPaymentDate?.toIso8601String(),
+      'disbursed_date': disbursedDate?.toIso8601String(),
     };
 
     if (existingLoanId != null) {
